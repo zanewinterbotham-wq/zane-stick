@@ -1,5 +1,6 @@
 // Browser entry: title menu, open-field drill, HUD, pause menu, panels. The simulation runs on a fixed
 // timestep; slow motion only changes how fast real time feeds the fixed steps.
+import './testLock'; // first: tests must not capture the owner's real cursor
 import { DEFAULT_SUPPORT, type SupportSettings } from '../sim/anim/types';
 import { HumanBrain } from '../sim/brains/human';
 import { carrierSkill } from '../sim/brains/carrier';
