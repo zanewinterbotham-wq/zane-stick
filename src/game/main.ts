@@ -78,6 +78,7 @@ class App {
   fps = 0; physMs = 0;
   rep = 0;
   peakShown = false;
+  endWhistled = false;
   startHeld = 0;
   pausedAt = 0;
   /** Keyboard lock is active (fullscreen): Ctrl+W reaches the game instead of closing the tab. */
@@ -158,6 +159,7 @@ class App {
     this.drill?.destroy();
     this.hud.showResult(null);
     this.peakShown = false;
+    this.endWhistled = false;
     this.input.resetTorso();
     const p = this.preset;
     const s = this.settings;
@@ -481,6 +483,7 @@ class App {
         `assist     ${(this.settings.assist * me.assistLevel * 100).toFixed(0)}%`, `preset     ${this.preset.label}`,
       ]);
     } else this.hud.setOverlay(null);
+    if (d.ended && !this.endWhistled) { this.endWhistled = true; this.audio.play('game_whistle_end', 1); }
     if (d.ended && !this.peakShown && w.time - d.endTime > 0.6) {
       this.peakShown = true;
       const imp = w.impact;

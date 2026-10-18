@@ -258,6 +258,12 @@
         "sfx/voice_exhale/01.ogg",
         "sfx/voice_exhale/02.ogg"
       ]
+    },
+    "game_whistle_end": {
+      "volume": 0.1,
+      "files": [
+        "sfx/game_whistle_end/02.ogg"
+      ]
     }
   }
 }
