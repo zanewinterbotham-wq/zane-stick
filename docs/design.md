@@ -77,7 +77,11 @@ transform.
 
 ## 4. Physics engine
 
-Chosen by benchmark — see `docs/physics-benchmark.md` for numbers. The engine sits behind
+**MuJoCo 3.16 (official WebAssembly build, `@mujoco/mujoco`)**, chosen by benchmark — see
+`docs/physics-benchmark.md`. Generalized coordinates (joints never pull apart), soft per-axis joint
+limits, per-geom contact compliance, contact force readout, deterministic, fastest under CPU
+throttling. Body-segment contacts use a 2-step time constant (no CCD in MuJoCo); minimum step rate
+240 Hz. The scene is compiled per rep; grips are pre-allocated equality constraints. The engine sits behind
 `src/sim/physics/engine.ts`, a thin interface: build a model from body/joint/geom descriptions,
 apply joint torques and external forces, step, read transforms, velocities, joint angles and
 contact forces. Grips are runtime constraints with a force readout so they can break.
