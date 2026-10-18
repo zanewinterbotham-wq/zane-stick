@@ -57,7 +57,7 @@ export const DEFAULT_GAINS: Gains = {
   pelvisAtt: 1.0, thoraxAtt: 1.0, headAtt: 1.0,
   dcmK: 2.5, heightKp: 60, heightKd: 15,
   footK: 0, speedKi: 0.4, stepWidth: 0.36, footMargin: 0.05,
-  stepMax: 0.3, stepWidthMin: 0.18,
+  stepMax: 0.3, stepWidthMin: 0.17,
   torsoKp: 1.5, torsoKd: 0.2,
   stepTMin: 0.4, touchFrac: 0.6, clearance: 0.09, stanceKneeBend: 0.12, armSwing: 0.6, vLead: 0.6,
   leanSpeed: 0.015, leanAccel: 0.04,
