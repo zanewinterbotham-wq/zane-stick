@@ -32,8 +32,9 @@ export interface WorldSetup { physics: PhysicsSettings; athletes: AthleteSetup[]
 
 /** Balance assist timing [design §6.4]. */
 const ASSIST_FADE_OUT = 0.15, ASSIST_STABLE_TIME = 0.3, ASSIST_FADE_IN = 0.3;
-/** Held knock: grip time before it starts (s), further time to full (s), and the share one arm takes. */
-const HELD = { start: 0.3, full: 0.9, oneArm: 0.6 };
+/** Held knock: grip time before it starts (s), further time to full (s), the share one arm takes, and after that
+ *  the time over which a two-arm hold drains muscle tone, up to sagMax. */
+const HELD = { start: 0.3, full: 0.9, oneArm: 0.6, sag: 1.0, sagMax: 0.8 };
 /** Support [design §6.5]: carry velocity gain (1/s), stable footing before the carry returns and its ramp (s),
  *  window for the impulse received (s), flight a stride may have before the carry fades (s), how fast knock
  *  decays (1/s), get-up ramp (s), pelvis height PD (1/s², 1/s), upright stiffness (m·g·h per rad), damping
@@ -128,6 +129,8 @@ export class World {
   /** Athlete-on-athlete contacts this step, one per segment pair (sound, feel, replays). */
   hits: HitEvent[] = [];
   ballCarrier = -1;
+  /** Prop index of the ball, or -1. */
+  private get ballProp() { return this.setup.props?.findIndex((p) => p.name === 'ball') ?? -1; }
 
   private constructor(readonly scene: PhysicsScene, readonly setup: WorldSetup) {
     this.rng = new Rng(setup.seed);
@@ -311,9 +314,14 @@ export class World {
     // Wrapped up, an athlete cannot keep his balance freely: the posture help drains while opponents hold him (one
     // arm takes it part way, two all the way), so the tackler's weight and pull bring him down unless he breaks free.
     let held = 0;
-    for (const o of this.athletes) if (o !== a) for (const g of o.grips) if (g.active && g.target?.athlete === a.index) held++;
+    // a hand on the ball he carries holds him as much as a hand on his jersey
+    const onHim = (t: LinkRef | null) => !!t && (t.athlete === a.index || (t.athlete < 0 && this.ballCarrier === a.index && t.seg === this.ballProp));
+    for (const o of this.athletes) if (o !== a) for (const g of o.grips) if (g.active && onHim(g.target)) held++;
     a.heldT = held > 0 ? a.heldT + dt : Math.max(0, a.heldT - 2 * dt);
     const knockHeld = clamp((a.heldT - HELD.start * T) / (HELD.full * T), 0, 1) * (held >= 2 ? 1 : HELD.oneArm);
+    // Held on to past that, his legs give: a balance controller alone would keep a wrapped athlete standing for
+    // ever. Muscle tone drains (the stun's looseness) until he goes down or breaks free.
+    if (held >= 2) a.stun = Math.max(a.stun, clamp((a.heldT - (HELD.start + HELD.full) * T) / (HELD.sag * T), 0, HELD.sagMax));
     const target = Math.min(1, Math.max(knockHit, knockTilt, knockAir, knockDriven, knockLift, knockHeld));
     // rises fast, within a couple of steps on a big hit (the body goes as its impulse lands), decays slowly
     a.knock = target > a.knock ? a.knock + (target - a.knock) * Math.min(1, dt / (knockHit >= 1 ? SUP.bigRise : SUP.rise)) : Math.max(target, a.knock - dt * SUP.decay);

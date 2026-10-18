@@ -111,6 +111,8 @@ class App {
   rep = 0;
   peakShown = false;
   endWhistled = false;
+  /** Open-field mode: tackle the bot carrier, or carry the ball past the bot tackler. */
+  drillMode: 'tackle' | 'carry' = 'tackle';
   startHeld = 0;
   pausedAt = 0;
   /** Keyboard lock is active (fullscreen): Ctrl+W reaches the game instead of closing the tab. */
@@ -172,7 +174,8 @@ class App {
     document.exitPointerLock?.();
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
     this.layer.show(menu('ZANE STICK', [
-      { label: 'Open field: tackle the carrier', hint: 'Enter / A', action: () => this.startDrill() },
+      { label: 'Open field: tackle the carrier', hint: 'Enter / A', action: () => this.startDrill('tackle') },
+      { label: 'Open field: carry the ball (the bot tackles)', action: () => this.startDrill('carry') },
       { label: `Difficulty: ${DIFF_LABEL[difficultyOf(this.settings)]}`, hint: 'next rep', action: () => this.difficulty() },
       { label: 'Controls', action: () => this.controls() },
       { label: 'Key test', action: () => this.keyTest() },
@@ -182,7 +185,8 @@ class App {
     ], 'Physics football. Every movement is muscles on a simulated body.'));
   }
 
-  async startDrill() {
+  async startDrill(mode: 'tackle' | 'carry' = 'tackle') {
+    this.drillMode = mode;
     this.layer.hide();
     this.enterPlay();
     this.audio.unlock();
@@ -208,7 +212,7 @@ class App {
     const s = this.settings;
     this.drill = await OpenFieldDrill.create(mujocoEngine, {
       ...DEFAULT_OPEN_FIELD, physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), toughness: s.toughness, hitPower: s.hitPower,
-      human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, traction: s.traction, gains: s.gains,
+      mode: this.drillMode, human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, traction: s.traction, gains: s.gains,
       support: { ...GAME_SUPPORT, ...s.support },
     }, this.human, this.rep++);
     if (!this.renderer || this.rendererPreset !== p.name) {
@@ -609,7 +613,7 @@ class App {
     const sup = w.view(me).support; // present once the world runs the active-ragdoll support
     const mode = this.human.contact ? 'CONTACT (auto)' : 'MOVEMENT';
     this.hud.setStatus([
-      `OPEN FIELD  ·  Rep ${d.rep + 1}  ·  ${Math.min(d.repTime, d.cfg.timeLimit).toFixed(1)} s`,
+      `${this.drillMode === 'carry' ? 'BALL CARRIER' : 'OPEN FIELD'}  ·  Rep ${d.rep + 1}  ·  ${Math.min(d.repTime, d.cfg.timeLimit).toFixed(1)} s`,
       `Ball: ${w.ballCarrier === d.human ? 'YOU HAVE IT — score at the far end zone' : w.ballCarrier < 0 ? 'LOOSE — dive on it' : 'carrier'}   ·   Mode: ${mode}${this.human.latest?.shiftLock ? '  ·  SIDE SHUFFLE' : ''}${this.timeScale < 1 ? '   SLOW MOTION' : ''}`,
       sup ? `Support ${((d.cfg.support?.strength ?? 1) * 100).toFixed(0)}%  ·  posture ${(sup.posture * 100).toFixed(0)}%  ·  carry ${(sup.carry * 100).toFixed(0)}%${sup.down ? '  ·  DOWN' : ''}`
         : `Balance assist ${(this.settings.assist * 100).toFixed(0)}%${me.assistLevel < 1 ? ` (fading ${(me.assistLevel * 100).toFixed(0)}%)` : ''}`,

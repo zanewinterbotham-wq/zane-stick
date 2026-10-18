@@ -34,6 +34,9 @@ export interface OpenFieldConfig {
   toughness?: number;
   /** Arcade hit power (WorldSetup.hitPower; 1 = pure physics). */
   hitPower?: number;
+  /** 'tackle' (default): the bot carries, the human tackles. 'carry': the human starts with the ball and runs for
+   *  the far end zone; the bot tackles. */
+  mode?: 'tackle' | 'carry';
 }
 export const DEFAULT_OPEN_FIELD: Omit<OpenFieldConfig, 'physics'> = {
   assist: 0.2, seed: 1, human: DEFAULT_ATHLETE, carrier: { height: 1.80, mass: 98, strength: 1, speed: 1 },
@@ -79,18 +82,19 @@ export class OpenFieldDrill {
   static async create(engine: PhysicsEngine, cfg: OpenFieldConfig, humanBrain: Brain, rep = 0): Promise<OpenFieldDrill> {
     const rng = new Rng(cfg.seed * 7919 + rep * 104729);
     const hx = rng.range(-2, 2), cx = hx + rng.range(-3, 3), gap = rng.range(10, 14);
-    const brains: Brain[] = [humanBrain, makeCarrier(new Rng(rng.next() * 1e9), cfg.difficulty, cfg.carrierGait)];
+    const carry = cfg.mode === 'carry', botRng = new Rng(rng.next() * 1e9);
+    const brains: Brain[] = [humanBrain, carry ? makeTackler(botRng, cfg.difficulty) : makeCarrier(botRng, cfg.difficulty, cfg.carrierGait)];
     // whoever holds the ball keeps it tucked in the right arm (a human's input has no carry button)
     const possess = (i: number): Brain => ({ think: (p, dt) => { const c = brains[i].think(p, dt); if (p.athletes[i].hasBall) c.carry = 2; return c; } });
     const setup: WorldSetup = {
       physics: cfg.physics, seed: cfg.seed + rep, assist: cfg.assist, traction: cfg.traction, hitPower: cfg.hitPower,
       field: { halfWidth: HALF_WIDTH, goalZ: attackDir(1) * GOAL_LINE, dirZ: attackDir(1) },
       athletes: [
-        { params: cfg.human, pos: [hx, 0, 0], yaw: 0, team: 0, controller: ctl(cfg), brain: possess(0) },
-        { params: cfg.carrier, pos: [cx, 0, gap], yaw: Math.PI, team: 1, controller: ctl(cfg), brain: possess(1), hasBall: true, toughness: cfg.toughness },
+        { params: cfg.human, pos: [hx, 0, 0], yaw: 0, team: 0, controller: ctl(cfg), brain: possess(0), hasBall: carry },
+        { params: cfg.carrier, pos: [cx, 0, gap], yaw: Math.PI, team: 1, controller: ctl(cfg), brain: possess(1), hasBall: !carry, toughness: cfg.toughness },
       ],
       // ball parked under the field until the carrier has tucked his arm (setup only)
-      props: [{ name: 'ball', shape: 'ellipsoid', size: [BALL.diameter / 2, BALL.diameter / 2, BALL.length / 2], mass: BALL.mass, pos: [cx, -5, gap], friction: 0.8 }],
+      props: [{ name: 'ball', shape: 'ellipsoid', size: [BALL.diameter / 2, BALL.diameter / 2, BALL.length / 2], mass: BALL.mass, pos: carry ? [hx, -5, 0] : [cx, -5, gap], friction: 0.8 }],
       support: cfg.support && { ...cfg.support },
     };
     const world = await World.create(engine, setup);
@@ -100,14 +104,14 @@ export class OpenFieldDrill {
     return d;
   }
 
-  /** Pre-roll: let both settle and the carrier tuck his arm, then put the ball in his hand and grip it. */
+  /** Pre-roll: let both settle and the ball holder tuck his arm, then put the ball in his hand and grip it. */
   private setup() {
-    const w = this.world, carrier = this.brains[this.carrier];
-    // hold the carrier still while tucking: a brain that only carries
-    this.brains[this.carrier] = { think: (p, dt) => ({ ...carrier.think({ ...p, time: -1 }, dt), move: { x: 0, z: 0 } }) };
+    const w = this.world, bot = this.brains[this.carrier];
+    // hold the bot still while the holder tucks (the human brain has no input yet during the pre-roll)
+    this.brains[this.carrier] = { think: (p, dt) => ({ ...bot.think({ ...p, time: -1 }, dt), move: { x: 0, z: 0 }, dive: false }) };
     for (let i = 0; i < Math.round(0.5 / w.dt); i++) w.step();
-    this.brains[this.carrier] = carrier;
-    this.tuck(this.carrier);
+    this.brains[this.carrier] = bot;
+    this.tuck(this.cfg.mode === 'carry' ? this.human : this.carrier);
     this.repStart = w.time;
   }
 
