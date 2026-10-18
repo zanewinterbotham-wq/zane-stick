@@ -232,6 +232,33 @@ describe('procedural animator', () => {
     }
   });
 
+  it('dives on the press: load, launch, flight; holding the button changes nothing', () => {
+    const runs = [0.05, 2].map((hold) => {
+      const r = kinematicRig(), out: number[] = [], stages: string[] = [];
+      run(r, 2.5, (t, c) => { c.move = { x: 0, z: 1 }; c.gait = 'sprint'; c.dive = t > 1 && t < 1 + hold; }, () => {
+        out.push(...r.frame.q, r.frame.root.height, r.frame.root.pitch, r.frame.root.vel[1]);
+        if (stages[stages.length - 1] !== r.frame.root.dive) stages.push(r.frame.root.dive);
+      });
+      return { out, stages };
+    });
+    expect(runs[0].stages).toEqual(['none', 'load', 'launch', 'flight']);
+    expect(runs[1].out).toEqual(runs[0].out);
+  });
+
+  it('a held hip thrust rises out of a sink and a lean (it has priority over both) and punches the arms forward', () => {
+    const r = kinematicRig(), i = (n: string) => r.muscles.index(n);
+    const sunk = (c: Commands) => { c.contactMode = true; c.sink = 1; c.lean.fwd = 1; };
+    run(r, 1, (_t, c) => sunk(c));
+    const h0 = r.frame.root.height, p0 = r.frame.root.pitch, k0 = r.frame.q[i('kneeL.flex')];
+    run(r, 0.6, (_t, c) => { sunk(c); c.thrustHips = true; }, undefined, 1);
+    expect(r.frame.root.thrust).toBeGreaterThan(0.95);
+    expect(r.frame.root.height).toBeGreaterThan(h0 + 0.2);
+    expect(r.frame.root.height).toBeGreaterThan(r.plan.standHeight);
+    expect(r.frame.root.pitch).toBeLessThan(p0 - 0.5);
+    expect(r.frame.q[i('kneeL.flex')]).toBeLessThan(k0 - 0.5);
+    expect(r.frame.q[i('shoulderL.flex')]).toBeGreaterThan(1.3);
+  });
+
   it('layers contact overlays on the arms and relaxes the arms while running', () => {
     const r = kinematicRig(), i = (n: string) => r.muscles.index(n);
     run(r, 2, (_t, c) => { c.move = { x: 0, z: 1 }; c.gait = 'sprint'; });

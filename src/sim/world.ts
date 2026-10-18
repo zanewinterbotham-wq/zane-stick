@@ -8,7 +8,7 @@ import { clamp, headingOf, qaxis, qconj, qlog, qmul, qrot, type Quat, type Vec3 
 import { MuscleSet, newTargets, type MuscleTargets } from './muscles';
 import type { AthleteState, PhysicsEngine, PhysicsScene, PropDesc } from './physics/engine';
 import { Rng } from './rng';
-import type { SupportSettings, SupportState } from './anim/types';
+import { weightSupport, type SupportSettings, type SupportState } from './anim/types';
 
 export interface PhysicsSettings { hz: number; iterations: number; detail: Detail }
 export interface AthleteSetup {
@@ -29,11 +29,13 @@ const ASSIST_FADE_OUT = 0.15, ASSIST_STABLE_TIME = 0.3, ASSIST_FADE_IN = 0.3;
 /** Support [design §6.5]: carry velocity gain (1/s), stable footing before the carry returns and its ramp (s),
  *  window for the impulse received (s), flight a stride may have before the carry fades (s), how fast knock
  *  decays (1/s), get-up ramp (s), pelvis height PD (1/s², 1/s), upright stiffness (m·g·h per rad), damping
- *  (m·h² per s), yaw relative to roll/pitch, and the stun: knock impulse (in bigHits) where it starts and the
+ *  (m·h² per s), yaw relative to roll/pitch, the stun: knock impulse (in bigHits) where it starts and the
  *  further amount that makes it full, and its fade time (s); speed along the last big hit beyond the wanted one
- *  where the knock starts and where it is full (m/s), and how long that hit is remembered (s). */
+ *  where the knock starts and where it is full (m/s), and how long that hit is remembered (s); and a dive
+ *  take-off's velocity gain (1/s) and largest acceleration (m/s², about the ~1.5 g net a standing long-jump
+ *  take-off reaches). */
 const SUP = { kv: 6, stable: 0.3, fadeIn: 0.3, window: 0.2, flight: 0.15, decay: 1, getup: 1, hKp: 36, hKd: 10, kUp: 1.5, cUp: 6, yaw: 0.3,
-  stunStart: 1, stunFull: 2, stunTime: 0.5, drivenStart: 0.5, drivenFull: 2, drivenTime: 1.5 };
+  stunStart: 1, stunFull: 2, stunTime: 0.5, drivenStart: 0.5, drivenFull: 2, drivenTime: 1.5, launchKv: 20, launch: 15 };
 
 /** One body-part-on-body-part contact between two athletes this step (summed over its contact points). */
 export interface HitEvent {
@@ -176,9 +178,16 @@ export class World {
     const S = this.setup.support!, r = a.controller.root!(), sup = a.support;
     a.carryForce = [0, 0, 0];
     if (!r) return;
+    // dive flight is ballistic: no support of any kind, so momentum is the take-off's and the body lands
+    if (r.dive === 'flight') return;
     const s = this.scene.athletes[a.index].state, m = a.mass, k = S.strength, pi = a.segIndex.get('pelvis')!;
     const c = a.playerContact ? 0 : sup.carry * k;
-    if (c > 0) {
+    // dive take-off: the carry stands in for the push off the turf, so it needs a foot on it
+    const launch = r.dive === 'launch' && (a.feet[0].touching || a.feet[1].touching);
+    if (c > 0 && launch) {
+      const f: Vec3 = [0, 1, 2].map((j) => m * SUP.launchKv * (r.vel[j] - s.comVel[j])) as Vec3, n = Math.hypot(...f), lim = m * SUP.launch;
+      a.carryForce = f.map((x) => x * c * (n > lim ? lim / n : 1)) as Vec3;
+    } else if (c > 0) {
       let fx = m * SUP.kv * (r.vel[0] - s.comVel[0]), fz = m * SUP.kv * (r.vel[2] - s.comVel[2]);
       const n = Math.hypot(fx, fz), lim = m * S.carryAccel;
       if (n > lim) { fx *= lim / n; fz *= lim / n; }
@@ -186,8 +195,11 @@ export class World {
     }
     const p = sup.posture * k;
     let fy = 0;
-    if (p > 0) fy = clamp(p * (S.weightShare * m * G + m * SUP.hKp * (r.height - s.segPos[3 * pi + 1]) - m * SUP.hKd * s.segVel[3 * pi + 1]), 0, 1.5 * p * m * G);
-    this.scene.applyWrench(a.index, pi, [a.carryForce[0], fy, a.carryForce[2]], [0, 0, 0]);
+    // A dive loads and pushes off the athlete's own legs, and so does a hip thrust: the posture support leaves the
+    // weight to them (the tracking controller's legShare), so it never lifts the athlete or what he drives.
+    const ps = p * weightSupport(r);
+    if (ps > 0) fy = clamp(ps * (S.weightShare * m * G + m * SUP.hKp * (r.height - s.segPos[3 * pi + 1]) - m * SUP.hKd * s.segVel[3 * pi + 1]), 0, 1.5 * ps * m * G);
+    this.scene.applyWrench(a.index, pi, [a.carryForce[0], fy + a.carryForce[1], a.carryForce[2]], [0, 0, 0]);
     if (p <= 0) return;
     const H = a.plan.standHeight, kUp = p * SUP.kUp * m * G * H, cUp = 0.5 * p * SUP.cUp * m * H * H;
     // Damping acts on the whole body's rotation rate (angular momentum over inertia about the COM): a pelvis is too

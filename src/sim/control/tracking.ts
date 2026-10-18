@@ -3,12 +3,12 @@
 // knocked off balance) the targets blend toward the hand-built balance controller, so a hit athlete steps and
 // fights for balance physically; they blend back once the support returns. Everything stays within the muscles.
 import type { BodyPlan } from '../anatomy/body';
-import { DEFAULT_SUPPORT, newFrame, type AnimFrame, type Animator, type RootTarget, type SupportSettings, type SupportState } from '../anim/types';
+import { DEFAULT_SUPPORT, newFrame, weightSupport, type AnimFrame, type Animator, type RootTarget, type SupportSettings, type SupportState } from '../anim/types';
 import { clamp, cross, dot, type Vec3 } from '../math';
 import { newTargets, type MuscleSet, type MuscleTargets } from '../muscles';
 import { ProceduralAnimator } from '../anim/procedural';
 import { HandController } from './hand';
-import type { BodyView, Commands, MotorController } from './types';
+import { neutralCommands, type BodyView, type Commands, type MotorController } from './types';
 
 const G = 9.81;
 /** Same stability reference as the hand controller: gains capped for the slowest preset (240 Hz). */
@@ -19,6 +19,10 @@ const WN = { leg: 35, arm: 20, trunk: 25 };
 const NO_SUPPORT: SupportState = { posture: 0, carry: 0, down: false };
 /** Share of muscle output a full stun takes away. */
 const STUN_LOOSE = 0.6;
+/** Forward drive of a full hip thrust, × body weight (assumption: a hard sled drive). */
+const THRUST_DRIVE = 0.6;
+/** Upward push of each hand in a full thrust, N (assumption: about what one arm curls up at chest height). */
+const THRUST_LIFT = 250;
 
 export class TrackingController implements MotorController {
   /** The world's support tuning (World.create hands its own object in, so panel edits reach it). */
@@ -37,11 +41,14 @@ export class TrackingController implements MotorController {
   private kMin: Float64Array;
   private isLeg: Uint8Array;
   private chains: number[][];
+  private arms: { dofs: number[]; hand: number }[];
   private carried: number[][];
   private segMass: Float64Array;
   private pelvisSeg: number;
   /** Fraction of time some foot carries the legs' share of the weight (low-passed): sizes the stance push. */
   private grounded = 0.6;
+  private handCmd: Commands = neutralCommands();
+  private prevDive = false;
   private dbg: Record<string, number | string> = {};
 
   constructor(plan: BodyPlan, private muscles: MuscleSet, animator?: Animator) {
@@ -60,7 +67,9 @@ export class TrackingController implements MotorController {
     this.wn = Float64Array.from(muscles.names.map((n) => WN[region(n)]));
     this.kMin = Float64Array.from(muscles.names, (n, i) => (region(n) === 'leg' ? 2 : 0.6) * 0.5 * (muscles.tPos[i] + muscles.tNeg[i]));
     this.isLeg = Uint8Array.from(muscles.names.map((n) => (region(n) === 'leg' ? 1 : 0)));
-    this.chains = ['L', 'R'].map((sx) => ['hip', 'knee', 'ankle'].flatMap((j) => muscles.names.flatMap((n, i) => (n.startsWith(j + sx + '.') ? [i] : []))));
+    const chain = (sx: string, joints: string[]) => joints.flatMap((j) => muscles.names.flatMap((n, i) => (n.startsWith(j + sx + '.') ? [i] : [])));
+    this.chains = ['L', 'R'].map((sx) => chain(sx, ['hip', 'knee', 'ankle']));
+    this.arms = ['L', 'R'].map((sx) => ({ dofs: chain(sx, ['sc', 'shoulder', 'elbow', 'wrist']), hand: S('hand' + sx) >= 0 ? S('hand' + sx) : S('forearm' + sx) }));
   }
 
   root(): RootTarget { return this.frame.root; }
@@ -70,13 +79,21 @@ export class TrackingController implements MotorController {
     const sup = v.support ?? NO_SUPPORT, set = this.supportSettings, n = this.muscles.n;
     this.animator.update(v, cmd, sup, this.frame);
     // The hand controller runs every step so its gait and balance state are current when it is blended in.
-    this.hand.compute(v, cmd, this.handOut);
-    const want = 1 - Math.min(sup.posture, sup.carry);
-    // in quickly (a hit), out slowly (the animation takes over again once the support is back)
-    this.blend = this.blend < 0 ? want : this.blend + clamp(want - this.blend, -v.dt / 0.3, v.dt / 0.08);
+    // It sees a dive only on the press: one press is one dive, however long it is held.
+    Object.assign(this.handCmd, cmd).dive = cmd.dive && !this.prevDive;
+    this.prevDive = cmd.dive;
+    this.hand.compute(v, this.handCmd, this.handOut);
+    const r = this.frame.root;
+    let want = 1 - Math.min(sup.posture, sup.carry);
+    // A held hip thrust has priority: the muscles drive the thrust pose, in contact too, while the athlete still
+    // has his posture. Dive flight has nothing to balance: the muscles hold the dive pose until the landing.
+    want = r.dive === 'flight' ? 0 : Math.min(want, 1 - sup.posture * r.thrust);
+    // in quickly (a hit), out slowly (the animation takes over again once the support is back), except a thrust
+    const tOut = r.thrust > 0.05 ? 0.08 : 0.3;
+    this.blend = this.blend < 0 ? want : this.blend + clamp(want - this.blend, -v.dt / tOut, v.dt / 0.08);
     const b = this.blend;
     // share of body weight the legs carry: what the posture support does not
-    const legShare = clamp(1 - set.weightShare * sup.posture * set.strength, 0, 1);
+    const legShare = clamp(1 - set.weightShare * sup.posture * set.strength * weightSupport(r), 0, 1);
     this.track(v, this.trackOut, legShare, set.tracking);
     const h = this.handOut, t = this.trackOut, loose = 1 - STUN_LOOSE * clamp(this.stun, 0, 1);
     for (let i = 0; i < n; i++) {
@@ -112,21 +129,36 @@ export class TrackingController implements MotorController {
     const stance = [0, 1].filter((k) => f.planted[k] && v.feet[k].touching);
     this.grounded += ((stance.length > 0 ? 1 : 0) - this.grounded) * Math.min(1, v.dt / 0.4);
     const stanceDofs = new Set(stance.flatMap((k) => this.chains[k]));
-    for (let i = 0; i < ms.n; i++) if (!stanceDofs.has(i)) this.gravityComp(v, i, out);
+    // in free fall no joint carries the weight of what hangs from it
+    if (f.root.dive !== 'flight') for (let i = 0; i < ms.n; i++) if (!stanceDofs.has(i)) this.gravityComp(v, i, out);
+    const th = f.root.thrust;
+    // a thrust into an opponent lifts with the arms as well: each hand pushes up on what it holds (τ = Jᵀ F)
+    if (th > 0 && v.playerContact) for (const arm of this.arms) {
+      const p = this.vec(s.segCom, arm.hand);
+      for (const i of arm.dofs) {
+        const a = this.vec(s.dofAnchor, i);
+        out.tff[i] += dot(cross(this.vec(s.dofAxis, i), [p[0] - a[0], p[1] - a[1], p[2] - a[2]]), [0, th * THRUST_LIFT, 0]);
+      }
+    }
     if (stance.length === 0) return;
     // Over a gait cycle the legs deliver legShare of the weight while they are on the ground, so each stance
     // pushes harder the less of the time the feet are down (sprinting).
-    // Height feedback keeps a hard stance push from launching the body above the animation's pelvis height.
+    // Height feedback keeps a hard stance push from launching the body above the animation's pelvis height;
+    // a hip thrust may push up to its full strength (the muscles' limits cap it) and drives forward as well.
     const pi = this.pelvisSeg, dh = f.root.height - s.segPos[3 * pi + 1], vy = s.segVel[3 * pi + 1];
-    const Fy = legShare * this.mass * G / Math.max(0.3, this.grounded) / stance.length * clamp(1 + 10 * dh - 1.5 * vy, 0, 2);
+    const Fy = legShare * this.mass * G / Math.max(0.3, this.grounded) / stance.length * clamp(1 + 10 * Math.min(dh, 0.15) - (1.5 + 2.5 * th) * vy, 0, 2 + th);
+    const Fh = th * THRUST_DRIVE * this.mass * G / stance.length;
+    const F: Vec3 = [Fh * Math.sin(f.root.heading), Fy, Fh * Math.cos(f.root.heading)];
     for (const k of stance) {
       // Applied at the ankle: hip and knee carry the weight, the ankle only tracks. Pushing at the centre of
       // pressure loaded the ankle with full plantarflexion as a foot landed on its toes, and folded it past its limit.
-      const p = this.ankle(v, this.chains[k]);
+      // A thrust is the exception: the calves drive too, pushing through the ball of the foot.
+      const an = this.ankle(v, this.chains[k]), cop = v.feet[k].cop;
+      const p: Vec3 = th > 0 ? [an[0] + (cop[0] - an[0]) * th, an[1] + (cop[1] - an[1]) * th, an[2] + (cop[2] - an[2]) * th] : an;
       for (const i of this.chains[k]) {
         const a = this.vec(s.dofAnchor, i);
         // τ = −Jᵀ F: the leg pushes the turf with −F
-        out.tff[i] += -dot(cross(this.vec(s.dofAxis, i), [p[0] - a[0], p[1] - a[1], p[2] - a[2]]), [0, Fy, 0]);
+        out.tff[i] += -dot(cross(this.vec(s.dofAxis, i), [p[0] - a[0], p[1] - a[1], p[2] - a[2]]), F);
       }
     }
   }

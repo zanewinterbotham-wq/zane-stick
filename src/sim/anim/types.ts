@@ -7,12 +7,21 @@ import type { Vec3 } from '../math';
 
 /** Where the support should carry the pelvis/trunk. */
 export interface RootTarget {
-  vel: Vec3;        // desired horizontal COM velocity (world; y ignored), m/s
+  vel: Vec3;        // desired COM velocity (world), m/s; y is used only by a dive's launch
   height: number;   // desired pelvis height above the turf, m
   heading: number;  // desired pelvis yaw, rad, atan2(x, z) convention (0 = facing +Z)
   pitch: number;    // desired trunk forward lean, rad
   roll: number;     // desired trunk lean to the left, rad
+  /** Dive stage: 'launch' = take-off push (the carry may push toward the full vel, y included, off contact);
+   *  'flight' = ballistic, the support lets go entirely. */
+  dive: 'none' | 'load' | 'launch' | 'flight';
+  /** Hip-thrust level 0..1: the legs drive the body up, so the posture support leaves the weight to them. */
+  thrust: number;
 }
+
+/** How much of its weight support the posture support may give (0..1): none through a dive or a hip thrust,
+ *  which rise on the legs' own push. */
+export const weightSupport = (r: RootTarget) => (r.dive === 'none' ? 1 - r.thrust : 0);
 
 /** One frame of the procedural animation, per muscle dof (MuscleSet indices). */
 export interface AnimFrame {
@@ -39,7 +48,7 @@ export interface Animator {
 
 export const newFrame = (n: number): AnimFrame => ({
   q: new Float64Array(n), qd: new Float64Array(n), gain: new Float64Array(n).fill(1),
-  root: { vel: [0, 0, 0], height: 1, heading: 0, pitch: 0, roll: 0 },
+  root: { vel: [0, 0, 0], height: 1, heading: 0, pitch: 0, roll: 0, dive: 'none', thrust: 0 },
   planted: [true, true], phase: 0, clip: 'idle',
 });
 

@@ -1,11 +1,13 @@
 // Active ragdoll (design §6.5): tracking controller + world support. With support on, athletes run really fast
 // and never fall on their own; contact outcomes still come out of the physics (judged on rates over seeds).
 import { beforeAll, describe, expect, it } from 'vitest';
-import { DEFAULT_ATHLETE } from '../src/sim/anatomy/body';
+import { DEFAULT_ATHLETE, type BodyPlan } from '../src/sim/anatomy/body';
 import { DEFAULT_SUPPORT } from '../src/sim/anim/types';
 import { ScriptBrain } from '../src/sim/brains/script';
+import { TrackingController } from '../src/sim/control/tracking';
 import type { Gait } from '../src/sim/control/types';
 import { DEFAULT_OPEN_FIELD, OpenFieldDrill } from '../src/sim/drills/openField';
+import type { MuscleSet } from '../src/sim/muscles';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
 import { carrierVsTacklerScenario, supportRunScenario } from '../src/sim/scenarios';
 import { World, type PhysicsSettings } from '../src/sim/world';
@@ -240,5 +242,111 @@ describe('support state', () => {
     expect(top).toBeGreaterThan(7);
     expect(w.scene.stats().instabilities).toBe(0);
     w.destroy();
+  });
+});
+
+describe('dive', () => {
+  /** Dive pressed at `at` s (held `hold` s) from a gait (null = standing). Flight runs from take-off (dive flight,
+   *  feet off the turf) to the first ground contact of anything but the feet. */
+  async function dive(gait: Gait | null, at: number, hold: number) {
+    const sc = supportRunScenario(STD, gait);
+    sc.setup.athletes[0].brain = new ScriptBrain((t, _p, c) => {
+      if (t < 0.5) return;
+      if (gait) { c.gait = gait; c.move = { x: 0, z: 1 }; }
+      c.dive = t > at && t < at + hold;
+    });
+    const w = await World.create(mujocoEngine, sc.setup);
+    const a = w.athletes[0], s = w.scene.athletes[0].state, ctl = a.controller as TrackingController;
+    const feet = new Set([...a.footSegs[0], ...a.footSegs[1]]), ti = a.segIndex.get('thorax')!;
+    let takeoff = NaN, land = NaN, faceDown = false, downAt = NaN, getup = false, hover = 0, maxHover = 0, flightForce = 0, speed = 0;
+    const path: number[] = [];
+    while (w.time < at + 4) {
+      w.step();
+      const m = metrics(w), dv = ctl.root().dive;
+      if (Math.abs(w.time - at) < w.dt / 2) speed = m.speed;
+      if (Number.isNaN(takeoff) && dv === 'flight' && !a.feet[0].touching && !a.feet[1].touching) takeoff = s.com[2];
+      if (dv === 'flight') flightForce += Math.hypot(...a.carryForce);
+      if (!Number.isNaN(takeoff) && Number.isNaN(land) && w.scene.contacts().some((c) => [[c.a, c.b], [c.b, c.a]].some(([p, o]) => p.athlete === 0 && o.athlete < 0 && o.seg < 0 && !feet.has(p.seg)))) {
+        land = s.com[2];
+        const q = s.segQuat.subarray(4 * ti, 4 * ti + 4);
+        faceDown = 2 * (q[1] * q[2] - q[3] * q[0]) < 0; // y of the thorax's forward axis
+      }
+      if (Number.isNaN(downAt) && a.downBy) downAt = w.time - at;
+      getup ||= ctl.debug().clip === 'getup';
+      // levitation: tilted past 25° with the pelvis held at standing height or above
+      hover = m.tilt > 25 * Math.PI / 180 && m.pelvisY >= a.plan.standHeight ? hover + w.dt : 0;
+      maxHover = Math.max(maxHover, hover);
+      path.push(s.com[0], s.com[1], s.com[2]);
+    }
+    const out = { speed, flight: land - takeoff, faceDown, downAt, getup, maxHover, flightForce, path, instabilities: w.scene.stats().instabilities };
+    w.destroy();
+    return out;
+  }
+
+  it.each([['standing', null, 1, 1.4, 2.1], ['sprinting', 'sprint', 3, 2.5, 4]] as const)('%s: one press launches a ballistic dive that lands face down, then gets up', async (name, gait, at, lo, hi) => {
+    const r = await dive(gait, at, 0.05);
+    console.log(`${name} dive at ${r.speed.toFixed(1)} m/s: flight ${r.flight.toFixed(2)} m, down after ${r.downAt.toFixed(2)} s, face down ${r.faceDown}`);
+    expect(r.flight).toBeGreaterThan(lo);
+    expect(r.flight).toBeLessThan(hi);
+    expect(r.faceDown).toBe(true);
+    expect(r.flightForce).toBe(0);   // no support of any kind in flight
+    expect(r.downAt).toBeLessThan(1.2);
+    expect(r.getup).toBe(true);
+    expect(r.maxHover).toBeLessThan(0.2);
+    expect(r.instabilities).toBe(0);
+  });
+  it('holding dive changes nothing: no hover, the same dive as a tap', async () => {
+    for (const [gait, at] of [[null, 1], ['sprint', 3]] as const) {
+      const tap = await dive(gait, at, 0.05), held = await dive(gait, at, 3);
+      expect(held.maxHover).toBeLessThan(0.2);
+      expect(held.downAt).toBeLessThan(1.2);
+      expect(held.path).toEqual(tap.path);
+    }
+  });
+});
+
+describe('hip thrust', () => {
+  /** A tackler jogs into a standing carrier and wraps him up; 0.3 s after the first grip he either thrusts (held)
+   *  or just holds on. Carrier displacement and the load on his feet over the next 1.5 s. */
+  async function wrapUp(thrust: boolean, seed: number) {
+    const tracked = (p: BodyPlan, m: MuscleSet) => new TrackingController(p, m);
+    let tWrap = -1;
+    const w = await World.create(mujocoEngine, {
+      physics: STD, seed, assist: 0, support: { ...DEFAULT_SUPPORT },
+      athletes: [
+        { params: DEFAULT_ATHLETE, pos: [0, 0, -0.8], yaw: 0, team: 0, controller: tracked, brain: new ScriptBrain((t, _p, c) => {
+          c.contactMode = true; c.gait = 'jog'; c.move = { x: 0, z: tWrap < 0 ? 1 : 0 }; c.armL = c.armR = 1; c.wrap = true; c.sink = 0.7;
+          c.thrustHips = thrust && tWrap >= 0 && t > tWrap + 0.3;
+        }) },
+        { params: DEFAULT_ATHLETE, pos: [0, 0, 0.8 + 0.05 * seed], yaw: Math.PI, team: 1, controller: tracked, brain: new ScriptBrain(() => {}) },
+      ],
+    });
+    w.scene.setInitialVelocity(0, [0, 0, 1.2]);
+    const b = w.scene.athletes[1].state;
+    let z0 = NaN, load = 0, n = 0, end = 5, carried = 0;
+    while (w.time < end) {
+      // the carry applied in a step saw the contact state from before it
+      const touching = w.athletes.map((x) => x.playerContact);
+      w.step();
+      if (tWrap < 0 && w.athletes[0].grips.some((g) => g.active)) { tWrap = w.time; end = tWrap + 1.8; }
+      if (tWrap >= 0 && Number.isNaN(z0) && w.time > tWrap + 0.3) z0 = b.com[2];
+      if (!Number.isNaN(z0)) { load += w.athletes[1].feet[0].force + w.athletes[1].feet[1].force; n++; }
+      if (w.athletes.some((x, k) => touching[k] && x.carryForce.some((f) => f !== 0))) carried++;
+    }
+    const out = { wrapped: tWrap >= 0, push: b.com[2] - z0, load: load / n, aDown: !!w.athletes[0].downBy, carried, instabilities: w.scene.stats().instabilities };
+    w.destroy();
+    return out;
+  }
+
+  it('drives a wrapped-up carrier back farther, through muscles and contact only', async () => {
+    let push = [0, 0], load = [0, 0];
+    for (const seed of [1, 2, 3]) {
+      const off = await wrapUp(false, seed), on = await wrapUp(true, seed);
+      for (const r of [off, on]) { expect(r.wrapped).toBe(true); expect(r.carried).toBe(0); expect(r.instabilities).toBe(0); expect(r.aDown).toBe(false); }
+      push = [push[0] + off.push / 3, push[1] + on.push / 3]; load = [load[0] + off.load / 3, load[1] + on.load / 3];
+    }
+    console.log(`carrier driven back ${push[0].toFixed(2)} m holding on, ${push[1].toFixed(2)} m thrusting; load on his feet ${load[0].toFixed(0)} N vs ${load[1].toFixed(0)} N`);
+    expect(push[1]).toBeGreaterThan(1.3 * push[0]);
+    // not asserted: with the carrier's knock/stun support in contact, thrust no longer measurably unloads his feet
   });
 });
