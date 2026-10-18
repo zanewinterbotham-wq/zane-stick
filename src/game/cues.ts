@@ -4,7 +4,8 @@ import type { Vec3 } from '../sim/math';
 import { Rng } from '../sim/rng';
 import type { World } from '../sim/world';
 
-export interface Cue { cat: string; loud: number; pos?: Vec3 }
+/** `athlete`: who the sound comes from, for voices (their mouth follows it). */
+export interface Cue { cat: string; loud: number; pos?: Vec3; athlete?: number }
 
 /** Sprint footsteps from this ground speed up (m/s); jog below. */
 const SPRINT_STEP = 5.5;
@@ -77,19 +78,19 @@ export class SoundCues {
         tr.handFast[k] = rel > (tr.handFast[k] ? WHOOSH_OFF : WHOOSH_ON);
       });
 
-      if (dive === 'launch' && tr.dive !== 'launch') out.push({ cat: 'air_whoosh', loud: 0.9, pos: s.com }, { cat: 'voice_grunt', loud: 0.9, pos: seg('head') });
+      if (dive === 'launch' && tr.dive !== 'launch') out.push({ cat: 'air_whoosh', loud: 0.9, pos: s.com }, { cat: 'voice_grunt', loud: 0.9, pos: seg('head'), athlete: i });
       if (dive === 'flight') tr.flightAt = t;
-      if (a.cmd.thrustHips && !tr.thrust) out.push({ cat: 'voice_grunt', loud: 0.8, pos: seg('head') });
+      if (a.cmd.thrustHips && !tr.thrust) out.push({ cat: 'voice_grunt', loud: 0.8, pos: seg('head'), athlete: i });
       if (down && t - tr.downAt > FALL_GAP) out.push({ cat: t - tr.flightAt < 1 ? 'body_dive_land' : 'body_turf_tackle', loud: clamp01(0.3 + Math.hypot(vx, s.comVel[1], vz) / 6), pos: s.com });
       if (down && speed > SLIDE_SPEED) out.push({ cat: 'body_turf_slide', loud: clamp01(speed / 6), pos: s.com });
       if (clip === 'getup' && tr.clip !== 'getup') out.push({ cat: 'body_getup', loud: 0.8, pos: s.com });
 
       // breathing hard: an exhale every couple of seconds at a sprint
       if (a.cmd.gait === 'sprint' && speed > SPRINT_STEP && !down && (tr.breathIn -= dt) <= 0) {
-        out.push({ cat: 'voice_exhale', loud: 0.7, pos: seg('head') });
+        out.push({ cat: 'voice_exhale', loud: 0.7, pos: seg('head'), athlete: i });
         tr.breathIn = this.rng.range(1.2, 2.6);
       }
-      if ((a.injury.out || a.injury.broken.size > 0) && down && t >= tr.moanAt) { out.push({ cat: 'pain_moan', loud: 0.8, pos: seg('head') }); tr.moanAt = t + this.rng.range(...MOAN.every); }
+      if ((a.injury.out || a.injury.broken.size > 0) && down && t >= tr.moanAt) { out.push({ cat: 'pain_moan', loud: 0.8, pos: seg('head'), athlete: i }); tr.moanAt = t + this.rng.range(...MOAN.every); }
       if (down) tr.downAt = t;
       Object.assign(tr, { clip, dive, thrust: a.cmd.thrustHips });
     });
@@ -97,7 +98,7 @@ export class SoundCues {
     // injuries: the break cracks at the joint and he screams; a knockout lands with a thud and a ringing; then moans
     for (const e of w.injuries.slice(this.injuriesSeen)) {
       const s = w.scene.athletes[e.athlete].state, hi = w.athletes[e.athlete].segIndex.get('head') ?? 0, head: Vec3 = [s.segPos[3 * hi], s.segPos[3 * hi + 1], s.segPos[3 * hi + 2]];
-      if (e.kind === 'break') out.push({ cat: 'bone_crack', loud: clamp01(0.7 + e.load / 2000), pos: e.pos }, { cat: 'pain_scream', loud: 1, pos: head });
+      if (e.kind === 'break') out.push({ cat: 'bone_crack', loud: clamp01(0.7 + e.load / 2000), pos: e.pos }, { cat: 'pain_scream', loud: 1, pos: head, athlete: e.athlete });
       else out.push({ cat: 'ko_thud', loud: 1, pos: head }, { cat: 'ko_ring', loud: 0.7, pos: head });
       const tr = this.tr[e.athlete];
       if (tr) tr.moanAt = Math.min(tr.moanAt, t + (e.kind === 'ko' ? MOAN.afterKo : MOAN.after));

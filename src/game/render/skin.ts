@@ -14,7 +14,7 @@ export const unlockedSkins = () => SKINS.filter((s) => s.unlocked);
 export const skinById = (id: string) => unlockedSkins().find((s) => s.id === id) ?? CLASSIC;
 
 /** Per segment name, the meshes of that node (geometry shared, materials restyled for the skin's look). */
-export interface SkinTemplate { look: string; parts: Map<string, THREE.Mesh[]> }
+export interface SkinTemplate { look: string; id?: string; parts: Map<string, THREE.Mesh[]> }
 
 const SEGMENTS = buildBody(DEFAULT_ATHLETE, 'standard').segments.map((s) => s.name);
 
@@ -63,7 +63,7 @@ export function loadSkin(skin: Skin): Promise<SkinTemplate> | null {
   if (!p) {
     p = import('three/examples/jsm/loaders/GLTFLoader.js')
       .then(({ GLTFLoader }) => new GLTFLoader().loadAsync(import.meta.env.BASE_URL + skin.file))
-      .then((g) => template(g.scene, skin.look));
+      .then((g) => ({ ...template(g.scene, skin.look), id: skin.id })); // the id picks the skin's mouth style
     p.catch(() => cache.delete(skin.id)); // let a later rep retry
     cache.set(skin.id, p);
   }

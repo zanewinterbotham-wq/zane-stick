@@ -3,6 +3,8 @@
 // A skin (art model, see skin.ts) can be worn over them; the classic shapes then show only in the anatomy view.
 import * as THREE from 'three';
 import { buildBody, DEFAULT_ATHLETE, type BodyPlan, type GeomPlan, type SegmentPlan } from '../../sim/anatomy/body';
+import { BROW_STYLES, Brows } from './brows';
+import { fitAnchor, Mouth, skinAnchor, sphereAnchor, STYLES, type Anchor } from './mouth';
 import type { SkinTemplate } from './skin';
 
 export interface TeamColors { jersey: number; trim: number; pants: number; helmet: number; mask: number; skin: number; socks: number; cleats: number; glow: number }
@@ -43,6 +45,10 @@ export class AthleteMesh {
   readonly parts: SkinPart[] = [];
   readonly materials: THREE.MeshStandardMaterial[][] = [];
   private base: THREE.Color[][] = [];
+  /** The face's mouth (it rides the head, so the helmet camera hides it with the head). */
+  mouth: Mouth | null = null;
+  /** The face's eyebrows, which carry the mood (render/brows.ts). */
+  brows: Brows | null = null;
 
   constructor(private plan: BodyPlan, team: TeamColors, quality: 'low' | 'high', skin: SkinTemplate | null = null) {
     this.root.add(this.classic, this.skin);
@@ -75,6 +81,15 @@ export class AthleteMesh {
         grp.add(mesh);
         mats.push(mat);
         bases.push(new THREE.Color(color));
+      }
+      if (s.name === 'head' && !skin) {
+        // the helmet is a bare sphere: the mouth sits on its lower front, under the facemask bar
+        const h = s.geoms.find((g) => g.role === 'helmet')!, c = h.pos!.map((v, k) => v - s.origin[k]);
+        this.mouth = new Mouth(STYLES.classic, sphereAnchor(c, h.size[0], -0.1), team.glow);
+        grp.add(this.mouth.mesh);
+        const b = BROW_STYLES.classic, c0 = c as [number, number, number];
+        this.brows = new Brows(b, [-b.x, b.x].map((dx) => sphereAnchor(c0, h.size[0], b.y, dx)) as [Anchor, Anchor]);
+        grp.add(this.brows.mesh);
       }
       this.classic.add(grp);
       this.segs.push(grp);
@@ -115,6 +130,14 @@ export class AthleteMesh {
         mesh.receiveShadow = quality === 'high';
         node.add(mesh);
       }
+      if (name === 'head' && skin.id && STYLES[skin.id]) {
+        const style = STYLES[skin.id];
+        this.mouth = new Mouth(style, skinAnchor(skin, style), team.glow);
+        node.add(this.mouth.mesh);
+        const b = BROW_STYLES[skin.id];
+        this.brows = new Brows(b, [-b.x, b.x].map((x) => fitAnchor(skin, b.mat, x, b.y, b.hw)) as [Anchor, Anchor], team.glow);
+        node.add(this.brows.mesh);
+      }
       this.skin.add(node);
       this.parts.push({ node, seg, off: new THREE.Vector3(o[0] - so[0], o[1] - so[1], o[2] - so[2]) });
     }
@@ -132,6 +155,8 @@ export class AthleteMesh {
       node.position.x += segPos[3 * i]; node.position.y += segPos[3 * i + 1]; node.position.z += segPos[3 * i + 2];
     }
   }
+
+  dispose() { this.mouth?.dispose(); this.brows?.dispose(); }
 
   /** Show or hide the head, neck, helmet and facemask (classic and skin): the helmet camera sits inside them. */
   setHeadVisible(on: boolean) {

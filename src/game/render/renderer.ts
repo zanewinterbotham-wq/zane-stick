@@ -7,6 +7,8 @@ import { AnatomyOverlay } from './anatomy';
 import { GORE_LEVELS, InjuryEffects } from './effects';
 import { buildBarrier, buildField } from './field';
 import { loadStadium, OPEN_FIELD, stadiumById, type Stadium, type StadiumScene } from './stadium';
+import { ExpressionTracker } from '../expressions';
+import type { Voice } from './mouth';
 import { CLASSIC, loadSkin, skinById, type Skin, type SkinTemplate } from './skin';
 
 export interface RenderQuality { scale: number; shadows: boolean; detail: 'low' | 'high'; antialias: boolean }
@@ -48,6 +50,8 @@ export class GameRenderer {
   }
   /** Render time of the last frame (ms) and the last frame's draw calls. */
   lastMs = 0;
+  private lastFrame = performance.now();
+  private faces = new ExpressionTracker();
 
   constructor(canvas: HTMLCanvasElement, public quality: RenderQuality) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality.antialias, powerPreference: 'high-performance' });
@@ -105,13 +109,23 @@ export class GameRenderer {
   }
 
   private dress(w: World) {
-    for (const a of this.athletes) this.scene.remove(a.root);
+    for (const a of this.athletes) { this.scene.remove(a.root); a.dispose(); }
     this.athletes = w.athletes.map((a) => new AthleteMesh(a.plan, TEAMS[a.setup.team], this.quality.detail, this.template));
     for (const a of this.athletes) { a.setXray(this.xray); this.scene.add(a.root); }
   }
 
+  /** A voice sound has started on an athlete: their mouth follows it (see render/mouth.ts). */
+  voice(v: Voice) { this.athletes[v.athlete]?.mouth?.driver.say(v); }
+
+  /** Call after every World step: the athletes' moods (eyebrows) follow the hits, injuries and approach (expressions.ts). */
+  stepFaces(w: World) {
+    if (w !== this.world) return;
+    this.faces.step(w).forEach((e, i) => { const b = this.athletes[i]?.brows; if (b) b.driver.target = e; });
+  }
+
   setWorld(w: World) {
     this.world = w;
+    this.faces = new ExpressionTracker();
     for (const p of this.props) this.scene.remove(p);
     if (this.overlay) this.scene.remove(this.overlay.root);
     this.dress(w);
@@ -148,10 +162,12 @@ export class GameRenderer {
 
   render(w: World) {
     if (w !== this.world) return; // a new rep whose skin is still loading
-    const t0 = performance.now();
+    const t0 = performance.now(), dt = (t0 - this.lastFrame) / 1000;
+    this.lastFrame = t0;
     w.athletes.forEach((a, i) => {
       const s = w.scene.athletes[i].state, mesh = this.athletes[i];
       mesh.pose(s.segPos, s.segQuat);
+      mesh.mouth?.update(dt); mesh.brows?.update(dt);
       mesh.setHeadVisible(i !== this.hideHeadOf);
       mesh.shade(this.xray && this.effortShading ? segmentEffort(a) : null);
     });

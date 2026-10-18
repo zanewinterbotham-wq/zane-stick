@@ -5,7 +5,11 @@
 /// <reference types="vite/client" />
 import { Rng } from '../sim/rng';
 import type { HitKind, HitSound } from './feel';
+import { envelope, shapeOf, syntheticEnvelope, type Voice } from './render/mouth';
 import picks from './sfx-picks.json';
+
+/** Resolution of the voice envelopes the mouths follow (windows per second). */
+const ENV_HZ = 60;
 
 export interface SfxCategory { volume: number; files: string[] }
 
@@ -47,6 +51,9 @@ export class Audio {
   private rng = new Rng(0x5eed);
   private chooser = new SampleChooser(picks.categories, new Rng(0x5a3c));
   private buffers = new Map<string, AudioBuffer>();
+  private envs = new Map<string, Float32Array>();
+  /** Receives every voice sound as it starts, for the athlete's mouth (renderer.voice). */
+  onVoice: ((v: Voice) => void) | null = null;
   private loading = new Map<string, Promise<AudioBuffer | null>>();
   private loopSrc: AudioBufferSourceNode | null = null;
   private loopWant: string | null = null;
@@ -95,10 +102,11 @@ export class Audio {
 
   /** Play a picked sound of `cat` at loudness 0..1, at a world position (positional) or not (UI, crowd).
    *  Returns false when the category has no picks. */
-  play(cat: string, loud: number, pos?: ArrayLike<number>): boolean {
+  play(cat: string, loud: number, pos?: ArrayLike<number>, athlete?: number): boolean {
     if (!this.chooser.has(cat)) return false;
-    const ctx = this.ctx;
-    if (!ctx || !this.out || this.mute || loud < 0.01) return true;
+    const ctx = this.ctx, event = loud;
+    // silent or not yet unlocked: the athlete still groans, so the mouth moves to a stand-in envelope
+    if (!ctx || !this.out || this.mute || loud < 0.01) { if (athlete !== undefined && loud >= 0.01) this.voiced(cat, event, athlete); return true; }
     let pan = 0;
     if (pos) {
       const d = [pos[0] - this.ear.pos[0], pos[1] - this.ear.pos[1], pos[2] - this.ear.pos[2]], r = Math.hypot(d[0], d[1], d[2]);
@@ -113,11 +121,20 @@ export class Audio {
       src.buffer = b; src.playbackRate.value = c.rate; g.gain.value = c.gain; p.pan.value = pan;
       src.connect(g).connect(p).connect(this.out!);
       src.start();
+      if (athlete !== undefined) this.voiced(cat, event, athlete, c.rate, c.file, b);
     };
     const b = this.buffers.get(c.file);
     // not decoded yet (first sounds after unlock): play it if it arrives while still in time
     if (b) start(b); else void this.load(c.file).then((x) => { if (x && ctx.currentTime - asked < 0.15) start(x); });
     return true;
+  }
+
+  /** Tell the athlete's mouth a voice sound has started: its amplitude envelope (computed once per decoded file). */
+  private voiced(cat: string, loud: number, athlete: number, rate = 1, file?: string, b?: AudioBuffer) {
+    if (!shapeOf(cat)) return;
+    let env = file ? this.envs.get(file) : undefined;
+    if (!env && file && b) this.envs.set(file, env = envelope(b.getChannelData(0), b.sampleRate, ENV_HZ));
+    this.onVoice?.({ athlete, cat, env: env ?? syntheticEnvelope(cat, ENV_HZ), hz: ENV_HZ, rate, loud });
   }
 
   /** Start (cat) or stop (null) the looping background bed. */

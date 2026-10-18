@@ -107,6 +107,7 @@ class App {
     this.input.sprintToggle = this.settings.sprintToggle; this.input.sinkToggle = this.settings.sinkToggle;
     this.input.setKeyboard(this.settings.bindings);
     this.audio.muted = this.settings.mute;
+    this.audio.onVoice = (v) => this.renderer?.voice(v);
     // Alt+Tab (or any switch away): pause, which frees the mouse; Resume or a click on the field captures it again
     window.addEventListener('blur', () => this.lostFocus());
     canvas.addEventListener('click', () => { if (!this.paused) this.lockPointer(); });
@@ -418,7 +419,8 @@ class App {
     if (this.meterWorld !== w) { this.meter = new HitMeter(); this.cues = new SoundCues(d.ball); this.meterWorld = w; }
     const { sounds, bigNow } = this.meter.step(w);
     for (const s of sounds) this.audio.hit(s);
-    for (const c of this.cues.step(w)) this.audio.play(c.cat, c.loud, c.pos);
+    for (const c of this.cues.step(w)) this.audio.play(c.cat, c.loud, c.pos, c.athlete);
+    this.renderer?.stepFaces(w);
     const loud = sounds[0]?.loud ?? 0;
     const pad = navigator.getGamepads?.()[0] as (Gamepad & { vibrationActuator?: { playEffect: (t: string, o: object) => Promise<unknown> } }) | null;
     const rumble = (r: { duration: number; strong: number; weak: number }) => pad?.vibrationActuator?.playEffect('dual-rumble', { duration: r.duration, strongMagnitude: r.strong, weakMagnitude: r.weak }).catch(() => {});
@@ -433,7 +435,7 @@ class App {
     this.audio.play('crowd_ooh', 0.6 + 0.4 * fx.k);
     // the grunt comes from the athlete who was hit: the one closing less along the line between them
     const hit = along(a.comVel) >= -along(b.comVel) ? 1 : 0, hs = w.scene.athletes[hit].state, hi = w.athletes[hit].segIndex.get('head')!;
-    this.audio.play('voice_grunt', 1, [hs.segPos[3 * hi], hs.segPos[3 * hi + 1], hs.segPos[3 * hi + 2]]);
+    this.audio.play('voice_grunt', 1, [hs.segPos[3 * hi], hs.segPos[3 * hi + 1], hs.segPos[3 * hi + 2]], hit);
     this.cam.addShake(fx.shake);
     rumble(fx.rumble);
     this.hud.flash('BIG HIT');
