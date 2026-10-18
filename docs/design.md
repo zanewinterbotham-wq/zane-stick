@@ -279,6 +279,17 @@ player thinks about hitting, not balancing; hits and tackles still come out of t
     kept through contact, but fades by how badly this athlete is knocked: trunk tilt beyond ~25°, both feet
     off the turf, or a large impulse received. A hitter who drives through stays up; the athlete who gets
     blown up loses support and goes down. Zero once down; ramps back in with the get-up.
+- *Contact technique* (all through muscles and contact; the carry stays zero in contact):
+  - hip thrust: one press lunges forward off contact (the carry stands in for the push off the turf, up to
+    10 m/s², ~1 m in 0.5 s from standing); in contact the legs drive ~1 body weight forward for 0.5 s, then
+    half that while held, and the arms lift what they hold;
+  - pad level: driving legs push along the foot → trunk line (a low athlete drives forward and up, an upright
+    one mostly up), a low drive lifts with the arms, shoot/reach arms are raised by the trunk's lean; the knock
+    counts being lifted (upward force from opponents beyond 0.2 body weight unloads the feet) and a low athlete's
+    base takes up to twice the impulse for the same knock;
+  - grabbing: a raised hand closes on an opponent within 7 cm of its surface, a reaching arm aims at the part of
+    the opponent nearest its shoulder (within 0.9 m), and a raised arm that holds an opponent rows him in
+    (elbow flexion, shoulder extension, sitting back; pull 0.5 × grip strength through Jᵀ).
 - Settings (tuning panel): support strength, carry/posture fade thresholds, tracking stiffness.
 
 

@@ -299,7 +299,8 @@ describe('procedural animator', () => {
     const sunk = (c: Commands) => { c.contactMode = true; c.sink = 1; c.lean.fwd = 1; };
     run(r, 1, (_t, c) => sunk(c));
     const h0 = r.frame.root.height, p0 = r.frame.root.pitch, k0 = r.frame.q[i('kneeL.flex')];
-    run(r, 0.6, (_t, c) => { sunk(c); c.thrustHips = true; }, undefined, 1);
+    // one press lunges forward first (0.5 s), then the held thrust stands tall on the balls of the feet
+    run(r, 1.5, (_t, c) => { sunk(c); c.thrustHips = true; }, undefined, 1);
     expect(r.frame.root.thrust).toBeGreaterThan(0.95);
     expect(r.frame.root.height).toBeGreaterThan(h0 + 0.2);
     expect(r.frame.root.height).toBeGreaterThan(r.plan.standHeight);

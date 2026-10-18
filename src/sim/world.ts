@@ -33,9 +33,10 @@ const ASSIST_FADE_OUT = 0.15, ASSIST_STABLE_TIME = 0.3, ASSIST_FADE_IN = 0.3;
  *  further amount that makes it full, and its fade time (s); speed along the last big hit beyond the wanted one
  *  where the knock starts and where it is full (m/s), and how long that hit is remembered (s); and a dive
  *  take-off's velocity gain (1/s) and largest acceleration (m/s², about the ~1.5 g net a standing long-jump
- *  take-off reaches). */
+ *  take-off reaches), and the largest horizontal acceleration of a hip-thrust lunge (m/s², ~1 body weight of
+ *  horizontal ground force, a sprint start's). */
 const SUP = { kv: 6, stable: 0.3, fadeIn: 0.3, window: 0.2, flight: 0.15, decay: 1, getup: 1, hKp: 36, hKd: 10, kUp: 1.5, cUp: 6, yaw: 0.3,
-  stunStart: 1, stunFull: 2, stunTime: 0.5, drivenStart: 0.5, drivenFull: 2, drivenTime: 1.5, launchKv: 20, launch: 15 };
+  stunStart: 1, stunFull: 2, stunTime: 0.5, drivenStart: 0.5, drivenFull: 2, drivenTime: 1.5, launchKv: 20, launch: 15, lunge: 10 };
 
 /** One body-part-on-body-part contact between two athletes this step (summed over its contact points). */
 export interface HitEvent {
@@ -58,9 +59,16 @@ export class Athlete {
   assistLevel = 1;          // 0..1 multiplier on the world assist setting (fade state)
   stableTimer = 0;
   playerContactNow = false;
-  grips: { active: boolean; force: number; cooldown: number; jersey: boolean; limit: number }[] = [0, 1].map(() => ({ active: false, force: 0, cooldown: 0, jersey: false, limit: 0 }));
+  /** Per hand; `athlete` is the athlete held (-1: a prop, e.g. the ball). */
+  grips: { active: boolean; force: number; cooldown: number; jersey: boolean; limit: number; athlete: number }[] = [0, 1].map(() => ({ active: false, force: 0, cooldown: 0, jersey: false, limit: 0, athlete: -1 }));
   /** Last contact per hand: target link and point, for grip forming. */
   handTouch: ({ athlete: number; seg: number; pos: Vec3 } | null)[] = [null, null];
+  /** Per hand: the hand geom's segment, its centre in that segment's frame and its half thickness (m). */
+  readonly handGeoms: { seg: number; off: Vec3; half: number }[];
+  readonly shoulderSegs: number[];
+  /** Per hand, this step: where a raised arm reaches for (a little inside the opponent's body nearest its
+   *  shoulder, when within REACH.aim of it), or null. */
+  reachTo: (Vec3 | null)[] = [null, null];
   readonly segIndex: Map<string, number>;
   readonly footSegs: Set<number>[];
   readonly handSegs: number[];
@@ -88,6 +96,11 @@ export class Athlete {
     this.footSegs = ['L', 'R'].map((sx) => new Set([idx('foot' + sx), idx('toes' + sx)].filter((i) => i >= 0)));
     this.handSegs = ['L', 'R'].map((sx) => (idx('hand' + sx) >= 0 ? idx('hand' + sx) : idx('forearm' + sx)));
     this.limbEndSegs = new Set([...this.footSegs[0], ...this.footSegs[1], ...this.handSegs]);
+    this.shoulderSegs = ['L', 'R'].map((sx) => idx('upperArm' + sx));
+    this.handGeoms = this.handSegs.map((k) => {
+      const sg = plan.segments[k], g = sg.geoms.find((x) => x.role === 'hand');
+      return g?.pos ? { seg: k, off: [g.pos[0] - sg.origin[0], g.pos[1] - sg.origin[1], g.pos[2] - sg.origin[2]] as Vec3, half: Math.min(...g.size) } : { seg: k, off: [0, 0, 0] as Vec3, half: 0 };
+    });
   }
   get mass() { return this.plan.segments.reduce((a, s) => a + s.mass, 0); }
 }
@@ -135,7 +148,8 @@ export class World {
   get dt() { return this.scene.dt; }
 
   view(a: Athlete): BodyView {
-    return { plan: a.plan, muscles: a.muscles, state: this.scene.athletes[a.index].state, dt: this.dt, time: this.time, feet: a.feet, playerContact: a.playerContact, support: this.supported(a) ? a.support : undefined };
+    return { plan: a.plan, muscles: a.muscles, state: this.scene.athletes[a.index].state, dt: this.dt, time: this.time, feet: a.feet, playerContact: a.playerContact, support: this.supported(a) ? a.support : undefined,
+      grips: [a.grips[0].active && a.grips[0].athlete >= 0, a.grips[1].active && a.grips[1].athlete >= 0], reachTo: a.reachTo };
   }
 
   perception(self: number): Perception {
@@ -158,6 +172,7 @@ export class World {
     const dt = this.dt;
     for (const a of this.athletes) {
       a.cmd = a.brain.think(this.perception(a.index), dt);
+      for (const h of [0, 1] as const) a.reachTo[h] = this.raised(a, h) ? this.reachPoint(a, h) : null;
       a.controller.compute(this.view(a), a.cmd, a.targets);
       const s = this.scene.athletes[a.index].state;
       a.muscles.compute(a.targets, s.q, s.qd);
@@ -188,8 +203,10 @@ export class World {
       const f: Vec3 = [0, 1, 2].map((j) => m * SUP.launchKv * (r.vel[j] - s.comVel[j])) as Vec3, n = Math.hypot(...f), lim = m * SUP.launch;
       a.carryForce = f.map((x) => x * c * (n > lim ? lim / n : 1)) as Vec3;
     } else if (c > 0) {
-      let fx = m * SUP.kv * (r.vel[0] - s.comVel[0]), fz = m * SUP.kv * (r.vel[2] - s.comVel[2]);
-      const n = Math.hypot(fx, fz), lim = m * S.carryAccel;
+      // a hip-thrust lunge is a take-off too: the carry stands in for the explosive push off the turf
+      const kv = r.thrust > 0 ? SUP.launchKv : SUP.kv;
+      let fx = m * kv * (r.vel[0] - s.comVel[0]), fz = m * kv * (r.vel[2] - s.comVel[2]);
+      const n = Math.hypot(fx, fz), lim = m * (r.thrust > 0 ? SUP.lunge : S.carryAccel);
       if (n > lim) { fx *= lim / n; fz *= lim / n; }
       a.carryForce = [fx * c, 0, fz * c];
     }
@@ -224,10 +241,14 @@ export class World {
     // Only the part of the impulse the athlete's own momentum did not absorb counts: the momentum it left him
     // moving with along the hit. A hitter who drives through keeps moving into it; the one driven back does not.
     const Jh = Math.hypot(J[0], J[2]), vAlong = Jh > 1e-9 ? (s.comVel[0] * J[0] + s.comVel[2] * J[2]) / Jh : 0;
-    const Jknock = Math.min(Jh, m * Math.max(0, vAlong)), knockHit = Jknock / S.bigHit;
+    // Pad level: a low athlete (meaning to be low, and low) has his weight down and his feet wide, so the same
+    // impulse takes him less far off balance than an upright one.
+    const pi = a.segIndex.get('pelvis')!, H0 = a.plan.standHeight;
+    const low = r ? clamp(Math.min(H0 - r.height, H0 - s.segPos[3 * pi + 1]) / LOW.drop, 0, 1) : 0, big = S.bigHit * (1 + LOW.base * low);
+    const Jknock = Math.min(Jh, m * Math.max(0, vAlong)), knockHit = Jknock / big;
     // Stun: an athlete driven back hard loses muscle tone for a moment (the controller loosens), so the hit's
     // momentum goes through a limp-ish body instead of being caught by a stiff balance reaction.
-    a.stun = Math.max(clamp((Jknock - SUP.stunStart * S.bigHit) / (SUP.stunFull * S.bigHit), 0, 1), a.stun - dt / SUP.stunTime);
+    a.stun = Math.max(clamp((Jknock - SUP.stunStart * big) / (SUP.stunFull * big), 0, 1), a.stun - dt / SUP.stunTime);
     // Driven back: still moving along the last big hit faster than the animation wants, the athlete has not caught
     // the momentum yet, so the knock stays up after the impulse window (else posture returns mid-stumble).
     // Measured against the speed he already had along it before the hit (own momentum is not the hit's).
@@ -247,13 +268,14 @@ export class World {
     const footing = a.feet[0].touching || a.feet[1].touching, speed = Math.hypot(s.comVel[0], s.comVel[2]);
     a.airT = footing ? 0 : a.airT + dt;
     const knockAir = clamp((a.airT - (0.08 + 0.015 * speed)) / 0.15, 0, 1);
-    const target = Math.min(1, Math.max(knockHit, knockTilt, knockAir, knockDriven));
+    // Lifted: an opponent driving up and under him carries part of his weight, so his feet (and their traction) unload.
+    const knockLift = clamp((J[1] / SUP.window / (m * G) - LOW.liftStart) / (LOW.liftFull - LOW.liftStart), 0, 1);
+    const target = Math.min(1, Math.max(knockHit, knockTilt, knockAir, knockDriven, knockLift));
     // rises fast, decays slowly
     a.knock = target > a.knock ? a.knock + (target - a.knock) * Math.min(1, dt / 0.02) : Math.max(target, a.knock - dt * SUP.decay);
     const down = a.downBy !== null, clip = a.controller.debug?.().clip;
     if (clip === 'getup') {
       // posture support ramps back in with the get-up, while the body is actually rising (not falling back)
-      const pi = a.segIndex.get('pelvis')!;
       if (s.segVel[3 * pi + 1] > -0.2) a.getup = Math.min(1, a.getup + dt / SUP.getup);
       a.knock = Math.min(a.knock, 1 - a.getup);
     } else {
@@ -384,14 +406,17 @@ export class World {
           g.active = false;
           g.cooldown = want[h] ? 0.25 : 0;
         }
-      } else if (want[h] && g.cooldown <= 0 && a.handTouch[h]) {
-        const t = a.handTouch[h]!;
+      } else if (want[h] && g.cooldown <= 0) {
+        // a raised hand closes on a fistful of jersey (or a limb) within REACH.grab of it, not only on contact
+        const near = !a.handTouch[h] && this.raised(a, h) ? this.nearestBody(a, this.handPoint(a, h), REACH.grab + a.handGeoms[h].half) : null;
+        const t = a.handTouch[h] ?? (near && { athlete: near.athlete, seg: near.seg, pos: this.handPoint(a, h) });
+        if (!t) continue;
         const tgtAth = t.athlete >= 0 ? this.athletes[t.athlete] : null;
         const segName = tgtAth ? tgtAth.plan.segments[t.seg].name : '';
         g.jersey = /thorax|lumbar|trunk|pelvis/.test(segName);
         g.limit = g.jersey ? Math.min(GRIP_ECC * a.plan.gripStrength, EQUIPMENT.jersey.tearStrength) : GRIP_ECC * a.plan.gripStrength;
         this.scene.gripOn(a.index, h, { athlete: t.athlete, seg: t.seg }, t.pos, g.jersey ? GRIP_TIMECONST.jersey : GRIP_TIMECONST.hand);
-        g.active = true; g.force = 0;
+        g.active = true; g.force = 0; g.athlete = t.athlete;
       }
     }
   }
@@ -400,7 +425,61 @@ export class World {
   attachGrip(ai: number, hand: 0 | 1, target: { athlete: number; seg: number }, point: Vec3) {
     const a = this.athletes[ai], g = a.grips[hand];
     this.scene.gripOn(ai, hand, target, point, GRIP_TIMECONST.hand);
-    g.active = true; g.force = 0; g.jersey = false; g.limit = GRIP_ECC * a.plan.gripStrength;
+    g.active = true; g.force = 0; g.jersey = false; g.limit = GRIP_ECC * a.plan.gripStrength; g.athlete = target.athlete;
+  }
+
+  /** The arm is raised to grab (reach button or wrap), so the hand may close on what it nearly touches. */
+  private raised(a: Athlete, h: 0 | 1) { return a.cmd.wrap || (h === 0 ? a.cmd.armL : a.cmd.armR) > 0.3; }
+
+  /** Centre of a hand's geom (world). */
+  private handPoint(a: Athlete, h: 0 | 1): Vec3 {
+    const s = this.scene.athletes[a.index].state, { seg, off } = a.handGeoms[h];
+    const p = qrot(quatAt(s.segQuat, seg), off);
+    return [s.segPos[3 * seg] + p[0], s.segPos[3 * seg + 1] + p[1], s.segPos[3 * seg + 2] + p[2]];
+  }
+
+  /** Aim point for a raised arm: REACH.into inside the opponent's body surface nearest the shoulder, so the hand
+   *  arrives on it rather than short of it. */
+  private reachPoint(a: Athlete, h: 0 | 1): Vec3 | null {
+    const k = a.shoulderSegs[h];
+    if (k < 0) return null;
+    const s = this.scene.athletes[a.index].state, sp: Vec3 = [s.segPos[3 * k], s.segPos[3 * k + 1], s.segPos[3 * k + 2]];
+    const n = this.nearestBody(a, sp, REACH.aim);
+    if (!n) return null;
+    const d: Vec3 = [n.pt[0] - sp[0], n.pt[1] - sp[1], n.pt[2] - sp[2]], m = Math.hypot(...d) || 1;
+    return [n.pt[0] + d[0] * REACH.into / m, n.pt[1] + d[1] * REACH.into / m, n.pt[2] + d[2] * REACH.into / m];
+  }
+
+  /** Nearest surface point of another team's body to `hp`, if closer than `range` (m). */
+  private nearestBody(a: Athlete, hp: Vec3, range: number): { pt: Vec3; athlete: number; seg: number } | null {
+    let best = range, out: { pt: Vec3; athlete: number; seg: number } | null = null;
+    for (const o of this.athletes) {
+      if (o.setup.team === a.setup.team) continue;
+      const s = this.scene.athletes[o.index].state;
+      if (Math.hypot(hp[0] - s.com[0], hp[1] - s.com[1], hp[2] - s.com[2]) > best + 1.5) continue;
+      o.plan.segments.forEach((sg, k) => {
+        const q = quatAt(s.segQuat, k), org: Vec3 = [s.segPos[3 * k], s.segPos[3 * k + 1], s.segPos[3 * k + 2]];
+        // the point in the segment's rest frame, where its geoms are given
+        const l = qrot(qconj(q), [hp[0] - org[0], hp[1] - org[1], hp[2] - org[2]]);
+        l[0] += sg.origin[0]; l[1] += sg.origin[1]; l[2] += sg.origin[2];
+        for (const g of sg.geoms) {
+          let c: Vec3, r = g.size[0];
+          if (g.type === 'capsule') {
+            const [p0, p1] = g.fromto!, d = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]], dd = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+            const u = clamp(((l[0] - p0[0]) * d[0] + (l[1] - p0[1]) * d[1] + (l[2] - p0[2]) * d[2]) / (dd || 1), 0, 1);
+            c = [p0[0] + u * d[0], p0[1] + u * d[1], p0[2] + u * d[2]];
+          } else if (g.type === 'box') {
+            c = [0, 1, 2].map((j) => clamp(l[j], g.pos![j] - g.size[j], g.pos![j] + g.size[j])) as Vec3; r = 0;
+          } else c = g.pos!;
+          const e: Vec3 = [l[0] - c[0], l[1] - c[1], l[2] - c[2]], n = Math.hypot(...e), gap = n - r;
+          if (gap >= best) continue;
+          best = gap;
+          const f = n > 1e-9 ? r / n : 0, w = qrot(q, [c[0] + e[0] * f - sg.origin[0], c[1] + e[1] * f - sg.origin[1], c[2] + e[2] * f - sg.origin[2]]);
+          out = { pt: [org[0] + w[0], org[1] + w[1], org[2] + w[2]], athlete: o.index, seg: k };
+        }
+      });
+    }
+    return out;
   }
 
   private updateHeadAccel(a: Athlete, dt: number) {
@@ -432,6 +511,16 @@ export class World {
 }
 
 const G = 9.81;
+/** Reaching (design §6.5): gap between a raised hand's surface and an opponent's body (m) under which the hand
+ *  closes on it (a fistful of jersey stands off the body by a few cm); distance from the shoulder within which
+ *  the arm aims at the nearest part of that body (an arm's length and a lean: the eyes guide the hand), and how
+ *  far inside its surface the aim point lies. */
+const REACH = { grab: 0.07, aim: 0.9, into: 0.03 };
+const quatAt = (a: Float64Array, k: number): Quat => [a[4 * k], a[4 * k + 1], a[4 * k + 2], a[4 * k + 3]];
+/** Pad level (design §6.5): pelvis drop below standing (m) at which an athlete counts as fully low, how much
+ *  more impulse a fully low athlete takes for the same knock (assumption: a sunk, wide base), and the upward force
+ *  from opponents (× body weight, over the impulse window) where the lift knock starts and where it is full. */
+const LOW = { drop: 0.25, base: 1, liftStart: 0.2, liftFull: 0.6 };
 /** A grip pulled open loads the finger flexors eccentrically, which hold ~1.5× their isometric (dynamometer)
  *  force; at 1× tacklers' wraps and the carrier's ball grip let go of loads a hand really holds. */
 const GRIP_ECC = 1.5;

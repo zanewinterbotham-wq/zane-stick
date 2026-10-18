@@ -55,6 +55,10 @@ export interface BodyView {
   playerContact: boolean;
   /** Support levels the world applies (active ragdoll, design §6.5); absent when the world runs without it. */
   support?: SupportState;
+  /** Per hand [left, right]: holding another athlete, and the nearest point (world) of an opponent's body a raised
+   *  hand could reach for (null: none near). Absent outside a World. */
+  grips?: [boolean, boolean];
+  reachTo?: (Vec3 | null)[];
 }
 
 /** Body state + commands in, muscle targets out, every physics step. A learned policy implements the same. */

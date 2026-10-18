@@ -164,7 +164,7 @@ reference athlete).
 |---|---|---|
 | Helmet incl. facemask | 1.95 kg, sphere r 0.135 m | McIver 2023 table (1.72–2.10 kg across current models); Viano 2005 1.92 kg; outer 0.30 × 0.24 × 0.26 m (estimate) |
 | Shoulder pads | 2.2 kg | skill positions 1.4–2.3, linemen ~2.7 kg (estimate range) |
-| Jersey | 0.3 kg; tears from a fist grab at 400 N | fabric tear 160–180 N (strip test), grab 250–500 N (estimate); 400 N assumed for a fistful |
+| Jersey | 0.3 kg; tears from a fist grab at 1000 N, so the fist (855 N eccentric) usually lets go first | fabric tear 160–180 N (strip test), grab 250–500 N for a 25 mm jaw (estimate); a fist gathers ~75–100 mm of knit, ~3× that width: 1000 N assumed (was 400 N) |
 | Cleats | 0.32 kg per shoe; sole + studs 25 mm | typical 0.23–0.45 kg (estimate) |
 | Ball | 0.41 kg, 0.28 m long, 0.17 m wide | NFL spec 0.397–0.425 kg, long axis 0.279–0.286 m, short circumference 0.533–0.540 m |
 | Cleat–turf translational traction | μ = 1.2 | Shorten 2003: FieldTurf 1.3, AstroPlay 1.1, natural 0.97 |

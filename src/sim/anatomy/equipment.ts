@@ -3,7 +3,7 @@ export const EQUIPMENT = {
   helmet: { mass: 1.95, radius: 0.135, topClearance: 0.035 }, // shell + liner + facemask (modern models 1.7–2.2 kg); sphere approximation of a 0.30 × 0.24 × 0.26 m shell
   facemask: { radius: 0.022 },
   pads: { mass: 2.2, halfWidth: 0.25, halfHeight: 0.07, halfDepth: 0.16 }, // skill 1.4–2.3 kg, linemen ~2.7 kg
-  jersey: { mass: 0.3, tearStrength: 400 },                     // tear (N) when grabbed by a fist [assumption]
+  jersey: { mass: 0.3, tearStrength: 1000 },                    // tear (N) when grabbed by a fist: ~3 × a 25 mm-jaw grab test's 250–500 N, a fist gathers ~75–100 mm of knit [assumption]
   cleats: { mass: 0.32, soleHeight: 0.025 },                    // per shoe; sole + stud height
 };
 

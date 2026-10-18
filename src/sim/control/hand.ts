@@ -900,7 +900,10 @@ export class HandController implements MotorController {
       const own = A.side > 0 ? hipL : hipR, opp = A.side > 0 ? hipR : hipL;
       let flex = -swingAmp * (own - opp) * 0.9, abd = 0.12, elbow = running ? 1.4 : 0.35, rot = 0, wn = g.armWn;
       if (cmd.contactMode && (reach > 0 || cmd.shoot || cmd.wrap)) {
-        flex = lerp(flex, 1.45, Math.max(reach, cmd.shoot || cmd.wrap ? 1 : 0));
+        // shoulder flexion is relative to the trunk: a low, leaning athlete (the posture intent's sink and lean)
+        // raises his arms by as much to still punch forward, up and under
+        const lean = cmd.wrap ? 0 : clamp(0.55 * clamp(cmd.sink, 0, 1) + 0.45 * cmd.lean.fwd, 0, 0.8);
+        flex = lerp(flex, 1.45 + lean, Math.max(reach, cmd.shoot || cmd.wrap ? 1 : 0));
         elbow = cmd.shoot ? 0.05 : cmd.wrap ? 1.5 : lerp(elbow, 0.25, reach);
         abd = cmd.wrap ? -0.5 : 0.15;
         rot = cmd.wrap ? 0.4 : 0;

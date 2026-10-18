@@ -55,6 +55,10 @@ const LEAN_MAX = 1.45, PELVIS_REST = 0.7, LEAN_RATE = 1.5;
  *  and its upward part from a stand / a sprint (m/s), longest flight before giving up on a landing (s). A standing
  *  dive leaves at ~3 m/s, about a standing long jump's take-off; from a sprint the stride is the load. */
 const DIVE = { load: [0.3, 0.08], push: [0.25, 0.12], vStand: 3.4, vy: [1.6, 0.4], maxFlight: 1.5 } as const;
+/** Hip-thrust lunge: how long a press drives the root forward (s), the speed it drives toward (m/s) and how fast
+ *  (m/s²). An explosive first step reaches ~4–5 m/s in 0.5 s at ~8–10 m/s² (sprint-start horizontal force ~1 body
+ *  weight [S4]); holding the button longer changes nothing. */
+const LUNGE = { time: 0.5, v: 4.5, accel: 10 } as const;
 type DiveStage = 'load' | 'launch' | 'flight';
 
 type Mode = 'loco' | 'dive' | 'down' | 'getup';
@@ -90,10 +94,11 @@ export class ProceduralAnimator implements Animator {
   private vel: Vec3 = [0, 0, 0]; private vPlan: [number, number] = [0, 0]; private aFwd = 0; private aLat = 0;
   private height: number; private pitch = 0; private roll = 0; private bend = 0; private dropF = 0.008; private dropV = 0; private pitchV = 0;
   private lv = { gait: 0, stance: 0, sink: 0, chop: 0, drive: 0, thrust: 0, tuck: 0, leanF: 0, leanS: 0, reachL: 0, reachR: 0,
-    wrap: 0, shoot: 0, carryL: 0, carryR: 0, contact: 0, cut: 0, aimL: 0, aimR: 0, bp: 0, shuffle: 0 };
+    wrap: 0, shoot: 0, carryL: 0, carryR: 0, contact: 0, cut: 0, aimL: 0, aimR: 0, bp: 0, shuffle: 0, pullL: 0, pullR: 0 };
   private aimAng = [[0, 0], [0, 0]];
   private cutT = 0; private cutSide = 0; private cutDir: [number, number] = [0, 1]; private prevCut = 0;
   private turn = 0;
+  private lungeT = 0; private prevThrust = false;
 
   // whole-body modes and cross-fades
   private mode: Mode = 'loco'; private modeT = 0; private settleT = 0; private prevDive = false;
@@ -371,9 +376,17 @@ export class ProceduralAnimator implements Animator {
     let [tx, tz] = toW(tl, tf);
     // a plant-and-cut trades some speed for the new direction
     if (cutting) { const cs = Math.min(Math.hypot(this.vel[0], this.vel[2]), gaitV) * 0.75; tx = this.cutDir[0] * cs; tz = this.cutDir[1] * cs; }
+    // a hip-thrust press lunges forward along the heading (one press, one lunge); against an opponent the legs
+    // stay planted and drive instead (stepping would leave no leg to push with)
+    const thrusting = cmd.thrustHips && !hold;
+    if (thrusting && !this.prevThrust) this.lungeT = LUNGE.time;
+    this.prevThrust = thrusting;
+    this.lungeT = thrusting && !v.playerContact ? Math.max(0, this.lungeT - dt) : 0;
+    const lunge = this.lungeT > 0;
+    if (lunge) { const vs = Math.max(LUNGE.v, this.vel[0] * sh + this.vel[2] * ch); tx = sh * vs; tz = ch * vs; }
     if (hold) { tx = 0; tz = 0; }
     const dvx = tx - this.vel[0], dvz = tz - this.vel[2], dv = Math.hypot(dvx, dvz);
-    const lim = (cutting ? CUT_ACCEL : dvx * this.vel[0] + dvz * this.vel[2] >= 0 ? ACCEL[cmd.gait] : DECEL) * dt;
+    const lim = (cutting ? CUT_ACCEL : lunge ? LUNGE.accel : dvx * this.vel[0] + dvz * this.vel[2] >= 0 ? ACCEL[cmd.gait] : DECEL) * dt;
     const px = this.vel[0], pz = this.vel[2];
     if (dv > lim) { this.vel[0] += dvx * lim / dv; this.vel[2] += dvz * lim / dv; } else { this.vel[0] = tx; this.vel[2] = tz; }
     const ex = this.vel[0] - vx, ez = this.vel[2] - vz, e = Math.hypot(ex, ez);
@@ -383,10 +396,9 @@ export class ProceduralAnimator implements Animator {
 
     // ---- levels (all filtered, so the pose blends over ~0.1–0.3 s)
     const contact = cmd.contactMode ? 1 : 0;
-    // a held hip thrust overrides sink, stance and lean: it is the explosive rise out of them, on both feet
-    // (being driven along by it does not start a walk; the feet still step once they fall out of reach)
-    const thrusting = cmd.thrustHips && !hold;
-    const moving = mag > 0.05 || (sp > 0.4 && !thrusting) || cmd.chopFeet || cmd.driveLegs > 0.05;
+    // a held hip thrust overrides sink, stance and lean: it is the explosive rise out of them; its lunge steps
+    // like a sprint start, while a thrust held in place (being driven along by it) does not start a walk
+    const moving = mag > 0.05 || (sp > 0.4 && !thrusting) || lunge || cmd.chopFeet || cmd.driveLegs > 0.05;
     lv.gait = follow(lv.gait, moving && !hold ? 1 : 0, dt, 0.15);
     // Dropping into a sink is quick (the muscles let go and gravity pulls the hips down, full depth in ~0.25 s);
     // rising out of it takes work and is slower.
@@ -401,6 +413,10 @@ export class ProceduralAnimator implements Animator {
     lv.leanS = follow(lv.leanS, clamp(cmd.lean.side, -1, 1), dt, 0.12);
     lv.reachL = follow(lv.reachL, clamp(cmd.armL, 0, 1), dt, 0.08);
     lv.reachR = follow(lv.reachR, clamp(cmd.armR, 0, 1), dt, 0.08);
+    // a raised arm whose hand holds an opponent rows him in (a wrap squeezes, a thrust drives him away instead)
+    const pulling = !cmd.wrap && !cmd.thrustHips;
+    lv.pullL = follow(lv.pullL, pulling && v.grips?.[0] && cmd.armL > 0.3 ? 1 : 0, dt, 0.03);
+    lv.pullR = follow(lv.pullR, pulling && v.grips?.[1] && cmd.armR > 0.3 ? 1 : 0, dt, 0.03);
     lv.wrap = follow(lv.wrap, cmd.wrap ? 1 : 0, dt, 0.08);
     lv.shoot = follow(lv.shoot, cmd.shoot ? 1 : 0, dt, 0.04);
     lv.carryL = follow(lv.carryL, cmd.carry === 1 ? 1 : 0, dt, 0.15);
@@ -459,8 +475,8 @@ export class ProceduralAnimator implements Animator {
     // Forward lean: 0.35 rad per unit near upright, steepening so a full lean brings the trunk level
     // with the turf (cubic, so the light leans tackles are built on keep their feel). Leaning back stays small.
     pitchT += 0.35 * lv.leanF + (lv.leanF > 0 ? Math.max(0, LEAN_MAX - pitchT - 0.35) * lv.leanF ** 3 : 0);
-    // the trunk rises out of the sink, still leaning slightly into whatever it drives
-    pitchT = clamp(lerp(pitchT, 0.15, lv.thrust), -0.4, LEAN_MAX);
+    // the trunk rises out of the sink, still leaning slightly into whatever it drives; a pull sits back into it
+    pitchT = clamp(lerp(pitchT, 0.15, lv.thrust) - 0.25 * Math.max(lv.pullL, lv.pullR), -0.4, LEAN_MAX);
     // leaning in no faster than the trunk can follow (~1 s to a full lean), so the support never reads the lag
     // behind a commanded lean as being knocked over
     const prevPitch = this.pitch;
@@ -555,15 +571,22 @@ export class ProceduralAnimator implements Animator {
       const carry = arm.side > 0 ? lv.carryL : lv.carryR, reach = arm.side > 0 ? lv.reachL : lv.reachR;
       fl = lerp(fl, 0.35, carry); ab = lerp(ab, 0.1, carry); rt = lerp(rt, 0.7, carry); el = lerp(el, 2.0, carry); wr = lerp(wr, 0.2, carry);
       fl = lerp(fl, 1.3, lv.wrap); ab = lerp(ab, 0.45, lv.wrap); rt = lerp(rt, 0.9, lv.wrap); el = lerp(el, 1.4, lv.wrap);
-      fl = lerp(fl, 1.35, lv.shoot); ab = lerp(ab, -0.05, lv.shoot); rt = lerp(rt, 0.1, lv.shoot); el = lerp(el, 0.1, lv.shoot); wr = lerp(wr, -0.6, lv.shoot);
-      fl = lerp(fl, 1.45, reach); ab = lerp(ab, 0.15, reach); rt = lerp(rt, 0, reach); el = lerp(el, 0.25, reach);
+      // shoot and reach point the arms forward of the body whatever the trunk's lean (shoulder flexion is relative
+      // to the thorax), so a low athlete punches up and under instead of at the turf
+      fl = lerp(fl, 1.35 + Math.max(0, this.pitch), lv.shoot); ab = lerp(ab, -0.05, lv.shoot); rt = lerp(rt, 0.1, lv.shoot); el = lerp(el, 0.1, lv.shoot); wr = lerp(wr, -0.6, lv.shoot);
+      fl = lerp(fl, 1.45 + Math.max(0, this.pitch), reach); ab = lerp(ab, 0.15, reach); rt = lerp(rt, 0, reach); el = lerp(el, 0.25, reach);
       // thrust: the arms punch forward, or lift what they are wrapped around (elbows stay bent)
       fl = lerp(fl, 1.4, lv.thrust); ab = lerp(ab, 0.2, lv.thrust); el = lerp(el, lerp(0.3, 1.2, lv.wrap), lv.thrust);
       const k = arm.side > 0 ? 0 : 1, aimW = this.aimArm(v, cmd, arm, k, dt);
       fl = lerp(fl, this.aimAng[k][0], aimW); ab = lerp(ab, this.aimAng[k][1], aimW); el = lerp(el, 0.2, aimW);
+      // pull: shoulder extension and a hard elbow bend, the hand drawn back to the ribs
+      const pull = k === 0 ? lv.pullL : lv.pullR;
+      fl = lerp(fl, 0.3, pull); ab = lerp(ab, 0.2, pull); rt = lerp(rt, 0.3, pull); el = lerp(el, 2.0, pull);
       this.setArm(arm, fl, ab, rt, el, wr);
       this.add(`sc${arm.side > 0 ? 'L' : 'R'}.protr`, 0.15 * Math.max(lv.wrap, lv.shoot, reach));
-      const g = lerp(0.5, 1, clamp(Math.max(lv.contact, carry, reach, lv.wrap, lv.shoot, lv.thrust, aimW), 0, 1));
+      // a pulling arm is held loosely: the row itself is the tracking controller's pull, sized to what the fist holds,
+      // and a stiff arm still swinging to its reach pose would tear the fresh grip open
+      const g = lerp(lerp(0.5, 1, clamp(Math.max(lv.contact, carry, reach, lv.wrap, lv.shoot, lv.thrust, aimW), 0, 1)), 0.3, pull);
       for (const i of this.armDofs[k]) out.gain[i] = g;
     }
     for (const i of this.neckDofs) out.gain[i] = 0.8;
@@ -591,9 +614,11 @@ export class ProceduralAnimator implements Animator {
   private aimArm(v: BodyView, cmd: Commands, arm: Arm, k: number, dt: number): number {
     const lv = this.lv, key = k === 0 ? 'aimL' : 'aimR';
     const reaching = lv.reachL > 0.05 || lv.reachR > 0.05;
-    lv[key] = follow(lv[key], cmd.aim ? (reaching ? (k === 0 ? cmd.armL : cmd.armR) : 1) : 0, dt, 0.1);
-    if (cmd.aim && arm.seg >= 0) {
-      const sp = v.state.segPos, d: Vec3 = [cmd.aim[0] - sp[3 * arm.seg], cmd.aim[1] - sp[3 * arm.seg + 1], cmd.aim[2] - sp[3 * arm.seg + 2]];
+    // the eyes guide a reaching hand to the nearest part of an opponent within reach (the world's reachTo)
+    const aim = (reaching && v.reachTo?.[k]) || cmd.aim;
+    lv[key] = follow(lv[key], aim ? (reaching ? (k === 0 ? cmd.armL : cmd.armR) : 1) : 0, dt, 0.1);
+    if (aim && arm.seg >= 0) {
+      const sp = v.state.segPos, d: Vec3 = [aim[0] - sp[3 * arm.seg], aim[1] - sp[3 * arm.seg + 1], aim[2] - sp[3 * arm.seg + 2]];
       const p = qrot(qconj(rootQuat(this.heading, this.pitch, this.roll)), d), n = Math.hypot(p[0], p[1], p[2]) || 1;
       const ab = Math.asin(clamp(arm.side * p[0] / n, -1, 1)), fl = Math.atan2(p[2], -p[1]);
       this.aimAng[k][0] = follow(this.aimAng[k][0], fl, dt, 0.06);
