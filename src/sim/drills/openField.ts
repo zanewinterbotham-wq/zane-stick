@@ -2,14 +2,16 @@
 // the carrier is down (any segment but hands/feet on the ground), out of bounds, scores, or time runs out.
 import { DEFAULT_ATHLETE, type AthleteParams } from '../anatomy/body';
 import { BALL } from '../anatomy/equipment';
+import { DEFAULT_SUPPORT, type SupportSettings } from '../anim/types';
 import { CarrierBrain, DIFFICULTY, type BotDifficulty } from '../brains/carrier';
 import type { Brain } from '../brains/types';
-import { HandController, type Gains } from '../control/hand';
+import type { Gains } from '../control/hand';
 import type { Gait } from '../control/types';
 import { qaxis, qmul, qrot, type Quat, type Vec3 } from '../math';
 import type { PhysicsEngine } from '../physics/engine';
 import { Rng } from '../rng';
-import { World, type PhysicsSettings } from '../world';
+import { World, type AthleteSetup, type PhysicsSettings, type WorldSetup } from '../world';
+import { makeController } from './controllers';
 
 export type RepEnd = 'down' | 'out of bounds' | 'touchdown' | 'time' | null;
 export interface OpenFieldConfig {
@@ -23,18 +25,16 @@ export interface OpenFieldConfig {
   timeLimit: number;
   traction?: number;
   gains?: Partial<Gains>;
+  /** Active-ragdoll support for both athletes; absent = old balance assist only. */
+  support?: SupportSettings;
 }
 export const DEFAULT_OPEN_FIELD: Omit<OpenFieldConfig, 'physics'> = {
   assist: 0.2, seed: 1, human: DEFAULT_ATHLETE, carrier: { height: 1.80, mass: 98, strength: 1, speed: 1 },
-  difficulty: DIFFICULTY.normal, carrierGait: 'jog', timeLimit: 10,
+  difficulty: DIFFICULTY.normal, carrierGait: 'jog', timeLimit: 10, support: DEFAULT_SUPPORT,
 };
 
 /** Controller factory applying tuned gains (same for human and bot: bots get no special treatment). */
-const ctl = (cfg: OpenFieldConfig) => (p: ConstructorParameters<typeof HandController>[0], m: ConstructorParameters<typeof HandController>[1]) => {
-  const c = new HandController(p, m);
-  Object.assign(c.gains, cfg.gains ?? {});
-  return c;
-};
+const ctl = (cfg: OpenFieldConfig): AthleteSetup['controller'] => (p, m) => makeController(p, m, 'tracking', cfg.gains);
 
 const HALF_WIDTH = (160 / 3) * 0.9144 / 2; // 24.38 m
 const GOAL_Z = -50 * 0.9144;               // carrier runs toward −Z, the human's goal line
@@ -53,7 +53,8 @@ export class OpenFieldDrill {
   static async create(engine: PhysicsEngine, cfg: OpenFieldConfig, humanBrain: Brain, rep = 0): Promise<OpenFieldDrill> {
     const rng = new Rng(cfg.seed * 7919 + rep * 104729);
     const hx = rng.range(-2, 2), cx = hx + rng.range(-3, 3), gap = rng.range(10, 14);
-    const world = await World.create(engine, {
+    // support goes through a typed variable: WorldSetup gains its field when the support branch merges
+    const setup: WorldSetup & { support?: SupportSettings } = {
       physics: cfg.physics, seed: cfg.seed + rep, assist: cfg.assist, traction: cfg.traction,
       field: { halfWidth: HALF_WIDTH, goalZ: GOAL_Z, dirZ: -1 },
       athletes: [
@@ -62,7 +63,9 @@ export class OpenFieldDrill {
       ],
       // ball parked under the field until the carrier has tucked his arm (setup only)
       props: [{ name: 'ball', shape: 'ellipsoid', size: [BALL.diameter / 2, BALL.diameter / 2, BALL.length / 2], mass: BALL.mass, pos: [cx, -5, gap], friction: 0.8 }],
-    });
+      support: cfg.support && { ...cfg.support },
+    };
+    const world = await World.create(engine, setup);
     const d = new OpenFieldDrill(world, cfg);
     d.rep = rep;
     d.setup();
