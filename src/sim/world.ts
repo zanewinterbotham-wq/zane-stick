@@ -4,10 +4,11 @@ import { buildBody, type AthleteParams, type BodyPlan, type Detail } from './ana
 import { GRIP_TIMECONST, EQUIPMENT } from './anatomy/equipment';
 import type { Brain, Perception, AthleteView } from './brains/types';
 import { neutralCommands, type BodyView, type Commands, type FootContact, type MotorController } from './control/types';
-import { headingOf, qrot, type Quat, type Vec3 } from './math';
+import { clamp, headingOf, qaxis, qconj, qlog, qmul, qrot, type Quat, type Vec3 } from './math';
 import { MuscleSet, newTargets, type MuscleTargets } from './muscles';
-import type { PhysicsEngine, PhysicsScene, PropDesc } from './physics/engine';
+import type { AthleteState, PhysicsEngine, PhysicsScene, PropDesc } from './physics/engine';
 import { Rng } from './rng';
+import type { SupportSettings, SupportState } from './anim/types';
 
 export interface PhysicsSettings { hz: number; iterations: number; detail: Detail }
 export interface AthleteSetup {
@@ -19,10 +20,17 @@ export interface AthleteSetup {
   hasBall?: boolean;
 }
 export interface FieldInfo { halfWidth: number; goalZ: number; dirZ: 1 | -1 }
-export interface WorldSetup { physics: PhysicsSettings; athletes: AthleteSetup[]; props?: PropDesc[]; seed: number; assist: number; field?: FieldInfo; traction?: number }
+export interface WorldSetup { physics: PhysicsSettings; athletes: AthleteSetup[]; props?: PropDesc[]; seed: number; assist: number; field?: FieldInfo; traction?: number;
+  /** Active-ragdoll support (design §6.5) for athletes whose controller has root(); absent = balance assist only. */
+  support?: SupportSettings }
 
 /** Balance assist timing [design §6.4]. */
 const ASSIST_FADE_OUT = 0.15, ASSIST_STABLE_TIME = 0.3, ASSIST_FADE_IN = 0.3;
+/** Support [design §6.5]: carry velocity gain (1/s), stable footing before the carry returns and its ramp (s),
+ *  window for the impulse received (s), flight a stride may have before the carry fades (s), how fast knock
+ *  decays (1/s), get-up ramp (s), pelvis height PD (1/s², 1/s), upright stiffness (m·g·h per rad), damping
+ *  (m·h² per s), and yaw relative to roll/pitch. */
+const SUP = { kv: 6, stable: 0.3, fadeIn: 0.3, window: 0.2, flight: 0.15, decay: 1, getup: 1, hKp: 36, hKd: 10, kUp: 1.5, cUp: 6, yaw: 0.3 };
 
 export interface ImpactStats { closingSpeed: number; peakForce: number; peakHeadG: number[]; firstContactTime: number }
 
@@ -45,6 +53,14 @@ export class Athlete {
   readonly handSegs: number[];
   readonly limbEndSegs: Set<number>;
   headVelPrev: Vec3 = [0, 0, 0]; headAccFilt = 0;
+  /** Support levels handed to the controller, and the fade state behind them (design §6.5). */
+  support: SupportState = { posture: 1, carry: 1, down: false };
+  knock = 0; carryLevel = 1; supStable = 0; airT = 0; getup = 0;
+  /** Contact force received from other athletes this step (N, world), and its last SUP.window seconds (N·s). */
+  hitForce: Vec3 = [0, 0, 0];
+  hitWindow: Vec3[] = []; hitImpulse: Vec3 = [0, 0, 0];
+  /** Carry force applied this step (N, world): tests check it is zero during player contact. */
+  carryForce: Vec3 = [0, 0, 0];
 
   constructor(readonly index: number, readonly setup: AthleteSetup, readonly plan: BodyPlan, readonly controller: MotorController, readonly brain: Brain) {
     this.muscles = new MuscleSet(plan);
@@ -90,6 +106,8 @@ export class World {
       if (a.hasBall) w.ballCarrier = i;
     });
     w.impact.peakHeadG = w.athletes.map(() => 0);
+    // controllers that take support tuning share the world's settings object (tuning-panel edits reach them)
+    if (setup.support) for (const a of w.athletes) if ('supportSettings' in a.controller) (a.controller as { supportSettings: SupportSettings }).supportSettings = setup.support;
     w.sense(); // contacts at t = 0, so controllers see their feet on the ground from the first step
     return w;
   }
@@ -97,7 +115,7 @@ export class World {
   get dt() { return this.scene.dt; }
 
   view(a: Athlete): BodyView {
-    return { plan: a.plan, muscles: a.muscles, state: this.scene.athletes[a.index].state, dt: this.dt, time: this.time, feet: a.feet, playerContact: a.playerContact };
+    return { plan: a.plan, muscles: a.muscles, state: this.scene.athletes[a.index].state, dt: this.dt, time: this.time, feet: a.feet, playerContact: a.playerContact, support: this.supported(a) ? a.support : undefined };
   }
 
   perception(self: number): Perception {
@@ -125,11 +143,91 @@ export class World {
       a.muscles.compute(a.targets, s.q, s.qd);
       this.scene.setTorques(a.index, a.muscles.torque);
       this.scene.setDamping(a.index, a.muscles.damping);
-      this.applyAssist(a);
+      if (this.supported(a)) this.applySupport(a); else this.applyAssist(a);
     }
     this.scene.step();
     this.time += dt; this.steps++;
     this.afterStep();
+  }
+
+  private supported(a: Athlete) { return !!this.setup.support && !!a.controller.root; }
+
+  /** Active-ragdoll support (design §6.5). Carry: horizontal force toward the root velocity, zero while touching
+   *  another athlete. Posture: weight share, pelvis height and pelvis/thorax attitude toward the root target. */
+  private applySupport(a: Athlete) {
+    const S = this.setup.support!, r = a.controller.root!(), sup = a.support;
+    a.carryForce = [0, 0, 0];
+    if (!r) return;
+    const s = this.scene.athletes[a.index].state, m = a.mass, k = S.strength, pi = a.segIndex.get('pelvis')!;
+    const c = a.playerContact ? 0 : sup.carry * k;
+    if (c > 0) {
+      let fx = m * SUP.kv * (r.vel[0] - s.comVel[0]), fz = m * SUP.kv * (r.vel[2] - s.comVel[2]);
+      const n = Math.hypot(fx, fz), lim = m * S.carryAccel;
+      if (n > lim) { fx *= lim / n; fz *= lim / n; }
+      a.carryForce = [fx * c, 0, fz * c];
+    }
+    const p = sup.posture * k;
+    let fy = 0;
+    if (p > 0) fy = clamp(p * (S.weightShare * m * G + m * SUP.hKp * (r.height - s.segPos[3 * pi + 1]) - m * SUP.hKd * s.segVel[3 * pi + 1]), 0, 1.5 * p * m * G);
+    this.scene.applyWrench(a.index, pi, [a.carryForce[0], fy, a.carryForce[2]], [0, 0, 0]);
+    if (p <= 0) return;
+    const H = a.plan.standHeight, kUp = p * SUP.kUp * m * G * H, cUp = 0.5 * p * SUP.cUp * m * H * H;
+    // Damping acts on the whole body's rotation rate (angular momentum over inertia about the COM): a pelvis is too
+    // light for explicit damping of its own spin at 240 Hz, and arm and leg swing leave the total untouched.
+    const wb = bodyRate(a.plan, s);
+    // the pelvis takes part of the trunk lean, the thorax all of it (as in the hand controller's attitude targets)
+    for (const [name, f] of [['pelvis', 0.3], [a.segIndex.has('thorax') ? 'thorax' : 'trunk', 1]] as const) {
+      const i = a.segIndex.get(name)!, q = s.segQuat.subarray(4 * i, 4 * i + 4);
+      const e = qlog(qmul(orient(r.heading, f * r.pitch, f * r.roll), qconj([q[0], q[1], q[2], q[3]])));
+      this.scene.applyWrench(a.index, i, [0, 0, 0], [kUp * e[0] - cUp * wb[0], SUP.yaw * (kUp * e[1] - cUp * wb[1]), kUp * e[2] - cUp * wb[2]]);
+    }
+  }
+
+  /** Knock, carry and posture levels from what happened this step (design §6.5). */
+  private updateSupport(a: Athlete, dt: number) {
+    const S = this.setup.support!, s = this.scene.athletes[a.index].state, m = a.mass, r = a.controller.root!();
+    // impulse received from other athletes over the window
+    const n = Math.max(1, Math.round(SUP.window / dt)), J = a.hitImpulse, f = a.hitForce;
+    const jn: Vec3 = [f[0] * dt, f[1] * dt, f[2] * dt];
+    a.hitWindow.push(jn); J[0] += jn[0]; J[1] += jn[1]; J[2] += jn[2];
+    if (a.hitWindow.length > n) { const o = a.hitWindow.shift()!; J[0] -= o[0]; J[1] -= o[1]; J[2] -= o[2]; }
+    // Only the part of the impulse the athlete's own momentum did not absorb counts: the momentum it left him
+    // moving with along the hit. A hitter who drives through keeps moving into it; the one driven back does not.
+    const Jh = Math.hypot(J[0], J[2]), vAlong = Jh > 1e-9 ? (s.comVel[0] * J[0] + s.comVel[2] * J[2]) / Jh : 0;
+    const knockHit = Math.min(Jh, m * Math.max(0, vAlong)) / S.bigHit;
+    // Trunk tilt away from both upright and the lean the animation wants: a deliberate lean (low drive) is not a
+    // knock, nor is the trunk still on its way into or out of one.
+    const ti = a.segIndex.get('thorax') ?? a.segIndex.get('trunk')!, q = s.segQuat.subarray(4 * ti, 4 * ti + 4);
+    const up = qrot([q[0], q[1], q[2], q[3]], [0, 1, 0]);
+    const upD: Vec3 = r ? qrot(orient(r.heading, r.pitch, r.roll), [0, 1, 0]) : [0, 1, 0];
+    const tilt = Math.min(Math.acos(clamp(up[1], -1, 1)), Math.acos(clamp(up[0] * upD[0] + up[1] * upD[1] + up[2] * upD[2], -1, 1)));
+    const knockTilt = clamp((tilt - S.tiltStart) / Math.max(1e-6, S.tiltEnd - S.tiltStart), 0, 1);
+    // both feet off the turf: a sprint stride's flight is allowed, longer means the athlete was lifted or launched
+    const footing = a.feet[0].touching || a.feet[1].touching, speed = Math.hypot(s.comVel[0], s.comVel[2]);
+    a.airT = footing ? 0 : a.airT + dt;
+    const knockAir = clamp((a.airT - (0.08 + 0.015 * speed)) / 0.15, 0, 1);
+    const target = Math.min(1, Math.max(knockHit, knockTilt, knockAir));
+    // rises fast, decays slowly
+    a.knock = target > a.knock ? a.knock + (target - a.knock) * Math.min(1, dt / 0.02) : Math.max(target, a.knock - dt * SUP.decay);
+    const down = a.downBy !== null, clip = a.controller.debug?.().clip;
+    if (clip === 'getup') {
+      // posture support ramps back in with the get-up, while the body is actually rising (not falling back)
+      const pi = a.segIndex.get('pelvis')!;
+      if (s.segVel[3 * pi + 1] > -0.2) a.getup = Math.min(1, a.getup + dt / SUP.getup);
+      a.knock = Math.min(a.knock, 1 - a.getup);
+    } else {
+      a.getup = 0;
+      if (down) a.knock = 1;
+    }
+    // carry: off while touching another athlete; back after separation and stable footing
+    if (a.playerContact) { a.carryLevel = 0; a.supStable = 0; }
+    else {
+      // stable footing: a step's brief flight does not count against it, a lifted or falling body does
+      a.supStable = a.airT < 0.1 && !down && a.knock < 0.3 ? a.supStable + dt : 0;
+      if (a.supStable >= SUP.stable) a.carryLevel = Math.min(1, a.carryLevel + dt / SUP.fadeIn);
+    }
+    const flight = clamp(1 - (a.airT - SUP.flight) / 0.1, 0, 1);
+    a.support = { posture: down && clip !== 'getup' ? 0 : 1 - a.knock, carry: a.playerContact ? 0 : a.carryLevel * flight * (1 - a.knock), down };
   }
 
   /** Invisible posture/weight support. Vertical force and roll/pitch torque only — never horizontal force. */
@@ -161,6 +259,7 @@ export class World {
     this.sense();
     for (const a of this.athletes) {
       this.updateAssistFade(a, this.dt);
+      if (this.supported(a)) this.updateSupport(a, this.dt);
       this.updateGrips(a, this.dt);
       this.updateHeadAccel(a, this.dt);
     }
@@ -173,6 +272,7 @@ export class World {
       a.feet.forEach((f) => { f.force = 0; f.cop = [0, 0, 0]; f.touching = false; });
       a.downBy = null; a.handTouch = [null, null];
       a.playerContactNow = false;
+      a.hitForce = [0, 0, 0];
     }
     let hit = 0;
     for (const c of this.scene.contacts()) {
@@ -193,7 +293,12 @@ export class World {
           if (hand >= 0 && (o.athlete !== p.athlete)) a.handTouch[hand] = { athlete: o.athlete, seg: o.seg, pos: c.pos };
         }
       }
-      if (c.a.athlete >= 0 && c.b.athlete >= 0 && c.a.athlete !== c.b.athlete) hit += c.force;
+      if (c.a.athlete >= 0 && c.b.athlete >= 0 && c.a.athlete !== c.b.athlete) {
+        hit += c.force;
+        // the contact normal points from the first geom to the second: b is pushed along it, a against it
+        const fa = this.athletes[c.a.athlete].hitForce, fb = this.athletes[c.b.athlete].hitForce;
+        for (let j = 0; j < 3; j++) { fa[j] -= c.normal[j] * c.force; fb[j] += c.normal[j] * c.force; }
+      }
     }
     this.lastHitForce = hit;
     for (const a of this.athletes) {
@@ -270,4 +375,24 @@ export class World {
   }
 
   destroy() { this.scene.destroy(); }
+}
+
+const G = 9.81;
+/** Orientation from heading, forward pitch and left roll (same convention as the hand controller). */
+const orient = (heading: number, pitchFwd: number, rollLeft: number): Quat =>
+  qmul(qaxis([0, 1, 0], heading), qmul(qaxis([1, 0, 0], pitchFwd), qaxis([0, 0, -1], rollLeft)));
+
+/** Whole-body angular velocity about the COM per world axis: L / I, segment inertias taken as isotropic. */
+function bodyRate(plan: BodyPlan, s: AthleteState): Vec3 {
+  let lx = 0, ly = 0, lz = 0, ix = 0, iy = 0, iz = 0;
+  plan.segments.forEach((g, k) => {
+    const m = g.mass, I = (g.inertia[0] + g.inertia[4] + g.inertia[8]) / 3;
+    const rx = s.segCom[3 * k] - s.com[0], ry = s.segCom[3 * k + 1] - s.com[1], rz = s.segCom[3 * k + 2] - s.com[2];
+    const vx = s.segVel[3 * k] - s.comVel[0], vy = s.segVel[3 * k + 1] - s.comVel[1], vz = s.segVel[3 * k + 2] - s.comVel[2];
+    lx += m * (ry * vz - rz * vy) + I * s.segAngVel[3 * k];
+    ly += m * (rz * vx - rx * vz) + I * s.segAngVel[3 * k + 1];
+    lz += m * (rx * vy - ry * vx) + I * s.segAngVel[3 * k + 2];
+    ix += m * (ry * ry + rz * rz) + I; iy += m * (rx * rx + rz * rz) + I; iz += m * (rx * rx + ry * ry) + I;
+  });
+  return [lx / ix, ly / iy, lz / iz];
 }
