@@ -58,7 +58,7 @@ const DIVE = { load: [0.3, 0.08], push: [0.25, 0.12], vStand: 3.4, vy: [1.6, 0.4
 /** Hip-thrust lunge: how long a press drives the root forward (s), the speed it drives toward (m/s) and how fast
  *  (m/s²). An explosive first step reaches ~4–5 m/s in 0.5 s at ~8–10 m/s² (sprint-start horizontal force ~1 body
  *  weight [S4]); holding the button longer changes nothing. */
-const LUNGE = { time: 0.5, v: 4.5, accel: 10 } as const;
+const LUNGE = { time: 0.5, v: 5, accel: 12 } as const;
 type DiveStage = 'load' | 'launch' | 'flight';
 
 type Mode = 'loco' | 'dive' | 'down' | 'getup';
@@ -404,14 +404,19 @@ export class ProceduralAnimator implements Animator {
     lv.gait = follow(lv.gait, moving && !hold ? 1 : 0, dt, 0.15);
     // Dropping into a sink is quick (the muscles let go and gravity pulls the hips down, full depth in ~0.25 s);
     // rising out of it takes work and is slower.
-    const stanceT = contact && cmd.sink > 0 && sp < 1.5 && !hold && !thrusting ? 1 : 0, sinkT = hold || thrusting ? 0 : clamp(cmd.sink, 0, 1);
+    const stanceT = contact && cmd.sink > 0 && sp < 1.5 && !hold && !thrusting ? 1 : 0;
+    // Nobody sprints folded in half: the crouch (sink and forward lean together) is capped by speed, about a third of
+    // full depth at a full sprint, full depth below ~3 m/s. Deeper at speed put the feet behind the hips and fell.
+    let sinkT = hold || thrusting ? 0 : clamp(cmd.sink, 0, 1), leanT = thrusting ? 0 : clamp(cmd.lean.fwd, -1, 1);
+    const crouchT = 0.6 * sinkT + 0.7 * Math.max(0, leanT), crouchMax = clamp(1.3 - 0.095 * sp, 0.35, 1);
+    if (crouchT > crouchMax) { const k = crouchMax / crouchT; sinkT *= k; if (leanT > 0) leanT *= k; }
     lv.stance = follow(lv.stance, stanceT, dt, stanceT > lv.stance ? 0.07 : 0.2);
     lv.sink = follow(lv.sink, sinkT, dt, sinkT > lv.sink ? 0.07 : 0.12);
     lv.chop = follow(lv.chop, cmd.chopFeet && !hold ? 1 : 0, dt, 0.1);
     lv.drive = follow(lv.drive, hold ? 0 : clamp(cmd.driveLegs, 0, 1), dt, 0.12);
     lv.thrust = follow(lv.thrust, thrusting ? 1 : 0, dt, 0.15);
     lv.tuck = follow(lv.tuck, cmd.headTuck ? 1 : 0, dt, 0.1);
-    lv.leanF = follow(lv.leanF, thrusting ? 0 : clamp(cmd.lean.fwd, -1, 1), dt, 0.12);
+    lv.leanF = follow(lv.leanF, leanT, dt, 0.12);
     lv.leanS = follow(lv.leanS, clamp(cmd.lean.side, -1, 1), dt, 0.12);
     lv.reachL = follow(lv.reachL, clamp(cmd.armL, 0, 1), dt, 0.08);
     lv.reachR = follow(lv.reachR, clamp(cmd.armR, 0, 1), dt, 0.08);
@@ -486,7 +491,9 @@ export class ProceduralAnimator implements Animator {
     this.pitchV = (this.pitch - prevPitch) / dt;
     // The world's support turns the pelvis through only part of a posture lean (as the balance controller does):
     // the spine flexes through the rest, and the legs are solved for that pelvis.
-    this.bend = follow(this.bend, PELVIS_REST * Math.max(0, pitchT - runP), dt, 0.08);
+    // ... only near standstill: running, the pelvis pitches with the trunk (a spine-flexed lean at speed put the feet
+    // in the wrong place on a cut and tripped the runner), so the share fades out from 3 to 6 m/s
+    this.bend = follow(this.bend, PELVIS_REST * Math.max(0, pitchT - runP) * clamp((6 - vf) / 3, 0, 1), dt, 0.08);
     // lean into a turn or cut as a runner does: tan(roll) = sideways acceleration / g
     const rollT = Math.atan(this.aLat / G) + 0.3 * lv.leanS;
     this.roll = follow(this.roll, clamp(rollT, -0.4, 0.4), dt, 0.08);

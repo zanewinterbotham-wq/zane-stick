@@ -71,9 +71,22 @@ export class TacklerBrain implements Brain {
     // shortcut: a tackler that recovers the ball just holds still; give it a carrier brain when a drill lets
     // the defence run a recovery back.
     if (me.down || me.hasBall) return c;
-    if (ti >= 0) { if (!seen.athletes[ti].down) this.tackle(p, me, predict(seen.athletes[ti], p.time - seen.time), dt, c); }
+    if (ti >= 0) {
+      const t = predict(seen.athletes[ti], p.time - seen.time);
+      if (t.down) this.touch(me, t, dt, c); else this.tackle(p, me, t, dt, c);
+    }
     else if (seen.ball) this.recover(me, seen.ball, dt, c);
     return c;
+  }
+
+  /** A ball carrier on the turf (e.g. after recovering a fumble with a dive) is down once an opponent touches him:
+   *  hurry over and reach down to him. */
+  private touch(me: AthleteView, t: AthleteView, dt: number, c: Commands) {
+    const dx = t.com[0] - me.com[0], dz = t.com[2] - me.com[2], d = Math.hypot(dx, dz) || 1e-6;
+    const v = Math.min(FULL, 1.5 + 1.2 * d); // flat out from afar, easing in to land on him under control
+    this.run(me, dx / d * v, dz / d * v, dt, c);
+    c.gait = 'sprint'; c.contactMode = d < 4; c.face = { x: dx / d, z: dz / d };
+    if (d < 2) { c.sink = 0.8; c.lean.fwd = 0.6; c.armL = c.armR = 1; c.gripL = c.gripR = true; c.aim = t.pelvis; }
   }
 
   private tackle(p: Perception, me: AthleteView, t: AthleteView, dt: number, c: Commands) {

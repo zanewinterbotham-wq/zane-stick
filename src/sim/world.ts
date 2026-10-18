@@ -26,6 +26,8 @@ export interface WorldSetup { physics: PhysicsSettings; athletes: AthleteSetup[]
 
 /** Balance assist timing [design §6.4]. */
 const ASSIST_FADE_OUT = 0.15, ASSIST_STABLE_TIME = 0.3, ASSIST_FADE_IN = 0.3;
+/** Held knock: grip time before it starts (s), further time to full (s), and the share one arm takes. */
+const HELD = { start: 0.3, full: 0.9, oneArm: 0.6 };
 /** Support [design §6.5]: carry velocity gain (1/s), stable footing before the carry returns and its ramp (s),
  *  window for the impulse received (s), flight a stride may have before the carry fades (s), how fast knock
  *  decays (1/s), get-up ramp (s), pelvis height PD (1/s², 1/s), upright stiffness (m·g·h per rad), damping
@@ -36,7 +38,7 @@ const ASSIST_FADE_OUT = 0.15, ASSIST_STABLE_TIME = 0.3, ASSIST_FADE_IN = 0.3;
  *  take-off reaches), and the largest horizontal acceleration of a hip-thrust lunge (m/s², ~1 body weight of
  *  horizontal ground force, a sprint start's). */
 const SUP = { kv: 6, stable: 0.3, fadeIn: 0.3, window: 0.2, flight: 0.15, decay: 1, getup: 1, hKp: 36, hKd: 10, kUp: 1.5, cUp: 6, yaw: 0.3,
-  stunStart: 1, stunFull: 2, stunTime: 0.5, drivenStart: 0.5, drivenFull: 2, drivenTime: 1.5, launchKv: 20, launch: 15, lunge: 10 };
+  stunStart: 1, stunFull: 2, stunTime: 0.5, drivenStart: 0.5, drivenFull: 2, drivenTime: 1.5, launchKv: 20, launch: 15, lunge: 12 };
 
 /** One body-part-on-body-part contact between two athletes this step (summed over its contact points). */
 export interface HitEvent {
@@ -76,6 +78,8 @@ export class Athlete {
   /** Support levels handed to the controller, and the fade state behind them (design §6.5). */
   support: SupportState = { posture: 1, carry: 1, down: false };
   knock = 0; carryLevel = 1; supStable = 0; airT = 0; getup = 0;
+  /** How long opponents have held this athlete (s), for the held knock. */
+  heldT = 0;
   /** 0..1 loss of muscle tone after being driven back by a big hit (handed to controllers that take it). */
   stun = 0;
   /** Horizontal direction (x, z) of the last big hit received, the speed along it before that hit (m/s), and
@@ -216,7 +220,8 @@ export class World {
     // A dive loads and pushes off the athlete's own legs, and so does a hip thrust: the posture support leaves the
     // weight to them (the tracking controller's legShare), so it never lifts the athlete or what he drives.
     const ps = p * weightSupport(r);
-    if (ps > 0) fy = clamp(ps * (S.weightShare * m * G + m * SUP.hKp * (r.height - s.segPos[3 * pi + 1]) - m * SUP.hKd * (s.segVel[3 * pi + 1] - r.vel[1])), 0, 1.5 * ps * m * G);
+    // a commanded sink is not braked as a fall; a rise (thrust) gets no help: the legs must drive it
+    if (ps > 0) fy = clamp(ps * (S.weightShare * m * G + m * SUP.hKp * (r.height - s.segPos[3 * pi + 1]) - m * SUP.hKd * (s.segVel[3 * pi + 1] - Math.min(0, r.vel[1]))), 0, 1.5 * ps * m * G);
     this.scene.applyWrench(a.index, pi, [a.carryForce[0], fy + a.carryForce[1], a.carryForce[2]], [0, 0, 0]);
     if (p <= 0) return;
     const H = a.plan.standHeight, kUp = p * SUP.kUp * m * G * H, cUp = 0.5 * p * SUP.cUp * m * H * H;
@@ -271,7 +276,13 @@ export class World {
     const knockAir = clamp((a.airT - (0.08 + 0.015 * speed)) / 0.15, 0, 1);
     // Lifted: an opponent driving up and under him carries part of his weight, so his feet (and their traction) unload.
     const knockLift = clamp((J[1] / SUP.window / (m * G) - LOW.liftStart) / (LOW.liftFull - LOW.liftStart), 0, 1);
-    const target = Math.min(1, Math.max(knockHit, knockTilt, knockAir, knockDriven, knockLift));
+    // Wrapped up, an athlete cannot keep his balance freely: the posture help drains while opponents hold him (one
+    // arm takes it part way, two all the way), so the tackler's weight and pull bring him down unless he breaks free.
+    let held = 0;
+    for (const o of this.athletes) if (o !== a) for (const g of o.grips) if (g.active && g.target?.athlete === a.index) held++;
+    a.heldT = held > 0 ? a.heldT + dt : Math.max(0, a.heldT - 2 * dt);
+    const knockHeld = clamp((a.heldT - HELD.start) / HELD.full, 0, 1) * (held >= 2 ? 1 : HELD.oneArm);
+    const target = Math.min(1, Math.max(knockHit, knockTilt, knockAir, knockDriven, knockLift, knockHeld));
     // rises fast, decays slowly
     a.knock = target > a.knock ? a.knock + (target - a.knock) * Math.min(1, dt / 0.02) : Math.max(target, a.knock - dt * SUP.decay);
     const down = a.downBy !== null, clip = a.controller.debug?.().clip;

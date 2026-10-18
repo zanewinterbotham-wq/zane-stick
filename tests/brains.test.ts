@@ -128,7 +128,8 @@ describe('open field, headless', () => {
       }
       if (d.ended === 'down') { if (touched) { r.tackled++; r.tackleTime += d.repTime; } else r.fallsNoContact++; }
       if (past || d.ended === 'touchdown') r.escaped++;
-      r.jukes += (car.brain as CarrierBrain).jukes;
+      // the world's brain is the drill's possession wrapper; the bot's own brain lives in d.brains
+      r.jukes += (d.brains[d.carrier] as CarrierBrain).jukes ?? 0;
       r.instabilities += w.scene.stats().instabilities;
       d.destroy();
     }
