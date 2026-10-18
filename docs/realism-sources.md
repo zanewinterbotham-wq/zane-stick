@@ -153,6 +153,11 @@ Speed targets for calibration: NFL Next Gen Stats top ball-carrier speeds 9.6–
 reaction at top speed: Weyand 2010 Fpeak 3.62 BW, Favg 2.08 BW, contact 0.108 s. Clark & Weyand 2014: first-half
 stance 2.65 BW in sprinters.
 
+Walk–run transition: people change gait near a Froude number v²/(g·h) of 0.5, h = hip height (Alexander 1989;
+Kram, Domingo & Ferris 1997, also at reduced gravity); preferred transition speed about 2.0 m/s in adults
+(Hreljac 1993: 2.06 m/s). The controller caps the walking reference speed at Froude 0.5 (2.2 m/s for the
+reference athlete).
+
 ## S5 — Equipment, ball, turf, impacts
 
 | Item | Value used | Source |

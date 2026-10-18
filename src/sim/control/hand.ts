@@ -131,6 +131,8 @@ export class HandController implements MotorController {
   private chopStep = false;
   private runMode = false;
   private vRef: Vec3 = [0, 0, 0];
+  /** Walking top speed (m/s): Froude number 0.5 on the hip height. */
+  private walkMax: number;
   /** Walking speed integral (m/s) added to the speed the footholds plan for, and the commanded velocity. */
   private vInt = 0; private vdCmd: Vec3 = [0, 0, 0];
   private prevQ: Float64Array;
@@ -173,6 +175,7 @@ export class HandController implements MotorController {
         phase: 'stance', t: 0, liftPos: [0, 0, 0], target: [0, 0, 0], kneeLand: 0, liftQ: [0, 0],
       } as Leg;
     });
+    this.walkMax = Math.sqrt(0.5 * G * (this.legs[0].ankleH + this.legs[0].L1 + this.legs[0].L2));
     const spine = (j: string) => ['flex', 'latL', 'rotL'].map((d) => this.D(`${j}.${d}`)).filter((i) => i >= 0);
     this.lumbarDofs = spine('lumbar');
     this.thoracicDofs = spine('thoracic');
@@ -289,6 +292,11 @@ export class HandController implements MotorController {
     const lead = g.vLead;
     this.vRef = [clamp(vdx, s.comVel[0] - lead, s.comVel[0] + lead), 0, clamp(vdz, s.comVel[2] - lead, s.comVel[2] + lead)];
     if (mv <= 0.05) this.vRef = [0, 0, 0];
+    // Walking has a top speed: past a Froude number v²/(g·h) of ~0.5 people change to running. Pushed beyond it
+    // the walking cycle sank and fell at ~2.3 m/s (or dropped into a running cycle that cannot hold low speeds yet).
+    // The cap never pulls the reference below the speed the body already has.
+    const vMaxWalk = Math.max(this.walkMax, Math.hypot(s.comVel[0], s.comVel[2])), vRefLen = Math.hypot(this.vRef[0], this.vRef[2]);
+    if (!this.runMode && vRefLen > vMaxWalk) this.vRef = [this.vRef[0] * vMaxWalk / vRefLen, 0, this.vRef[2] * vMaxWalk / vRefLen];
     const vd: Vec3 = this.vRef;
     this.vdCmd = vdRaw;
     const vdMag = Math.hypot(vd[0], vd[2]);
@@ -353,8 +361,9 @@ export class HandController implements MotorController {
       this.walkT = 0; this.chopStep = cmd.chopFeet;
       this.legs[first].liftPos = ank[first];
     }
-    // running (flight phases) above ~3 m/s, back to walking below ~2 m/s
-    if (!this.standing && !this.runMode && speed > 2.6 && vdMag > 2.8) {
+    // running (flight phases) above ~3 m/s, back to walking below ~2 m/s. Entry follows the command, since the walking
+    // reference is capped at the walking top speed.
+    if (!this.standing && !this.runMode && speed > 2.6 && Math.hypot(vdRaw[0], vdRaw[2]) > 2.8) {
       this.runMode = true;
       // the walking swing leg carries on as the running swing leg from where it is now
       const sw = this.legs[1 - this.stanceIdx];
@@ -536,11 +545,14 @@ export class HandController implements MotorController {
       dot([stAnkle[0] - c[0], 0, stAnkle[2] - c[2]], outD) + g.stepWidthMin);
     // Foothold from balance feedback; the foot travels there from where it lifted off along a clearance
     // arc (over the foothold by 80 % of the step, then sets down), solved by leg IK.
-    const hold: Vec3 = [c[0] + fwdD[0] * offS + outD[0] * offL, 0, c[2] + fwdD[2] * offS + outD[2] * offL];
-    sw.target = hold;
     // The trajectory runs ~30 ms ahead of the clock: the swing joints track their targets with about that
     // lag, and without the lead the foot arrives late, behind and still high.
     const wPh = clamp((this.walkT + 0.03) / T, 0, 1);
+    // From 60 % of the swing the foothold stays fixed on the ground. A foothold that kept moving with the COM
+    // carried the foot forward into the turf at 3–4 m/s (2–2.5× body speed): friction stopped it, which braked the
+    // body by ~0.25 m/s every step and held walking near 1.6 m/s.
+    if (wPh < 0.6) sw.target = [c[0] + fwdD[0] * offS + outD[0] * offL, 0, c[2] + fwdD[2] * offS + outD[2] * offL];
+    const hold = sw.target;
     const u = Math.min(1, wPh / 0.8), ease = u * u * (3 - 2 * u);
     // Chopping steps barely lift the feet: a walking-height lift in a 0.22 s step has no time to come back
     // down, so the leg lands late on a bent knee, the foot misses its foothold and the swing whips the pelvis.
