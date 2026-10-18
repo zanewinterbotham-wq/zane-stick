@@ -33,8 +33,9 @@ export class MuscleSet {
   /** Rest-pose inertia of everything distal to each dof about its axis (kg·m²), used to keep gains stable. */
   readonly ieff: Float64Array;
   readonly names: string[];
-  /** Output of the last compute(): torque (N·m) and effort (|torque| / available, 0..1). */
-  readonly torque: Float64Array; readonly effort: Float64Array;
+  /** Output of the last compute(): explicit torque (N·m), implicit damping gain (N·m·s/rad), and
+   *  effort (|total muscle torque| / peak, 0..1). Total muscle torque = torque − damping·qd. */
+  readonly torque: Float64Array; readonly damping: Float64Array; readonly effort: Float64Array;
   strengthScale = 1;
 
   constructor(plan: BodyPlan) {
@@ -47,7 +48,7 @@ export class MuscleSet {
     this.lo = Float64Array.from(dofs.map((x) => x.d.range[0]));
     this.hi = Float64Array.from(dofs.map((x) => x.d.range[1]));
     this.ieff = Float64Array.from(dofs.map(({ j, d }) => distalInertia(plan, j.child, j.pos, d.axis)));
-    this.torque = new Float64Array(this.n); this.effort = new Float64Array(this.n);
+    this.torque = new Float64Array(this.n); this.damping = new Float64Array(this.n); this.effort = new Float64Array(this.n);
   }
 
   index(name: string) { return this.names.indexOf(name); }
@@ -58,17 +59,26 @@ export class MuscleSet {
     return t0 * forceVelocity((sign >= 0 ? qd : -qd) / this.wMax[i]);
   }
 
-  /** Stable-PD style torque (uses predicted angle q + qd·dt), clamped to what the muscle can produce. */
-  compute(t: MuscleTargets, q: Float64Array, qd: Float64Array, dt: number): Float64Array {
+  /** PD + feed-forward, clamped to what the muscle can produce at this joint speed. The damping part is
+   *  returned separately (integrated implicitly by the engine) and is cut back first if the total would
+   *  exceed the muscle's capacity. */
+  compute(t: MuscleTargets, q: Float64Array, qd: Float64Array): void {
     for (let i = 0; i < this.n; i++) {
-      const want = t.kp[i] * (t.q[i] - q[i] - qd[i] * dt) - t.kd[i] * qd[i] + t.tff[i];
-      const cap = this.available(i, want, qd[i]);
-      const tau = want >= 0 ? Math.min(want, cap) : Math.max(want, -cap);
-      this.torque[i] = tau;
-      const peak = (want >= 0 ? this.tPos[i] : this.tNeg[i]) * this.strengthScale;
-      this.effort[i] = peak > 0 ? Math.abs(tau) / peak : 0;
+      let explicit = t.kp[i] * (t.q[i] - q[i]) + t.tff[i];
+      let kd = t.kd[i];
+      const damp = -kd * qd[i];
+      const total = explicit + damp;
+      const cap = this.available(i, total, qd[i]);
+      if (Math.abs(total) > cap) {
+        if (Math.abs(damp) >= cap) { kd = cap / Math.max(1e-6, Math.abs(qd[i])); explicit = 0; }
+        else explicit = (total >= 0 ? cap : -cap) - damp;
+      }
+      this.torque[i] = explicit;
+      this.damping[i] = kd;
+      const applied = explicit - kd * qd[i];
+      const peak = (applied >= 0 ? this.tPos[i] : this.tNeg[i]) * this.strengthScale;
+      this.effort[i] = peak > 0 ? Math.min(1, Math.abs(applied) / peak) : 0;
     }
-    return this.torque;
   }
 }
 

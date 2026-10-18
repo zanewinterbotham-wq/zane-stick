@@ -1,0 +1,11 @@
+:root { --bg: #0e1a12; --ink: #f2f5f0; --dim: #a9b8aa; --accent: #ffb547; --panel: rgba(10, 18, 12, 0.82); }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+#view { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+#loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 20px; background: var(--bg); }
+#hud { position: fixed; inset: 0; pointer-events: none; }
+.panel { position: absolute; background: var(--panel); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 10px 12px; pointer-events: auto; }
+.panel h2 { margin: 0 0 6px; font-size: 14px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent); }
+.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+button, select, input { font: inherit; color: var(--ink); background: #1d2b20; border: 1px solid #3c5440; border-radius: 6px; padding: 4px 8px; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

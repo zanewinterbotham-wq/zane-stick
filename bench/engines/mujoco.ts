@@ -64,7 +64,7 @@ export const mujocoEngine = (variant: '' | 'damped' | 'armature' = ''): BenchEng
     'Generalized (reduced) coordinates: joints cannot separate by construction.'],
   async init() {
     if (!mj) mj = await loadMujoco();
-    // damped: passive joint viscosity 1 N·m·s/rad; armature: + 0.01 kg·m² reflected inertia per joint axis
+    // damped: passive joint viscosity 1 NÂ·mÂ·s/rad; armature: + 0.01 kgÂ·mÂ² reflected inertia per joint axis
     jointDefaults = variant === 'damped' ? '<joint damping="1"/>' : variant === 'armature' ? '<joint damping="1" armature="0.01"/>' : '';
   },
   create(o: WorldOpts): BenchWorld {

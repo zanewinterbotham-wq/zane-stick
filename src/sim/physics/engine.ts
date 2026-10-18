@@ -28,6 +28,8 @@ export interface AthleteState {
   segCom: Float64Array;     // segment COM positions (3 × nSeg)
   segVel: Float64Array;     // segment COM linear velocities (3 × nSeg)
   segAngVel: Float64Array;  // segment angular velocities (3 × nSeg)
+  dofAxis: Float64Array;    // each dof's rotation axis in world (3 × nDof)
+  dofAnchor: Float64Array;  // each dof's joint centre in world (3 × nDof)
   com: Vec3;                // whole-body COM
   comVel: Vec3;             // whole-body COM velocity
 }
@@ -38,6 +40,9 @@ export interface PhysicsScene {
   step(): void;
   /** Joint torques for the next step, plan dof order (N·m). */
   setTorques(athlete: number, tau: Float64Array): void;
+  /** Velocity-proportional muscle torque −kd·qd for the next step (N·m·s/rad), integrated implicitly for
+   *  stability; added to the passive joint damping. The muscle model keeps kd·|qd| within strength. */
+  setDamping(athlete: number, kd: Float64Array): void;
   /** External force and torque at a segment's COM for the next step (world frame). */
   applyWrench(athlete: number, seg: number, force: Vec3, torque: Vec3): void;
   contacts(): ContactReport[];

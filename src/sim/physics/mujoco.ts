@@ -11,7 +11,7 @@ type Any = any;
 let mj: Any = null;
 
 /** Soft end of range [S3]: the limit engages at the active-range norm with low impedance (tissue
- *  stiffening) and becomes nearly rigid ~10� past it (end of passive range). A margin that engages
+ *  stiffening) and becomes nearly rigid ~10° past it (end of passive range). A margin that engages
  *  earlier was unstable at 240 Hz, see git history. */
 const LIMIT_SOLIMP = '0.3 0.99 0.17';
 const LIMIT_TIMECONST = 0.03;
@@ -37,8 +37,9 @@ class MujocoScene implements PhysicsScene {
   readonly athletes: PhysicsScene['athletes'] = [];
   private m: Any; private d: Any;
   private segBody: Int32Array[] = [];     // athlete → segment → MuJoCo body id
-  private dofQ: Int32Array[] = []; private dofV: Int32Array[] = [];
+  private dofQ: Int32Array[] = []; private dofV: Int32Array[] = []; private dofJ: Int32Array[] = [];
   private rootBody: number[] = [];
+  private passiveDamp: Float64Array[] = [];
   private geomLink: LinkRef[] = [];
   private propBody: number[] = [];
   private gripEq: number[][] = [];        // athlete → hand → equality id
@@ -77,7 +78,7 @@ class MujocoScene implements PhysicsScene {
       };
       xml += body(kids(null)[0]);
       for (const [s1, s2] of selfCollisionExcludes(P)) excludes.push(`<exclude body1="a${ai}_${s1}" body2="a${ai}_${s2}"/>`);
-      for (const h of ['L', 'R'].map((sx) => (P.segments.some((x) => x.name === 'hand' + sx) ? 'hand' : 'forearm') + sx)) equalities.push(`<connect name="a${ai}_grip_${h}" body1="a${ai}_${h}" body2="world" anchor="0 0 0" active="false" solref="0.025 1"/>`);
+      for (const sx of ["L", "R"]) { const h = (P.segments.some((x) => x.name === "hand" + sx) ? "hand" : "forearm") + sx; equalities.push(`<connect name="a${ai}_grip_${sx}" body1="a${ai}_${h}" body2="world" anchor="0 0 0" active="false" solref="0.025 1"/>`); }
     });
     desc.props.forEach((p, pi) => {
       const quat = p.quat ? ` quat="${f([p.quat[3], p.quat[0], p.quat[1], p.quat[2]])}"` : '';
@@ -95,15 +96,18 @@ class MujocoScene implements PhysicsScene {
       const P = a.plan;
       this.segBody.push(Int32Array.from(P.segments.map((s) => id('mjOBJ_BODY', `a${ai}_${s.name}`))));
       const jids = P.joints.flatMap((j) => j.dofs.map((dof) => id('mjOBJ_JOINT', `a${ai}_${j.name}_${dof.name}`)));
+      this.dofJ.push(Int32Array.from(jids));
       this.dofQ.push(Int32Array.from(jids.map((j) => m.jnt_qposadr[j])));
       this.dofV.push(Int32Array.from(jids.map((j) => m.jnt_dofadr[j])));
+      this.passiveDamp.push(Float64Array.from(jids.map((j) => m.dof_damping[m.jnt_dofadr[j]])));
       this.rootBody.push(this.segBody[ai][P.segments.findIndex((s) => s.parent === null)]);
-      this.gripEq.push(['handL', 'handR'].map((h) => id('mjOBJ_EQUALITY', `a${ai}_grip_${h}`)));
+      this.gripEq.push(['L', 'R'].map((sx) => id('mjOBJ_EQUALITY', `a${ai}_grip_${sx}`)));
       const nSeg = P.segments.length, nDof = jids.length;
       const state: AthleteState = {
         q: new Float64Array(nDof), qd: new Float64Array(nDof),
         segPos: new Float64Array(3 * nSeg), segQuat: new Float64Array(4 * nSeg), segCom: new Float64Array(3 * nSeg),
-        segVel: new Float64Array(3 * nSeg), segAngVel: new Float64Array(3 * nSeg), com: [0, 0, 0], comVel: [0, 0, 0],
+        segVel: new Float64Array(3 * nSeg), segAngVel: new Float64Array(3 * nSeg),
+        dofAxis: new Float64Array(3 * nDof), dofAnchor: new Float64Array(3 * nDof), com: [0, 0, 0], comVel: [0, 0, 0],
       };
       this.athletes.push({ plan: P, nDof, state });
     });
@@ -139,10 +143,14 @@ class MujocoScene implements PhysicsScene {
     const d = this.d;
     mj.mj_subtreeVel(this.m, d);
     const qpos = d.qpos, qvel = d.qvel, xpos = d.xpos, xquat = d.xquat, xipos = d.xipos, cvel = d.cvel;
-    const subCom = d.subtree_com, subVel = d.subtree_linvel;
+    const subCom = d.subtree_com, subVel = d.subtree_linvel, xaxis = d.xaxis, xanchor = d.xanchor;
     this.athletes.forEach((a, ai) => {
-      const s = a.state, dq = this.dofQ[ai], dv = this.dofV[ai];
-      for (let i = 0; i < a.nDof; i++) { s.q[i] = qpos[dq[i]]; s.qd[i] = qvel[dv[i]]; }
+      const s = a.state, dq = this.dofQ[ai], dv = this.dofV[ai], dj = this.dofJ[ai];
+      for (let i = 0; i < a.nDof; i++) {
+        s.q[i] = qpos[dq[i]]; s.qd[i] = qvel[dv[i]];
+        const j = dj[i];
+        for (let k = 0; k < 3; k++) { s.dofAxis[3 * i + k] = xaxis[3 * j + k]; s.dofAnchor[3 * i + k] = xanchor[3 * j + k]; }
+      }
       const r = this.rootBody[ai];
       const cx = subCom[3 * r], cy = subCom[3 * r + 1], cz = subCom[3 * r + 2];
       s.com[0] = cx; s.com[1] = cy; s.com[2] = cz;
@@ -159,6 +167,11 @@ class MujocoScene implements PhysicsScene {
         s.segVel[3 * i + 2] = cvel[6 * b + 5] + wx * py - wy * px;
       });
     });
+  }
+
+  setDamping(ai: number, kd: Float64Array) {
+    const dv = this.dofV[ai], base = this.passiveDamp[ai], dd = this.m.dof_damping;
+    for (let i = 0; i < kd.length; i++) dd[dv[i]] = base[i] + kd[i];
   }
 
   setTorques(ai: number, tau: Float64Array) {

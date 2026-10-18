@@ -101,11 +101,11 @@ describe('muscles', () => {
     const i = ms.index('kneeL.flex');
     const t = { q: new Float64Array(ms.n), kp: new Float64Array(ms.n), kd: new Float64Array(ms.n), tff: new Float64Array(ms.n).fill(1e6) };
     const q = new Float64Array(ms.n), qd = new Float64Array(ms.n);
-    ms.compute(t, q, qd, 1 / 240);
+    ms.compute(t, q, qd);
     expect(ms.torque[i]).toBeCloseTo(ms.tPos[i], 6);
     expect(ms.effort[i]).toBeCloseTo(1, 6);
     qd[i] = ms.wMax[i] * 0.5; // moving fast in the pushing direction
-    ms.compute(t, q, qd, 1 / 240);
+    ms.compute(t, q, qd);
     expect(ms.torque[i]).toBeLessThan(0.25 * ms.tPos[i]);
   });
   it('effective inertia is larger at the hip than the ankle', () => {
