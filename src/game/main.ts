@@ -243,8 +243,6 @@ class App {
       { label: `Big-hit slow motion: ${s.slowMo ? 'on' : 'off'}`, action: () => { s.slowMo = !s.slowMo; this.save(); this.pauseMenu(); } },
       { label: `Camera: ${this.cam.mode}`, action: () => { this.toggleCamera(); this.pauseMenu(); } },
       { label: `Automatic camera: ${s.autoCamera ? 'on (follows the athlete)' : 'off (mouse look)'}`, action: () => { this.setAutoCamera(!s.autoCamera); this.pauseMenu(); } },
-      { label: `Sprint: ${s.sprintToggle ? 'toggle (press on / off)' : 'hold'}`, action: () => { s.sprintToggle = this.input.sprintToggle = !s.sprintToggle; this.save(); this.pauseMenu(); } },
-      { label: `Sink hips: ${s.sinkToggle ? 'toggle (press on / off)' : 'hold'}`, action: () => { s.sinkToggle = this.input.sinkToggle = !s.sinkToggle; this.save(); this.pauseMenu(); } },
       { label: `Sound: ${s.mute ? 'off' : 'on'}`, action: () => { s.mute = !s.mute; this.audio.muted = s.mute; this.save(); this.pauseMenu(); } },
       { label: 'Tuning panel', hint: 'T', action: () => this.tuning() },
       { label: 'Controls', action: () => this.controls(() => this.pauseMenu()) },
@@ -313,13 +311,24 @@ class App {
       }),
       ...FIXED.map((r) => el('tr', {}, ...r.map((c) => el('td', { text: c })), el('td'))));
     render();
+    // hold or toggle (press on, press again off) for sprint and sink; every rep starts with both off
+    const s = this.settings;
+    const mode = (label: string, get: () => boolean, set: (on: boolean) => void) => {
+      const btn = el('button', { class: 'item', type: 'button' }, '');
+      const show = () => (btn.textContent = `${label}: ${get() ? 'toggle (press on / off)' : 'hold'}`);
+      btn.addEventListener('click', () => { set(!get()); this.save(); show(); });
+      show();
+      return btn;
+    };
+    const sprintMode = mode('Sprint', () => s.sprintToggle, (on) => (s.sprintToggle = this.input.sprintToggle = on));
+    const sinkMode = mode('Sink hips', () => s.sinkToggle, (on) => (s.sinkToggle = this.input.sinkToggle = on));
     const reset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset controls to defaults');
     reset.addEventListener('click', () => { this.settings.bindings = {}; this.input.setKeyboard({}); this.save(); render(); status.textContent = 'Controls reset to the defaults.'; });
     const b = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back');
     b.addEventListener('click', back);
     const box = el('div', { class: 'panel menu wide' }, el('h1', { text: 'Controls' }),
       el('p', { class: 'sub', text: 'Contact mode is automatic: within about 4 m of the ball carrier your athlete settles into a ready stance with the arms up. No control is needed for balance; once you make contact, physics decides who stays up. J / L and I / K always work alongside the mouse, so a touchpad is enough.' }),
-      status, table,
+      status, table, sprintMode, sinkMode,
       el('p', { class: 'sub', text: 'Click the field to capture the mouse; Esc frees it and pauses. Ctrl+W can close the tab unless the browser grants keyboard lock in fullscreen, so C also sinks. Anatomy view, camera view, quality and automatic camera are in the pause menu.' }),
       reset, b);
     this.layer.show(box);
