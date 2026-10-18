@@ -14,6 +14,7 @@ const COOLDOWN: Record<string, number> = {
   hit_big_layer: 0.5, crowd_ooh: 3, voice_grunt: 0.35, voice_exhale: 0.8, foot_plant_skid: 0.5, body_turf_tackle: 0.4,
   body_turf_slide: 0.45, body_dive_land: 0.5, body_getup: 1, ball_catch: 0.3, ball_bounce: 0.08, ball_hit_body: 0.1,
   air_whoosh: 0.12, game_whistle_start: 1, ui_move: 0.03, ui_slider_tick: 0.06,
+  bone_crack: 0.05, pain_scream: 0.6, pain_moan: 1.2, ko_thud: 0.3, ko_ring: 2,
 };
 const DEFAULT_COOLDOWN = 0.03;
 const HIT_CAT: Record<HitKind, string> = { helmet: 'hit_helmet_helmet', helmetPads: 'hit_helmet_pads', pads: 'hit_pads_pads', body: 'hit_body_body', grab: 'hit_grab_jersey' };

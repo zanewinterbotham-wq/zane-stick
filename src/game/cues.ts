@@ -1,5 +1,5 @@
 // Sound cues read from the world after each step: footsteps, cuts, falls, slides, get-ups, dives, arm swings,
-// breaths and the ball. Presentation only: reads the sim, never writes to it. Hits come from HitMeter (feel.ts).
+// breaths, the ball, and injuries (bone cracks, screams, knockouts, moans on the turf). Presentation only: reads the sim, never writes to it. Hits come from HitMeter (feel.ts).
 import type { Vec3 } from '../sim/math';
 import { Rng } from '../sim/rng';
 import type { World } from '../sim/world';
@@ -20,12 +20,15 @@ const SLIDE_SPEED = 2;
 /** Contact must have been broken this long before touching again is a new fall (s): a body on the turf, or a
  *  rolling ball, flickers in and out of contact every few steps. */
 const FALL_GAP = 0.5, BALL_GAP = 0.1;
+/** An athlete out of play moans on the turf: first this long after the injury (s; a knockout comes round later),
+ *  then every MOAN.every s (range). */
+const MOAN = { after: 1.5, afterKo: 3, every: [2.5, 5] as const };
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
 interface Track {
   downAt: number; touching: boolean[]; air: number[]; clip: string; dive: string; flightAt: number;
-  thrust: boolean; handFast: boolean[]; vAvg: [number, number]; skidAt: number; skidArmed: boolean; breathIn: number;
+  thrust: boolean; handFast: boolean[]; vAvg: [number, number]; skidAt: number; skidArmed: boolean; breathIn: number; moanAt: number;
 }
 
 export class SoundCues {
@@ -34,6 +37,7 @@ export class SoundCues {
   private ballAt = new Map<number, number>(); // when the ball last touched each athlete (index) or the turf (−1)
   private ballVel: ArrayLike<number> = [0, 0, 0];
   private rng = new Rng(0xb1ea7);
+  private injuriesSeen = 0;
 
   /** `ball`: the ball's prop index. */
   constructor(private ball: number) {}
@@ -45,7 +49,7 @@ export class SoundCues {
       const vx = s.comVel[0], vz = s.comVel[2], speed = Math.hypot(vx, vz), down = a.downBy !== null;
       const clip = String(a.controller.debug?.().clip ?? ''), dive = a.controller.root?.()?.dive ?? 'none';
       const tr = this.tr[i] ??= { downAt: down ? t : -Infinity, touching: a.feet.map((f) => f.touching), air: [0, 0], clip, dive, flightAt: -Infinity,
-        thrust: a.cmd.thrustHips, handFast: [false, false], vAvg: [vx, vz], skidAt: 0, skidArmed: false, breathIn: 1 };
+        thrust: a.cmd.thrustHips, handFast: [false, false], vAvg: [vx, vz], skidAt: 0, skidArmed: false, breathIn: 1, moanAt: Infinity };
       const grounded = a.feet[0].touching || a.feet[1].touching;
 
       a.feet.forEach((f, k) => {
@@ -85,9 +89,20 @@ export class SoundCues {
         out.push({ cat: 'voice_exhale', loud: 0.7, pos: seg('head') });
         tr.breathIn = this.rng.range(1.2, 2.6);
       }
+      if (a.injury.out && down && t >= tr.moanAt) { out.push({ cat: 'pain_moan', loud: 0.8, pos: seg('head') }); tr.moanAt = t + this.rng.range(...MOAN.every); }
       if (down) tr.downAt = t;
       Object.assign(tr, { clip, dive, thrust: a.cmd.thrustHips });
     });
+
+    // injuries: the break cracks at the joint and he screams; a knockout lands with a thud and a ringing; then moans
+    for (const e of w.injuries.slice(this.injuriesSeen)) {
+      const s = w.scene.athletes[e.athlete].state, hi = w.athletes[e.athlete].segIndex.get('head') ?? 0, head: Vec3 = [s.segPos[3 * hi], s.segPos[3 * hi + 1], s.segPos[3 * hi + 2]];
+      if (e.kind === 'break') out.push({ cat: 'bone_crack', loud: clamp01(0.7 + e.load / 2000), pos: e.pos }, { cat: 'pain_scream', loud: 1, pos: head });
+      else out.push({ cat: 'ko_thud', loud: 1, pos: head }, { cat: 'ko_ring', loud: 0.7, pos: head });
+      const tr = this.tr[e.athlete];
+      if (tr) tr.moanAt = Math.min(tr.moanAt, t + (e.kind === 'ko' ? MOAN.afterKo : MOAN.after));
+    }
+    this.injuriesSeen = w.injuries.length;
 
     // the ball: held while the ball carrier's hand grips it (attached at rep start and on a recovery)
     const held = w.ballCarrier >= 0 && w.gripping(w.ballCarrier, { athlete: -1, seg: this.ball }) >= 0;

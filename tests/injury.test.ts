@@ -9,6 +9,7 @@ import { BREAK } from '../src/sim/injury';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
 import { supportRunScenario } from '../src/sim/scenarios';
 import { World } from '../src/sim/world';
+import { SoundCues } from '../src/game/cues';
 import { collide, technique } from './helpers/contact';
 import { STD } from './helpers/scenario';
 
@@ -18,6 +19,7 @@ beforeAll(() => mujocoEngine.init());
  *  him, and a force on one segment (at its proximal joint, or with `atCom` its centre of mass) for `dur` s from t = 1 s. */
 async function blow(seg: string, force: [number, number, number], dur: number, seconds: number, o: { engaged?: boolean; atCom?: boolean }, onStep?: (w: World) => void) {
   const setup = supportRunScenario(STD, null).setup;
+  setup.props = [{ name: 'ball', shape: 'ellipsoid', size: [0.085, 0.085, 0.14], mass: 0.4, pos: [3, 0.1, 3] }]; // for the sound cues
   if (o.engaged) setup.athletes.push({ ...setup.athletes[0], pos: [0, 0, 0.45], yaw: Math.PI, team: 1 });
   const w = await World.create(mujocoEngine, setup);
   const k = w.athletes[0].segIndex.get(seg)!, s = w.scene.athletes[0].state;
@@ -94,9 +96,11 @@ describe('limb breaks', () => {
 describe('knockout', () => {
   it('a hard blow to the head knocks him out: no get-up, no support, limp, for the rest of the rep', async () => {
     let posture = 0, getup = false, maxPelvis = 0;
+    const cues = new SoundCues(0), heard: string[] = [];
     // 150 N·s on the helmet in 10 ms, from the side (a blindside shot)
     const w = await blow('head', [15000, 0, 0], 0.01, 7, { atCom: true }, (w) => {
       const a = w.athletes[0];
+      heard.push(...cues.step(w).map((c) => c.cat));
       if (w.time < 1.05) return;
       posture = Math.max(posture, w.view(a).support!.posture);
       getup ||= a.controller.debug?.().clip === 'getup';
@@ -108,6 +112,9 @@ describe('knockout', () => {
     expect(posture).toBe(0);
     expect(getup).toBe(false);
     expect(maxPelvis).toBeLessThan(0.5);
+    // the blow lands with a thud and a ringing, then he moans on the turf every few seconds
+    expect(heard.filter((c) => c.startsWith('ko_'))).toEqual(['ko_thud', 'ko_ring']);
+    expect(heard.filter((c) => c === 'pain_moan').length).toBeGreaterThanOrEqual(1);
     expect(w.scene.stats().instabilities).toBe(0);
     w.destroy();
   });
