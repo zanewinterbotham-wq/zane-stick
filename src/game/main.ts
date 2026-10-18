@@ -382,7 +382,16 @@ class App {
   }
 }
 
-if (params.get('scenario')) void devScenario(params.get('scenario')!).catch((e) => console.error(e));
+if (params.get('bench') === '1') {
+  // automation hook (bench/presets.ts): run the in-game benchmark and publish the results
+  void (async () => {
+    await mujocoEngine.init();
+    document.getElementById('loading')!.textContent = 'Benchmarking…';
+    const rs = await runBenchmark(canvas);
+    (window as unknown as { __bench: unknown }).__bench = { results: rs, report: reportText(rs) };
+    document.getElementById('loading')!.textContent = reportText(rs);
+  })().catch((e) => console.error(e));
+} else if (params.get('scenario')) void devScenario(params.get('scenario')!).catch((e) => console.error(e));
 else {
   const app = new App();
   (window as unknown as { __app: App }).__app = app;

@@ -55,6 +55,8 @@ export interface PhysicsScene {
   gripForce(athlete: number, hand: 0 | 1): number;
   propPose(prop: number): { pos: Vec3; quat: Quat };
   propVel(prop: number): Vec3;
+  /** Setup only (tests): give a whole athlete an initial linear velocity, e.g. to start a run test at speed. */
+  setInitialVelocity(athlete: number, v: Vec3): void;
   /** Setup only: set an athlete's joint angles (plan dof order) at rest and refresh kinematics. */
   setJointAngles(athlete: number, q: ArrayLike<number>): void;
   /** Setup only (before a rep starts): place a dynamic prop at rest. Never used during play. */

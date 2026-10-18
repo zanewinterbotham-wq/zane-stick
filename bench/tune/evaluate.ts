@@ -15,8 +15,9 @@ function withGains(sc: Scenario, gains: Partial<Gains>): Scenario {
 
 interface Run { survived: number; duration: number; tilt: number; vFwd: number[]; vLat: number[]; comY: number[]; excursion: number }
 
-async function run(sc: Scenario, duration: number): Promise<Run> {
+async function run(sc: Scenario, duration: number, v0 = 0): Promise<Run> {
   const w = await World.create(mujocoEngine, sc.setup);
+  if (v0) w.scene.setInitialVelocity(0, [0, 0, v0]);
   const a = w.athletes[0], s = w.scene.athletes[0].state;
   const ti = a.segIndex.get('thorax') ?? a.segIndex.get('trunk')!;
   const c0 = [...s.com];
@@ -56,6 +57,14 @@ export async function evaluate(gains: Partial<Gains>): Promise<{ score: number; 
     const sag = Math.max(0, 1.0 - Math.min(...r.comY, 1.07));
     // speed error weighted so that standing still always scores worse than trying and falling late
     parts[gait] = fall(r) + (gait === 'walk' ? 25 : 12) * Math.abs(mean(late) - v) + 3 * rms(lat) + 3 * r.tilt + 10 * sag;
+  }
+  // running: start already moving at 4 m/s (test setup), hold jog speed for 5 s
+  {
+    const sc = withGains(runScenario(PHYS, 'jog', { duration: 5 }), gains);
+    sc.setup.athletes[0].brain = new ScriptBrain((_t, _p, c) => { c.gait = 'jog'; c.move = { x: 0, z: 1 }; });
+    const r = await run(sc, 5, 4);
+    const late = r.vFwd.slice(Math.floor(r.vFwd.length / 3));
+    parts.run = fall(r) + 8 * Math.abs(mean(late) - 4.2) + 3 * rms(r.vLat) + 3 * r.tilt;
   }
   // chopping the feet in place: must stay up and stay put
   {

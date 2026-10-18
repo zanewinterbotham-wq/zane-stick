@@ -136,32 +136,35 @@ actuator and soft limit. Limits are soft: a stiff but compliant limit spring eng
 
 ### 5.4 Muscles
 
-One actuator per joint axis, each direction with its own peak torque (e.g. hip extension is
-stronger than flexion). Available torque:
+One actuator per joint axis, each direction with its own peak torque (hip extension is stronger than
+flexion, and so on). Available torque (`src/sim/muscles.ts`):
 
 ```
-T_avail(ω) = T0 × f_v(ω / ω_max)
-f_v(x) = (1 − x) / (1 + x / k)      concentric (x ≥ 0), k ≈ 0.25 (Hill curvature)
-f_v(x) = 1.3 − 0.3 × (1 + x) …      eccentric (x < 0), capped at 1.4 × T0
+T_avail(ω) = T0 × f_v(x),  x = shortening speed / ω_max
+f_v(x) = (1 − x) / (1 + x / k)                 concentric, k = 0.3 (Hill curvature)
+f_v(x) = 1.3 − 0.3 (1 + x) / (1 − 5x)           eccentric (lengthening), plateau 1.3 × T0
 ```
 
-The controller outputs an **activation** a ∈ [−1, 1] per actuator; torque = a × T_avail in that
-direction. Hand-built and learned controllers use exactly the same mapping, so neither can exceed
-the body's strength. Strength and speed sliders scale `T0` and `ω_max`; they never touch physics.
-**Effort** per segment = max |a| of the actuators driving it, used for effort shading.
+Controllers send **muscle targets** per actuator: target angle, target velocity, stiffness, damping and
+a feed-forward torque. The muscle turns them into torque and clamps the total to T_avail in that
+direction. The damping part is integrated implicitly by the engine (MuJoCo joint damping set every
+step) for numerical stability, and is cut back first if it would exceed the muscle's capacity. A
+learned controller would send the same targets (or a pure feed-forward torque) through the same limits.
+Strength and speed sliders scale `T0` and `ω_max`; they never touch physics.
+**Effort** per actuator = |applied torque| / peak; effort shading tints each segment by the largest
+effort of the muscles driving it.
 
 ### 5.5 Equipment
 
 | Item | Mass | Shape | Attached to |
 |---|---|---|---|
-| helmet + facemask | 2.0 kg | sphere shell + facemask capsule, soft contact | head |
-| shoulder pads | 2.5 kg | box shell wider than thorax, soft contact | thorax (+ clavicles at Standard) |
-| jersey | 0.3 kg | no collision; grab points on thorax with stretch and tear strength | thorax |
-| cleats | 0.35 kg each | adds to foot/toe mass; studs give turf traction | feet |
+| helmet + facemask | 1.95 kg | sphere r 0.135 m + facemask capsule | head |
+| shoulder pads | 2.2 kg | box shell wider than the thorax, softer contact (solref 20 ms) | thorax |
+| jersey | 0.3 kg | no collision; a hand grip on thorax/lumbar/pelvis is a jersey grab (60 ms compliance, tears at 400 N) | thorax |
+| cleats | 0.32 kg each | adds to foot/toe mass; 25 mm sole + studs; turf traction μ 1.2, rotational 0.05 m | feet |
 
-Equipment mass is added on top of body mass at its segment. Pads and helmet use softer contact
-parameters than bare body segments (compliant on contact). Jersey grabs are a grip on a jersey
-point that has its own slack (stretch) and breaking strength.
+Equipment mass is added on top of body mass at its segment. All values and sources:
+`docs/realism-sources.md` §S5.
 
 ### 5.6 Ground and ball
 
@@ -187,63 +190,64 @@ COM, its ground projection, base-of-support polygon, and contact force arrows (l
 
 ### 6.1 Layers
 
-1. **Brain** — `HumanBrain` (reads input) or `BotBrain` (AI). Outputs `Commands` once per step.
-2. **Motor controller** — `MotorController.compute(state: BodyState, cmd: Commands, dt):
-   Activations`. Interface only; the hand-built `HandController` is the first implementation and a
+1. **Brain** — `HumanBrain` (reads input) or a bot brain (`CarrierBrain` in Phase 1). Outputs `Commands`
+   once per physics step through `Brain.think(perception, dt)`.
+2. **Motor controller** — `MotorController.compute(view: BodyView, cmd: Commands, out: MuscleTargets)`.
+   `BodyView` is the athlete's own body state (joint angles and speeds, segment poses and velocities,
+   joint axes, COM) plus foot contacts. The hand-built `HandController` is the first implementation; a
    learned network can replace it per player.
-3. **Body** — muscles + physics.
+3. **Body** — muscles (`MuscleSet`) + physics.
 
 ### 6.2 Commands (shared vocabulary)
 
-```ts
-interface Commands {
-  move: { x, z };          // desired ground velocity direction × magnitude 0..1 (world frame)
-  face: { x, z } | null;   // desired facing; null = face move direction
-  speed: 'walk'|'jog'|'sprint';  // from stick magnitude / sprint button
-  contactMode: boolean;
-  armL, armR: number;      // reach 0..1 (both = both arms)
-  gripL, gripR: boolean;
-  wrap: boolean;
-  shoot: boolean;
-  sink: number;            // hip sink depth 0..1
-  thrustHips: boolean;
-  driveLegs: number;       // 0..1
-  chopFeet: boolean;
-  lean: { fwd, side };     // −1..1
-  headTuck: boolean;
-  plantCut: -1|0|1;
-  dive: boolean;
-  aim: Vec3 | null;        // optional reach target (bots, lock-on)
-}
-```
+See `src/sim/control/types.ts`: move direction and magnitude, facing, gait (walk/jog/sprint), contact
+mode, arm reach L/R, grip L/R, wrap, shoot hands, sink depth, thrust hips, drive legs, chop feet, lean
+(forward/side), head tuck, plant-to-cut, dive, carry (ball in left/right arm), and an optional aim point.
 
-### 6.3 Hand-built controller
+### 6.3 Hand-built controller (`src/sim/control/hand.ts`)
 
-- **Posture**: per-joint PD toward a target pose, converted to activations by dividing by
-  available torque (so saturation is real).
-- **Balance**: SIMBICON-style. Torso orientation is held by the stance hip(s) (virtual torque on the
-  pelvis realised through hip actuators), COM velocity is regulated by foot placement:
-  `foot target = COM + v·T_step·c_v + d`, plus a capture-point check for push recovery. Stance-leg
-  virtual forces (Jacobian-transpose) supply body-weight support and propulsion through the ground.
-- **Gait**: a phase oscillator per leg drives stance/swing timing; step frequency and length grow
-  with commanded speed. Sprint: forward lean, higher hip-extension effort, toe push-off.
-- **Cut**: plant the outside foot ahead of the COM, rotate the torso into the new direction, push.
-- **Contact behaviours**: each body-part command becomes posture targets + effort levels (arm reach
-  targets, wrap = shoulder adduction + elbow flexion + grips, sink = hip/knee flexion, thrust = hip
-  extension burst, drive legs = sprint gait with forward lean, dive = hip extension + forward lean
-  while releasing balance).
+All of it ends in per-joint muscle targets plus feed-forward torques, limited by the muscles:
 
-### 6.4 Balance assist
+- **Standing balance**: capture-point (divergent component of motion) control chooses where the centre
+  of pressure should be; the stance legs produce the matching ground force through Jacobian-transpose
+  feed-forward (ankle strategy), and lateral balance shifts load between the feet.
+- **Trunk**: SIMBICON-style. The pelvis is held in world orientation through the stance hip(s), which
+  also cancel the swing hip's reaction torque (estimated from the swing targets, clamped to muscle
+  capacity). The spine and neck get absolute targets relative to the pelvis and thorax, plus world
+  feedback. Yaw torque is capped at what cleat rotational traction can transmit.
+- **Gravity compensation** (Coros et al. 2010) for spine, neck, arms and the swing leg, so joint
+  stiffness only corrects errors.
+- **Walking / stepping**: a timed step cycle (~0.5 s steps at a brisk walk). Footholds come from
+  capture-point placement: sagittal offset for the commanded speed (speed reference ramped at a human
+  acceleration rate); lateral offset W/(1 + e^(ωT)) for a periodic gait (Englsberger 2015) plus drift
+  correction. The swing foot follows a sin² clearance arc (lands with no downward speed), solved by
+  analytic leg IK (verified against forward kinematics). Late-stance push-off plantarflexes the ankle.
+  The stance knee carries the height-regulating force; the stance ankle's torque is scaled by the load
+  actually on the foot.
+- **Running** (above ~3 m/s): contact time ≈ 0.95/v s, cadence up to ~4.7 steps/s (Weyand et al.).
+  A half-sine vertical push sized to carry body weight over the step, horizontal propulsion through the
+  foot (friction- and strength-limited), Raibert foot placement, heel recovery in swing.
+- **Chop feet**: quick (0.22 s) steps in place.
+- **Contact behaviours**: arm reach, shoot hands and wrap reshape arm targets; grips form only where a
+  hand touches something (`World.updateGrips`) and break when the constraint force exceeds grip (or
+  jersey) strength; sink lowers the COM target and leans the trunk; thrust hips raises it and pulls the
+  trunk upright; drive legs = sprint gait; dive = load, explode, fly phases with balance released.
+- **Gains** are tuned offline by CMA-ES (`bench/tune`) over standing, walking, jogging, running, chop
+  steps and pushes from four directions at several presets. They are capped for stability at a 240 Hz
+  reference so every preset uses the same gains.
 
-An invisible force/torque on pelvis and thorax that only steadies posture and supports body weight:
+### 6.4 Balance assist (`World.applyAssist`)
 
-- Vertical force on the pelvis up to `assist × m × g × w` where w is a support fraction based on how
-  far the pelvis is below its commanded height, and only while at least one foot is on the ground.
-- Orientation torque on pelvis and thorax toward upright (tilting allowed by lean commands).
+An invisible force/torque on the pelvis and thorax that only steadies posture and supports body weight:
+
+- Vertical force on the pelvis of `assist × 0.5 × m × g × w`; w fades from 1 to 0 as the pelvis drops
+  below ~75 % of standing height, so it never holds up a falling body. At 100 % it carries half the
+  body weight. Only while at least one foot touches the ground.
+- Roll/pitch torque on the pelvis and thorax toward upright, with angular-rate damping.
 - **Never horizontal force.** Horizontal acceleration comes only from feet on turf.
-- Fades to 0 in 0.15 s when contact with another player begins; stays 0 until players separate
-  and the athlete has had stable footing (a foot down, COM over base of support) for 0.3 s.
-- Strength 0–100 %, default chosen as low as possible (Phase 1 report gives the measured value).
+- Fades to 0 within 0.15 s when contact with another player begins; returns only after the players
+  separate and the athlete has had stable footing for 0.3 s.
+- Strength 0–100 % (tuning panel); the Phase 1 report gives the level needed.
 
 If leg-driven running cannot reach believable speeds under these limits, the project stops and
 reports instead of adding a propulsion force.
@@ -422,10 +426,10 @@ required; any CC0 sample used later is credited in `docs/realism-sources.md`.
 
 | Preset | Step rate | Solver iters | Body detail | Render scale | Shadows | Effects |
 |---|---|---|---|---|---|---|
-| Minimum | 240 Hz* | low | Minimum | 0.6 | off | off |
+| Minimum (Phase 1) | 240 Hz | 20 | Minimum | 0.6 | off | off |
 | Low | 240 Hz | low | Standard | 0.75 | off | off |
 | Medium | 240 Hz | medium | Standard | 1.0 | basic | low |
-| High | 480 Hz | high | Standard | 1.0 | soft | on |
+| High (Phase 1) | 480 Hz | 40 | Standard | 1.0 | soft | on |
 | Ultra (desktop) | 960 Hz | max | Ultra | 1.0–1.5 | soft hi-res | all |
 | Custom | any | any | any | any | any | any |
 

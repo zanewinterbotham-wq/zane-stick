@@ -29,11 +29,16 @@ Engine comparison: `docs/physics-benchmark.md`.
 - Layers: Brain → `Commands` → MotorController → activations → Muscles → PhysicsEngine.
 
 ## Commands
-- `npm run dev` — Vite dev server
-- `npm test` — Vitest unit + headless physics tests
-- `npm run test:e2e` — Playwright against the built site
-- `npm run build` — production build to `dist/`
-- `npm run bench:engines` — physics engine comparison (Node)
+- `npm run dev` — Vite dev server (`?scenario=stand|push|walk|jog|sprint|cut` for headless-style views,
+  `?bench=1` runs the in-game benchmark)
+- `npm test` — Vitest unit + fast physics tests (CI gate for deploys)
+- `npm run test:realism` — the realism contract (balance, pushes, determinism, preset consistency; slow)
+- `npm run test:e2e` — Playwright against the built site (screenshots in `test-results/`)
+- `npm run build` — production build to `dist/`; pushes to `main` deploy to GitHub Pages
+- `npm run bench:engines` — physics engine comparison; `npx tsx bench/presets/run.ts` — per-preset cost
+  at 1x/4x/6x CPU throttling (needs a build)
+- `npx tsx bench/tune/run.ts <generations> <workers> <population>` — CMA-ES controller gain tuning;
+  best result in `bench/out/gains-best.json`
 - `npm run typecheck`
 
 ## How to verify a change
@@ -43,5 +48,12 @@ Engine comparison: `docs/physics-benchmark.md`.
 3. UI changes: `npm run build && npm run test:e2e`, review screenshots in `test-results/`.
 4. Commit in small steps with clear messages.
 
+## Gotchas
+- Edit files with UTF-8 aware tools; Windows Python defaults to cp1252 and corrupts `·`, `²`, `—`.
+- MuJoCo silently resets on divergence: `scene.stats().instabilities` must stay 0 in tests.
+- Controller gains interact; after a structural controller change, re-run `bench/tune`.
+
 ## Current phase
 Phase 1 (foundation and first playable). Do not start Phase 2.
+Status: engine chosen (MuJoCo), anatomy, muscles, game shell, drill, presets, deployment done;
+standing balance passes; walking/running and push recovery still being tuned.
