@@ -1,0 +1,92 @@
+import { expect, test, type Page } from '@playwright/test';
+
+const KEY = 'zane-stick-settings-v1';
+const stored = (page: Page) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? '{}'), KEY);
+const openSettings = (page: Page) => page.getByRole('button', { name: 'Settings', exact: true }).click();
+const tab = (page: Page, name: string) => page.getByRole('tab', { name }).click();
+
+function watchErrors(page: Page) {
+  const errors: string[] = [];
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('pageerror', (e) => errors.push(e.message));
+  return errors;
+}
+
+test('settings: title menu has Settings and no skin button; every tab opens, a value changes and persists', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { sessionStorage.setItem('seeded', '1'); localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })); } });
+  await page.goto('/');
+  await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
+  await expect(page.getByRole('button', { name: /Skin:|Difficulty:|Quality:/ })).toHaveCount(0);
+  await openSettings(page);
+  await expect(page.getByRole('tab')).toHaveText(['Gameplay', 'Controls', 'Camera', 'Graphics', 'Audio', 'Gore', 'Advanced']);
+
+  await page.screenshot({ path: 'test-results/settings-gameplay.png' });
+  await page.getByRole('slider', { name: 'Hit power' }).fill('2.5');
+
+  await tab(page, 'Controls');
+  await page.screenshot({ path: 'test-results/settings-controls.png' });
+  await page.getByRole('button', { name: 'Sink hips: toggle (press on / off)' }).click();
+
+  await tab(page, 'Camera');
+  await page.screenshot({ path: 'test-results/settings-camera.png' });
+  await page.getByRole('button', { name: 'Camera view: Helmet' }).click();
+
+  await tab(page, 'Graphics');
+  await page.screenshot({ path: 'test-results/settings-graphics.png' });
+  await page.getByRole('button', { name: 'Quality: High' }).click();
+  await page.getByRole('button', { name: 'Effort shading: Off' }).click();
+
+  await tab(page, 'Audio');
+  await page.screenshot({ path: 'test-results/settings-audio.png' });
+  await page.getByRole('button', { name: 'Sound: Off' }).click();
+
+  await tab(page, 'Gore');
+  await page.screenshot({ path: 'test-results/settings-gore.png' });
+  await page.getByRole('button', { name: 'Gore: High' }).click();
+
+  await tab(page, 'Advanced');
+  await page.screenshot({ path: 'test-results/settings-advanced.png' });
+  await page.getByRole('button', { name: 'Performance overlay: On' }).click();
+
+  expect(await stored(page)).toMatchObject({ hitPower: 2.5, sinkToggle: true, camera: 'helmet', preset: 'high', effortShading: false, mute: true, goreLevel: 3, overlay: true });
+
+  // a reload keeps all of it
+  await page.reload();
+  await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
+  await openSettings(page);
+  await expect(page.getByRole('slider', { name: 'Hit power' })).toHaveValue('2.5');
+  await tab(page, 'Controls');
+  await expect(page.getByRole('button', { name: 'Sink hips: toggle (press on / off)' })).toHaveAttribute('aria-pressed', 'true');
+  await tab(page, 'Camera');
+  await expect(page.getByRole('button', { name: 'Camera view: Helmet' })).toHaveAttribute('aria-pressed', 'true');
+  await tab(page, 'Graphics');
+  await expect(page.getByRole('button', { name: 'Quality: High' })).toHaveAttribute('aria-pressed', 'true');
+  await tab(page, 'Audio');
+  await expect(page.getByRole('button', { name: 'Sound: Off' })).toHaveAttribute('aria-pressed', 'true');
+  await tab(page, 'Gore');
+  await expect(page.getByRole('button', { name: 'Gore: High' })).toHaveAttribute('aria-pressed', 'true');
+  await tab(page, 'Advanced');
+  await expect(page.getByRole('button', { name: 'Performance overlay: On' })).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.menu h1')).toHaveText('ZANE STICK');
+  expect(errors).toEqual([]);
+});
+
+test('settings: the pause menu keeps only Resume, Reset rep, Settings, Inventory and Quit', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
+  await page.goto('/');
+  await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.menu h1')).toHaveText('Paused');
+  await expect(page.locator('.menu .item')).toHaveCount(5);
+  await page.screenshot({ path: 'test-results/settings-pause-menu.png' });
+  await openSettings(page);
+  await expect(page.locator('.menu h1')).toHaveText('Settings');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.locator('.menu h1')).toHaveText('Paused');
+  expect(errors).toEqual([]);
+});

@@ -25,6 +25,8 @@ type AppHandle = {
   __lockKeys?: string[];
 };
 
+const settingsTab = (page: Page, name: string) => page.getByRole('button', { name: 'Settings', exact: true }).click().then(() => page.getByRole('tab', { name }).click());
+
 async function startRep(page: Page) {
   // skip the first-launch benchmark for speed; it has its own test below
   await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
@@ -149,8 +151,9 @@ test('J / L and I / K always work alongside the mouse, with or without the autom
   await page.screenshot({ path: 'test-results/08-no-keyboard-lock.png' });
   await page.keyboard.press('Escape');
   await expect(page.locator('.menu h1')).toHaveText('Paused');
-  await page.getByRole('button', { name: /Automatic camera: off/ }).click();
-  await page.getByRole('button', { name: 'Controls' }).click();
+  await settingsTab(page, 'Camera');
+  await page.getByRole('button', { name: 'Automatic camera: On' }).click();
+  await page.getByRole('tab', { name: 'Controls' }).click();
   await expect(page.locator('tr[data-action=torsoDown] .keys-cell')).toHaveText('K');
   await expect(page.locator('tr[data-action=armL] .keys-cell')).toHaveText('Left click / J');
   await page.screenshot({ path: 'test-results/08b-controls-auto.png', fullPage: true });
@@ -215,7 +218,7 @@ test('controls rebind live and persist; reserved keys are refused; reset restore
   const errors = watchErrors(page);
   await page.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { sessionStorage.setItem('seeded', '1'); localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })); } });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Controls' }).click();
+  await settingsTab(page, 'Controls');
   const cell = (a: string) => page.locator(`tr[data-action=${a}] .keys-cell`);
   await expect(cell('dive')).toHaveText('E');
   await page.getByRole('button', { name: /^Replace Dive/ }).click();
@@ -240,7 +243,7 @@ test('controls rebind live and persist; reserved keys are refused; reset restore
   await expect.poll(async () => (await latest(page)).held).toContain('dive');
   await page.keyboard.up('KeyQ');
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Controls' }).click();
+  await settingsTab(page, 'Controls');
   await page.getByRole('button', { name: 'Reset controls to defaults' }).click();
   await expect(cell('dive')).toHaveText('E');
   await expect(cell('thrust')).toHaveText('Space');
@@ -251,7 +254,9 @@ test('helmet camera sits at the eyes every frame and hides the own head', async 
   const errors = watchErrors(page);
   await startRep(page);
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: /Camera: chase/ }).click();
+  await settingsTab(page, 'Camera');
+  await page.getByRole('button', { name: 'Camera view: Helmet' }).click();
+  await page.keyboard.press('Escape'); // Esc steps back to the pause menu
   await page.getByRole('button', { name: /Resume/ }).click();
   const probe = () => page.evaluate(() => {
     const app = (window as unknown as AppHandle).__app, w = app.drill.world, r = app.renderer;
@@ -268,7 +273,9 @@ test('helmet camera sits at the eyes every frame and hides the own head', async 
   expect(run.dist).toBeLessThan(0.25);
   expect([run.own, run.other]).toEqual([false, true]);
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: /Camera: helmet/ }).click();
+  await settingsTab(page, 'Camera');
+  await page.getByRole('button', { name: 'Camera view: Chase' }).click();
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: /Resume/ }).click();
   await page.waitForTimeout(300);
   expect((await probe()).own).toBe(true);
@@ -303,7 +310,7 @@ test('controls screen lists the mouse controls and the game keys', async ({ page
   const errors = watchErrors(page);
   await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
   await page.goto('/');
-  await page.getByRole('button', { name: 'Controls' }).click();
+  await settingsTab(page, 'Controls');
   for (const t of ['Left click', 'Right click', 'Scroll', 'Ctrl', 'Space', 'Shift', 'Esc', 'Enter']) await expect(page.locator('.menu')).toContainText(t);
   await expect(page.locator('.menu')).toContainText('Dive forward'); // owner asked for dive on E
   await page.screenshot({ path: 'test-results/10-controls.png', fullPage: true });
@@ -319,7 +326,8 @@ test('tuning panel shows the support, speed and strength sliders; HUD shows spee
   await page.screenshot({ path: 'test-results/06-sprint-speedo.png' });
   await page.keyboard.up('KeyW'); await page.keyboard.up('ShiftLeft');
   await page.keyboard.press('KeyT');
-  await expect(page.locator('.menu h1')).toHaveText('Tuning');
+  await expect(page.locator('.menu h1')).toHaveText('Settings');
+  await expect(page.getByRole('tab', { name: 'Advanced' })).toHaveAttribute('aria-selected', 'true');
   for (const label of ['Support: strength', 'Support: carry accel (m/s²)', 'Support: weight share', 'Support: tilt fade start', 'Support: tilt fade end', 'Support: big hit (N·s)', 'Support: tracking stiffness ×', 'Athlete speed ×', 'Muscle strength ×']) {
     await expect(page.getByRole('slider', { name: label })).toBeVisible();
   }
@@ -333,8 +341,9 @@ test('difficulty screen: presets, the independent sliders and hit power, remembe
   const errors = watchErrors(page);
   await page.addInitScript(() => { if (!localStorage.getItem('zane-stick-settings-v1')) localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })); });
   await page.goto('/');
-  await page.getByRole('button', { name: /^Difficulty: Normal/ }).click();
-  await expect(page.locator('.menu h1')).toHaveText('Difficulty');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.locator('.menu h1')).toHaveText('Settings');
+  await expect(page.getByRole('status')).toContainText('Difficulty: Normal');
   for (const label of ['AI toughness (force needed to tackle the bot)', 'AI juking', 'Player strength', 'Player speed', 'Hit power']) await expect(page.getByRole('slider', { name: label })).toBeVisible();
   await expect(page.getByRole('slider', { name: 'Hit power' })).toHaveValue('1.5');
   await page.getByRole('button', { name: 'Easy' }).click();
@@ -346,14 +355,17 @@ test('difficulty screen: presets, the independent sliders and hit power, remembe
   await expect(page.getByRole('status')).toContainText('Difficulty: Custom');
   await page.screenshot({ path: 'test-results/14-difficulty.png', fullPage: true });
   await page.reload();
-  await expect(page.getByRole('button', { name: /^Difficulty: Custom/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Difficulty: Custom');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.menu h1')).toHaveText('ZANE STICK');
   await page.keyboard.press('Enter');
   await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
   await page.waitForTimeout(500);
   if (await page.evaluate(() => !!document.pointerLockElement)) await page.evaluate(() => document.exitPointerLock());
   else await page.keyboard.press('Escape');
   await expect(page.locator('.menu h1')).toHaveText('Paused');
-  await page.getByRole('button', { name: /^Difficulty: Custom/ }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('slider', { name: 'Hit power' })).toHaveValue('2.5');
   await expect(page.getByRole('slider', { name: 'AI juking' })).toHaveValue('0.3');
   expect(errors).toEqual([]);
@@ -363,6 +375,7 @@ test('key test screen shows held keys', async ({ page }) => {
   const errors = watchErrors(page);
   await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
   await page.goto('/');
+  await settingsTab(page, 'Controls');
   await page.getByRole('button', { name: 'Key test' }).click();
   await page.keyboard.down('KeyW'); await page.keyboard.down('KeyJ');
   await expect(page.locator('.keys')).toContainText('KeyW');

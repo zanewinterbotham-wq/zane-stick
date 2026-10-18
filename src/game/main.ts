@@ -1,10 +1,8 @@
 // Browser entry: title menu, open-field drill, HUD, pause menu, panels. The simulation runs on a fixed
 // timestep; slow motion only changes how fast real time feeds the fixed steps.
 import './testLock'; // first: tests must not capture the owner's real cursor
-import type { SupportSettings } from '../sim/anim/types';
 import { HumanBrain } from '../sim/brains/human';
 import { carrierSkill } from '../sim/brains/carrier';
-import { DEFAULT_GAINS } from '../sim/control/hand';
 import { DEFAULT_OPEN_FIELD } from '../sim/drills/openField';
 import { Play } from '../sim/modes/play';
 import { modeById } from '../sim/modes/registry';
@@ -18,43 +16,15 @@ import { chooseBest, reportText, runBenchmark } from './benchmark';
 import { ChaseCamera } from './camera';
 import { SoundCues } from './cues';
 import { HitMeter, hitFeel, MPH } from './feel';
-import { InputManager, keyName, keysText, RESERVED, type InputFrame } from './input/input';
+import { InputManager, keyName, keysText, type InputFrame } from './input/input';
 import { PRESETS, type PresetName } from './presets';
-import { GORE_LEVELS } from './render/effects';
 import { GameRenderer, RENDER_PRESETS } from './render/renderer';
-import { DEFAULT_SETTINGS, DIFFICULTY_PRESETS, GAME_SUPPORT, PLAYER_BASE, difficultyOf, loadSettings, saveSettings, type Settings } from './settings';
-import { skinById, unlockedSkins } from './render/skin';
+import { DEFAULT_SETTINGS, GAME_SUPPORT, PLAYER_BASE, loadSettings, saveSettings, type Settings } from './settings';
 import { CATEGORIES, equipItem } from './inventory';
 import { modeMenu, savedOptions } from './modes';
+import { openSettings } from './settings-menu';
 import { el, Hud, inventoryPanel, Layer, menu, moveFocus } from './ui';
 
-/** Rebindable actions on the Controls screen: binding name, what it does, controller button. */
-const REBIND: [string, string, string][] = [
-  ['moveUp', 'Move forward (relative to the camera)', 'Left stick'], ['moveLeft', 'Move left', 'Left stick'],
-  ['moveDown', 'Move back', 'Left stick'], ['moveRight', 'Move right', 'Left stick'],
-  ['sprint', 'Sprint (drives the legs in contact)', 'RT'],
-  ['sink', 'Sink the hips (hold longer = lower)', 'LT (depth)'],
-  ['thrust', 'Thrust the hips forward (overrides sink and torso)', 'A'],
-  ['dive', 'Dive forward (one press: launch, fly, land)', 'B'],
-  ['armL', 'Left arm: raise toward the aim, grab what it touches', 'LB'],
-  ['armR', 'Right arm: raise toward the aim, grab what it touches', 'RB'],
-  ['torsoDown', 'Angle the torso down, to level (also scroll up)', 'D-pad down'],
-  ['torsoUp', 'Angle the torso up (also scroll down)', 'D-pad up'],
-  ['shiftLock', 'Side shuffle on / off: face the camera way, A / D shuffle', 'L3 (stick click)'],
-  ['reset', 'Reset rep', 'Start (tap)'], ['tuning', 'Tuning panel', 'menu'], ['overlay', 'Performance overlay', 'menu'],
-];
-/** Controls that are not rebindable. */
-const FIXED: string[][] = [['Torso angle', 'Scroll (up = lower the shoulders)', '—'], ['Look (aims the arms)', 'Mouse', 'Right stick'], ['Pause', 'Esc', 'Start (hold)']];
-
-const DIFF_LABEL = { easy: 'Easy', normal: 'Normal', hard: 'Hard', custom: 'Custom' };
-/** A labelled range slider row in a .grid2 panel; `changed` runs after every edit. */
-const sliderRow = (grid: HTMLElement, changed: () => void) =>
-  (label: string, value: number, min: number, max: number, step: number, set: (v: number) => void, fmt = (v: number) => v.toFixed(3)) => {
-    const out = el('span', { class: 'mono', text: fmt(value) });
-    const r = el('input', { type: 'range', min: String(min), max: String(max), step: String(step), value: String(value), 'aria-label': label });
-    r.addEventListener('input', () => { const v = +r.value; out.textContent = fmt(v); set(v); changed(); });
-    grid.append(el('label', { text: label }), r, out);
-  };
 const params = new URLSearchParams(location.search);
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 
@@ -188,11 +158,7 @@ class App {
     this.layer.show(menu('ZANE STICK', [
       { label: `Quick play: ${last.title}`, hint: 'Enter / A', action: () => void this.startDrill(last, savedOptions(this.settings, last)) },
       { label: 'Play', hint: 'choose a game mode', action: () => this.modes() },
-      { label: `Difficulty: ${DIFF_LABEL[difficultyOf(this.settings)]}`, hint: 'next rep', action: () => this.difficulty() },
-      { label: 'Controls', action: () => this.controls() },
-      { label: 'Key test', action: () => this.keyTest() },
-      { label: `Quality: ${this.preset.label}`, hint: 'next rep', action: () => { this.cyclePreset(); this.title(); } },
-      { label: `Skin: ${skinById(this.settings.skin).label}`, action: () => { this.cycleSkin(); this.title(); } },
+      { label: 'Settings', action: () => this.settingsMenu(() => this.title()) },
       { label: 'Inventory', hint: 'skins, stadiums', action: () => this.inventory() },
       { label: 'Benchmark', action: () => this.benchmark() },
     ], 'Physics football. Every movement is muscles on a simulated body.'));
@@ -260,24 +226,11 @@ class App {
     this.pausedAt = performance.now();
     this.input.capture = false;
     document.exitPointerLock?.();
-    const s = this.settings;
     this.layer.show(menu('Paused', [
       { label: 'Resume', hint: 'Esc / Start', action: () => this.resume() },
       { label: 'Reset rep', hint: 'Enter', sfx: 'ui_confirm', action: () => { this.resume(); void this.newRep(); } },
-      { label: `Difficulty: ${DIFF_LABEL[difficultyOf(s)]}`, hint: 'next rep', action: () => this.difficulty(() => this.pauseMenu()) },
-      { label: `Quality: ${this.preset.label}`, hint: 'next rep', action: () => { this.cyclePreset(); this.pauseMenu(); } },
-      { label: `Skin: ${skinById(s.skin).label}`, action: () => { this.cycleSkin(); this.pauseMenu(); } },
+      { label: 'Settings', action: () => this.settingsMenu(() => this.pauseMenu()) },
       { label: 'Inventory', hint: 'next rep', action: () => this.inventory(() => this.pauseMenu(), false) },
-      { label: `Anatomy view: ${this.renderer?.xray ? 'on' : 'off'}`, action: () => { this.renderer?.setXray(!this.renderer.xray); this.pauseMenu(); } },
-      { label: `Effort shading (anatomy view): ${s.effortShading ? 'on' : 'off'}`, action: () => { s.effortShading = !s.effortShading; if (this.renderer) this.renderer.effortShading = s.effortShading; this.save(); this.pauseMenu(); } },
-      { label: `Gore: ${GORE_LEVELS[s.goreLevel]?.label ?? 'Low'}`, action: () => { s.goreLevel = (s.goreLevel + 1) % GORE_LEVELS.length; if (this.renderer) this.renderer.goreLevel = s.goreLevel; this.save(); this.pauseMenu(); } },
-      { label: `Big-hit slow motion: ${s.slowMo ? 'on' : 'off'}`, action: () => { s.slowMo = !s.slowMo; this.save(); this.pauseMenu(); } },
-      { label: `Camera: ${this.cam.mode}`, action: () => { this.toggleCamera(); this.pauseMenu(); } },
-      { label: `Automatic camera: ${s.autoCamera ? 'on (follows the athlete)' : 'off (mouse look)'}`, action: () => { this.setAutoCamera(!s.autoCamera); this.pauseMenu(); } },
-      { label: `Sound: ${s.mute ? 'off' : 'on'}`, action: () => { s.mute = !s.mute; this.audio.muted = s.mute; this.save(); this.pauseMenu(); } },
-      { label: 'Tuning panel', hint: 'T', action: () => this.tuning() },
-      { label: 'Controls', action: () => this.controls(() => this.pauseMenu()) },
-      { label: 'Key test', action: () => this.keyTest(() => this.pauseMenu()) },
       { label: 'Quit to title', sfx: 'ui_back', action: () => { this.drill?.destroy(); this.drill = null; this.title(); } },
     ]));
   }
@@ -326,82 +279,6 @@ class App {
     ];
   }
 
-  /** Controls screen: every rebindable action with its keys; Replace or Add listens for the next key or mouse button. */
-  controls(back = () => this.title()) {
-    const k = () => this.input.bindings.keyboard;
-    const status = el('p', { class: 'sub', role: 'status', text: 'Replace or Add, then press a key or mouse button. Esc, Alt, Tab and the Windows key stay with the browser and system.' });
-    const table = el('table', { class: 'controls' });
-    const render = () => table.replaceChildren(
-      el('tr', {}, ...['Action', 'Keyboard and mouse', 'Controller', ''].map((h) => el('th', { text: h }))),
-      ...REBIND.map(([a, label, pad]) => {
-        const rep = el('button', { class: 'bind', type: 'button', 'aria-label': `Replace ${label}` }, 'Replace');
-        const add = el('button', { class: 'bind', type: 'button', 'aria-label': `Add a key to ${label}` }, 'Add');
-        rep.addEventListener('click', () => this.listenForBind(a, label, false, status, render));
-        add.addEventListener('click', () => this.listenForBind(a, label, true, status, render));
-        return el('tr', { 'data-action': a }, el('td', { text: label }), el('td', { class: 'keys-cell', text: keysText(k()[a] ?? []) }), el('td', { text: pad }), el('td', {}, rep, add));
-      }),
-      ...FIXED.map((r) => el('tr', {}, ...r.map((c) => el('td', { text: c })), el('td'))));
-    render();
-    // hold or toggle (press on, press again off) for sprint and sink; every rep starts with both off
-    const s = this.settings;
-    const mode = (label: string, get: () => boolean, set: (on: boolean) => void) => {
-      const btn = el('button', { class: 'item', type: 'button' }, '');
-      const show = () => (btn.textContent = `${label}: ${get() ? 'toggle (press on / off)' : 'hold'}`);
-      btn.addEventListener('click', () => { set(!get()); this.save(); show(); });
-      show();
-      return btn;
-    };
-    const sprintMode = mode('Sprint', () => s.sprintToggle, (on) => (s.sprintToggle = this.input.sprintToggle = on));
-    const sinkMode = mode('Sink hips', () => s.sinkToggle, (on) => (s.sinkToggle = this.input.sinkToggle = on));
-    const reset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset controls to defaults');
-    reset.addEventListener('click', () => { this.settings.bindings = {}; this.input.setKeyboard({}); this.save(); render(); status.textContent = 'Controls reset to the defaults.'; });
-    const b = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back');
-    b.addEventListener('click', back);
-    const box = el('div', { class: 'panel menu wide' }, el('h1', { text: 'Controls' }),
-      el('p', { class: 'sub', text: 'Contact mode is automatic: within about 4 m of the ball carrier your athlete settles into a ready stance with the arms up. No control is needed for balance; once you make contact, physics decides who stays up. J / L and I / K always work alongside the mouse, so a touchpad is enough.' }),
-      status, table, sprintMode, sinkMode,
-      el('p', { class: 'sub', text: 'Click the field to capture the mouse; Esc frees it and pauses. Ctrl+W can close the tab unless the browser grants keyboard lock in fullscreen, so C also sinks. Anatomy view, camera view, quality and automatic camera are in the pause menu.' }),
-      reset, b);
-    this.layer.show(box);
-  }
-
-  /** Wait for the next key or mouse button and bind it to the action (Esc cancels). A key taken from another action
-   *  leaves it, so one key never does two things. */
-  listenForBind(action: string, label: string, add: boolean, status: HTMLElement, done: () => void) {
-    status.textContent = `Press a key or mouse button for "${label}"… (Esc cancels)`;
-    (document.activeElement as HTMLElement | null)?.blur(); // a Space press must not re-click the button
-    const swallow = (e: Event) => { e.preventDefault(); e.stopImmediatePropagation(); };
-    const finish = (code: string | null) => {
-      window.removeEventListener('keydown', onKey, true);
-      window.removeEventListener('mousedown', onMouse, true);
-      // the click and context menu that follow a bound mouse press must not reach the menu
-      setTimeout(() => { window.removeEventListener('click', swallow, true); window.removeEventListener('contextmenu', swallow, true); }, code?.startsWith('Mouse') ? 400 : 0);
-      if (code) {
-        const k = this.input.bindings.keyboard, next: Record<string, string[]> = {};
-        for (const [a, codes] of Object.entries(k)) if (a !== action && codes.includes(code)) next[a] = codes.filter((c) => c !== code);
-        next[action] = add ? [...new Set([...(k[action] ?? []), code])] : [code];
-        this.settings.bindings = { ...this.settings.bindings, ...next };
-        this.input.setKeyboard(this.settings.bindings);
-        this.save();
-        this.audio.play('ui_confirm', 1);
-        status.textContent = `"${label}": ${keysText(this.input.bindings.keyboard[action])}`;
-      } else status.textContent = 'Cancelled.';
-      done();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (!status.isConnected) { finish(null); return; } // the screen was left (controller B): stop listening
-      swallow(e);
-      if (e.code === 'Escape') finish(null);
-      else if (RESERVED.test(e.code)) status.textContent = `${keyName(e.code)} stays with the browser and system: press another key (Esc cancels)`;
-      else finish(e.code);
-    };
-    const onMouse = (e: MouseEvent) => { if (!status.isConnected) { finish(null); return; } swallow(e); finish(`Mouse${e.button}`); };
-    window.addEventListener('keydown', onKey, true);
-    window.addEventListener('mousedown', onMouse, true);
-    window.addEventListener('click', swallow, true);
-    window.addEventListener('contextmenu', swallow, true);
-  }
-
   keyTest(back = () => this.title()) {
     const box = el('div', { class: 'panel menu wide' }, el('h1', { text: 'Key test' }), el('p', { class: 'sub', text: 'Hold keys or buttons. Everything that registers shows below, so you can see which combinations your keyboard drops.' }));
     const keys = el('div', { class: 'keys' });
@@ -418,79 +295,12 @@ class App {
     this.layer.show(box);
   }
 
-  /** Difficulty: presets and the independent axes (AI toughness, AI juking, the player's strength and speed), and
-   *  hit power. Applies from the next rep. */
-  difficulty(back = () => this.title()) {
-    const s = this.settings;
-    const status = el('p', { class: 'sub', role: 'status' });
-    const presets = el('div', { class: 'items' });
-    const grid = el('div', { class: 'grid2' });
-    const render = () => {
-      const now = difficultyOf(s);
-      status.textContent = `Difficulty: ${DIFF_LABEL[now]}. Each slider moves on its own; changes apply from the next rep.`;
-      presets.replaceChildren(...(Object.keys(DIFFICULTY_PRESETS) as (keyof typeof DIFFICULTY_PRESETS)[]).map((k) => {
-        const b = el('button', { class: 'item', type: 'button', 'aria-pressed': String(now === k), 'data-sfx': 'ui_confirm' }, DIFF_LABEL[k] + (now === k ? ' ✓' : ''));
-        b.addEventListener('click', () => { Object.assign(s, DIFFICULTY_PRESETS[k]); this.save(); this.difficulty(back); });
-        return b;
-      }));
-    };
-    const x = (v: number) => `${v.toFixed(2)}×`, pct = (v: number) => `${(v * 100).toFixed(0)} %`;
-    const row = sliderRow(grid, () => { this.save(); render(); });
-    row('AI toughness (force needed to tackle the bot)', s.toughness, 0.4, 2.5, 0.05, (v) => (s.toughness = v), x);
-    row('AI juking', s.juking, 0, 1, 0.05, (v) => (s.juking = v), pct);
-    row('Player strength', s.strength, 0.5, 1.5, 0.01, (v) => (s.strength = v), x);
-    row('Player speed', s.speed, 0.7, 1.5, 0.01, (v) => (s.speed = v), x);
-    row('Hit power', s.hitPower, 1, 3, 0.1, (v) => (s.hitPower = v), (v) => (v <= 1 ? '1.0 (pure physics)' : `${v.toFixed(1)}×`));
-    row('Steer assist', s.steerAssist, 0, 1, 0.05, (v) => (s.steerAssist = v), pct);
-    render();
-    const b = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back');
-    b.addEventListener('click', back);
-    this.layer.show(el('div', { class: 'panel menu wide', role: 'dialog', 'aria-label': 'Difficulty' }, el('h1', { text: 'Difficulty' }), status, presets, grid,
-      el('p', { class: 'sub', text: 'AI toughness: how hard the bot is to knock off balance (its hit, stun and wrap-up thresholds). AI juking: how well the bot carrier reads you, times his cuts and bursts away. Hit power above 1 adds an arcade push to whoever a hit drives back (the bot can blow you back too); 1 is pure physics. Steer assist turns your run part way toward the ball carrier (or a loose ball) when he is near and ahead.' }),
-      b));
-  }
+  settingsMenu(back: () => void, tab?: string) { openSettings(this, back, tab); }
 
   /** Everything equippable (skins, stadiums, ...), with previews. Equipped items show from the next rep. */
   inventory(back = () => this.title(), escape = true) {
     const equip = (cat: string, item: string) => { const ok = equipItem(this.settings, cat, item); if (ok) this.save(); return ok; };
     this.layer.show(inventoryPanel(CATEGORIES, this.settings, { equip, back, escape }));
-  }
-
-  tuning() {
-    const s = this.settings;
-    const gainKeys: (keyof typeof DEFAULT_GAINS)[] = ['torsoKp', 'torsoKd', 'footK', 'stepWidth', 'swingWn', 'stanceKnee', 'stanceHip', 'dcmK', 'heightKp', 'heightKd', 'spine'];
-    const grid = el('div', { class: 'grid2' });
-    const row = sliderRow(grid, () => this.save());
-    const pct = (v: number) => `${(v * 100).toFixed(0)} %`, deg = (v: number) => `${(v * 180 / Math.PI).toFixed(0)}°`;
-    const sup = s.support;
-    const supportRow = (label: string, k: keyof SupportSettings, min: number, max: number, step: number, fmt?: (v: number) => string) =>
-      row(`Support: ${label}`, sup[k], min, max, step, (v) => (sup[k] = v), fmt);
-    supportRow('strength', 'strength', 0, 1, 0.01, pct);
-    supportRow('carry accel (m/s²)', 'carryAccel', 0, 15, 0.1, (v) => v.toFixed(1));
-    supportRow('weight share', 'weightShare', 0, 1, 0.01, pct);
-    supportRow('tilt fade start', 'tiltStart', 0.1, 1.2, 0.01, deg);
-    supportRow('tilt fade end', 'tiltEnd', 0.2, 1.5, 0.01, deg);
-    supportRow('big hit (N·s)', 'bigHit', 20, 400, 1, (v) => v.toFixed(0));
-    supportRow('tracking stiffness ×', 'tracking', 0.25, 2, 0.01, (v) => v.toFixed(2));
-    row('Athlete speed ×', s.speed, 0.7, 1.5, 0.01, (v) => (s.speed = v), (v) => v.toFixed(2));
-    row('Muscle strength ×', s.strength, 0.5, 1.5, 0.01, (v) => (s.strength = v), (v) => v.toFixed(2));
-    row('Balance assist (no support)', s.assist, 0, 1, 0.01, (v) => (s.assist = v), pct);
-    row('Cleat traction μ', s.traction, 0.5, 1.6, 0.01, (v) => (s.traction = v));
-    for (const k of gainKeys) {
-      const d = DEFAULT_GAINS[k], v = s.gains[k] ?? d;
-      row(`Gain: ${k}`, v, d * 0.25, d * 4, d / 100, (x) => (s.gains[k] = x));
-    }
-    const exp = el('textarea', { readonly: 'true', 'aria-label': 'Exported values' });
-    const update = () => (exp.value = JSON.stringify({ support: sup, speed: PLAYER_BASE.speed * s.speed, strength: PLAYER_BASE.strength * s.strength, assist: s.assist, traction: s.traction, gains: { ...DEFAULT_GAINS, ...s.gains } }, null, 2));
-    update();
-    grid.addEventListener('input', update);
-    const copy = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Copy values');
-    copy.addEventListener('click', () => { void navigator.clipboard?.writeText(exp.value).then(() => this.hud.flash('Copied'), () => { exp.select(); }); });
-    const reset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset to defaults');
-    reset.addEventListener('click', () => { s.gains = {}; s.assist = 0.2; s.traction = 1.2; s.support = { ...GAME_SUPPORT }; this.save(); this.tuning(); });
-    const back = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back');
-    back.addEventListener('click', () => (this.drill ? this.pauseMenu() : this.title()));
-    this.layer.show(el('div', { class: 'panel menu wide' }, el('h1', { text: 'Tuning' }), el('p', { class: 'sub', text: 'Changes apply from the next rep (physics settings never change mid-rep).' }), grid, exp, copy, reset, back));
   }
 
   async benchmark() {
@@ -512,14 +322,7 @@ class App {
     copy.focus();
   }
 
-  cyclePreset() { this.settings.preset = this.settings.preset === 'high' ? 'minimum' : 'high'; this.save(); this.hud.flash(`Quality: ${this.preset.label} (next rep)`); }
   toggleCamera() { this.cam.mode = this.cam.mode === 'chase' ? 'helmet' : 'chase'; this.settings.camera = this.cam.mode as Settings['camera']; this.save(); }
-  cycleSkin() {
-    const all = unlockedSkins(), i = all.findIndex((k) => k.id === this.settings.skin);
-    this.settings.skin = all[(i + 1) % all.length].id;
-    this.save();
-    void this.renderer?.setSkin(this.settings.skin);
-  }
   save() { saveSettings(this.settings); }
 
   // ---------------------------------------------------------------- input
@@ -537,7 +340,7 @@ class App {
     if (k.pause.includes(e.code)) this.pauseMenu();
     else if (k.reset.includes(e.code)) void this.newRep();
     else if (k.overlay.includes(e.code)) { this.settings.overlay = !this.settings.overlay; this.save(); }
-    else if (k.tuning.includes(e.code)) { this.paused = true; this.pausedAt = performance.now(); this.input.capture = false; document.exitPointerLock?.(); this.tuning(); }
+    else if (k.tuning.includes(e.code)) { this.paused = true; this.pausedAt = performance.now(); this.input.capture = false; document.exitPointerLock?.(); this.settingsMenu(() => this.pauseMenu(), 'advanced'); }
   }
 
   /** Gamepad buttons for menus and Start (tap = reset, hold = pause). */

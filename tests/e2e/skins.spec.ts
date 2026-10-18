@@ -33,7 +33,8 @@ test('the default skin (the owner pick, Rubber Hose) dresses both athletes; stan
   const errors = watchErrors(page);
   await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Skin: Rubber Hose' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
+  await expect(page.getByRole('button', { name: /Skin:/ })).toHaveCount(0); // skins are chosen in the Inventory
   await page.keyboard.press('Enter');
   await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
   await expect.poll(() => skinState(page)).toEqual({ id: 'rubberhose', parts: [21, 21] });
@@ -48,15 +49,19 @@ test('the default skin (the owner pick, Rubber Hose) dresses both athletes; stan
   await page.waitForTimeout(600);
   await page.screenshot({ path: 'test-results/skin-default-tackle-2.png' });
   await page.keyboard.up('KeyW'); await page.keyboard.up('ShiftLeft');
-  // the pause menu cycles the skin and the athletes change at once
+  // the inventory equips a skin from the pause menu; it applies from the next rep
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Skin: Rubber Hose' }).click();
-  await expect(page.getByRole('button', { name: `Skin: ${skins[1].label}` })).toBeVisible();
-  await expect.poll(async () => (await skinState(page)).id).toBe(skins[1].id);
+  await expect(page.getByRole('button', { name: /Skin:/ })).toHaveCount(0);
+  await page.getByRole('button', { name: /^Inventory/ }).click();
+  await page.locator(`.inv-card[data-item="${skins[1].id}"] .equip`).click();
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('zane-stick-settings-v1') ?? '{}').skin);
   expect(saved).toBe(skins[1].id);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   // anatomy view swaps the skin for the physics shapes
-  await page.getByRole('button', { name: /Anatomy view: off/ }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Graphics' }).click();
+  await page.getByRole('button', { name: 'Anatomy view: On' }).click();
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: /Resume/ }).click();
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'test-results/skin-xray.png' });
