@@ -26,7 +26,7 @@ export interface Gains {
   /** Capture-point convergence rate (1/s) and COM height PD (1/s², 1/s). */
   dcmK: number; heightKp: number; heightKd: number;
   /** Foot-placement feedback on velocity error (s) and step width between the feet (m). */
-  footK: number; stepWidth: number; footMargin: number; latK: number;
+  footK: number; stepWidth: number; footMargin: number;
   /** Trunk balance through the stance hip, in units of m·g·h per rad and per rad/s. */
   torsoKp: number; torsoKd: number;
   /** Gait shape: minimum walking step time (s), touchdown gate (fraction of step), swing clearance (m),
@@ -50,7 +50,7 @@ export const DEFAULT_GAINS: Gains = {
   swingWn: 30, armWn: 20, dampT: 0.03,
   pelvisAtt: 1.0, thoraxAtt: 1.0, headAtt: 1.0,
   dcmK: 2.5, heightKp: 60, heightKd: 15,
-  footK: 0.1, stepWidth: 0.2, latK: 0.3, footMargin: 0.05,
+  footK: 0.1, stepWidth: 0.2, footMargin: 0.05,
   torsoKp: 1.5, torsoKd: 0.2,
   stepTMin: 0.4, touchFrac: 0.6, clearance: 0.09, stanceKneeBend: 0.12, armSwing: 0.6, vLead: 0.6,
   leanSpeed: 0.015, leanAccel: 0.04,
@@ -432,11 +432,9 @@ export class HandController implements MotorController {
     // Aim a little short of the capture point (footMargin) so the stance ankle can finish the job.
     const offS = clamp(vS / w0 + g.footK * (vS - vdS) - vdS * T * b - (vS > vdS ? g.footMargin : 0), -0.15, 1.0);
     // Lateral: periodic capture-point gait (Englsberger 2015): land outside the capture point by
-    // W / (1 + e^(ωT)) for a step width W, which makes the side-to-side sway settle instead of grow.
-    // Drift correction: if the COM has moved farther than half a step width from the stance foot toward the
-    // swing side, land wider still (SIMBICON-style position feedback).
-    const dLat = dot([c[0] - stAnkle[0], 0, c[2] - stAnkle[2]], outD);
-    const offL = clamp(vL / w0 + g.stepWidth / (1 + Math.exp(w0 * T)) + g.footK * (vL - vdL) + g.latK * (dLat - g.stepWidth / 2), -0.12, 0.55);
+    // W / (1 + e^(ωT)) for a step width W. This is deadbeat: any sway error is gone after one step. Extra
+    // feedback on top over-places the foot, and the error comes back e^(ωT) ≈ 4× larger the next step.
+    const offL = clamp(vL / w0 + g.stepWidth / (1 + Math.exp(w0 * T)) - vdL * T * b, -0.12, 0.55);
     // Foothold from balance feedback; the foot travels there from where it lifted off along a clearance
     // arc (over the foothold by 80 % of the step, then sets down), solved by leg IK.
     const hold: Vec3 = [c[0] + fwdD[0] * offS + outD[0] * offL, 0, c[2] + fwdD[2] * offS + outD[2] * offL];
