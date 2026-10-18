@@ -1,5 +1,5 @@
 // DOM overlay: menus, HUD, results card, performance overlay and panels. Menus work with a keyboard
-// (arrows/Tab + Enter, Escape to go back) or a controller (D-pad + A, B to go back); a mouse is optional.
+// (arrows/Tab + Enter, Escape to go back), a controller (D-pad + A, B to go back) or the mouse.
 
 export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -39,7 +39,8 @@ export function moveFocus(root: HTMLElement, dir: 1 | -1) {
 export class Hud {
   readonly root = document.getElementById('hud')!;
   private status = el('div', { class: 'panel status mono' });
-  private hint = el('div', { class: 'panel hintbar' });
+  private keys = el('div', { class: 'panel keylist', 'aria-label': 'Controls' });
+  private keysShown = '';
   private overlay = el('div', { class: 'panel overlay mono' });
   private result = el('div', { class: 'panel result' });
   private toast = el('div', { class: 'toast' });
@@ -48,13 +49,20 @@ export class Hud {
   private speedo = el('div', { class: 'panel speedo mono', 'aria-label': 'Speed' }, this.speedoMs, ' m/s', el('br'), this.speedoMph);
   private toastTimer = 0;
   constructor() {
-    this.root.append(this.status, this.hint, this.overlay, this.result, this.toast, this.speedo);
+    this.root.append(this.status, this.keys, this.overlay, this.result, this.toast, this.speedo);
     this.showResult(null);
     this.setOverlay(null);
   }
-  setVisible(on: boolean) { for (const e of [this.status, this.hint, this.speedo]) e.style.display = on ? '' : 'none'; }
+  setVisible(on: boolean) { for (const e of [this.status, this.keys, this.speedo]) e.style.display = on ? '' : 'none'; }
   setStatus(lines: string[]) { this.status.textContent = lines.join('\n'); }
-  setHint(html: string) { this.hint.innerHTML = html; }
+  /** The control list: one key + action per row, and an optional note underneath. Rebuilt only on change. */
+  setControls(rows: [string, string][], note = '') {
+    const sig = JSON.stringify([rows, note]);
+    if (sig === this.keysShown) return;
+    this.keysShown = sig;
+    this.keys.replaceChildren(...rows.map(([k, a]) => el('div', { class: 'row' }, el('kbd', { text: k }), el('span', { text: a }))),
+      ...(note ? [el('p', { class: 'note', text: note })] : []));
+  }
   /** Speedometer: speed in m/s, shown with mph. */
   setSpeed(v: number, mph: number) {
     this.speedoMs.textContent = v.toFixed(1);

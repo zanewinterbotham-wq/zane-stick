@@ -77,12 +77,19 @@ class App {
   rep = 0;
   peakShown = false;
   startHeld = 0;
+  pausedAt = 0;
+  /** Keyboard lock is active (fullscreen): Ctrl+W reaches the game instead of closing the tab. */
+  kbLocked = false;
   private padPrev: boolean[] = [];
 
   async boot() {
     this.input.capture = false;
     this.cam.mode = this.settings.camera;
+    this.cam.follow = this.input.autoCamera = this.settings.autoCamera;
     this.audio.muted = this.settings.mute;
+    canvas.addEventListener('click', () => { if (!this.paused) this.lockPointer(); });
+    document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement) this.lostFocus(); });
+    document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) { this.kbLocked = false; this.lostFocus(); } });
     window.addEventListener('resize', () => this.renderer?.resize());
     window.addEventListener('keydown', (e) => this.onKey(e));
     window.addEventListener('pointerdown', () => this.audio.unlock(), { once: false });
@@ -116,6 +123,8 @@ class App {
     this.hud.setVisible(false);
     this.hud.showResult(null);
     this.input.capture = false;
+    document.exitPointerLock?.();
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
     this.layer.show(menu('ZANE STICK', [
       { label: 'Open field: tackle the carrier', hint: 'Enter / A', action: () => this.startDrill() },
       { label: 'Controls', action: () => this.controls() },
@@ -127,6 +136,7 @@ class App {
 
   async startDrill() {
     this.layer.hide();
+    this.enterPlay();
     this.audio.unlock();
     this.hud.setVisible(true);
     this.input.capture = true;
@@ -138,6 +148,7 @@ class App {
     this.drill?.destroy();
     this.hud.showResult(null);
     this.peakShown = false;
+    this.input.resetTorso();
     const p = this.preset;
     const s = this.settings;
     this.drill = await OpenFieldDrill.create(mujocoEngine, {
@@ -159,17 +170,19 @@ class App {
 
   pauseMenu() {
     this.paused = true;
+    this.pausedAt = performance.now();
     this.input.capture = false;
+    document.exitPointerLock?.();
     const s = this.settings;
     this.layer.show(menu('Paused', [
       { label: 'Resume', hint: 'Esc / Start', action: () => this.resume() },
       { label: 'Reset rep', hint: 'Enter', action: () => { this.resume(); void this.newRep(); } },
       { label: `Quality: ${this.preset.label}`, hint: 'next rep', action: () => { this.cyclePreset(); this.pauseMenu(); } },
-      { label: `Anatomy view: ${this.renderer?.xray ? 'on' : 'off'}`, hint: 'X', action: () => { this.renderer?.setXray(!this.renderer.xray); this.pauseMenu(); } },
+      { label: `Anatomy view: ${this.renderer?.xray ? 'on' : 'off'}`, action: () => { this.renderer?.setXray(!this.renderer.xray); this.pauseMenu(); } },
       { label: `Effort shading (anatomy view): ${s.effortShading ? 'on' : 'off'}`, action: () => { s.effortShading = !s.effortShading; if (this.renderer) this.renderer.effortShading = s.effortShading; this.save(); this.pauseMenu(); } },
       { label: `Big-hit slow motion: ${s.slowMo ? 'on' : 'off'}`, action: () => { s.slowMo = !s.slowMo; this.save(); this.pauseMenu(); } },
-      { label: `Camera: ${this.cam.mode}`, hint: 'V', action: () => { this.toggleCamera(); this.pauseMenu(); } },
-      { label: `Contact mode button: ${s.contactModeHold ? 'hold' : 'toggle'}`, action: () => { s.contactModeHold = !s.contactModeHold; this.input.bindings.options.contactModeHold = s.contactModeHold; this.save(); this.pauseMenu(); } },
+      { label: `Camera: ${this.cam.mode}`, action: () => { this.toggleCamera(); this.pauseMenu(); } },
+      { label: `Automatic camera: ${s.autoCamera ? 'on (arms J / L, torso I / K)' : 'off (mouse look)'}`, action: () => { this.setAutoCamera(!s.autoCamera); this.pauseMenu(); } },
       { label: `Sound: ${s.mute ? 'off' : 'on'}`, action: () => { s.mute = !s.mute; this.audio.muted = s.mute; this.save(); this.pauseMenu(); } },
       { label: 'Tuning panel', hint: 'T', action: () => this.tuning() },
       { label: 'Controls', action: () => this.controls(() => this.pauseMenu()) },
@@ -178,29 +191,63 @@ class App {
     ]));
   }
 
-  resume() { this.layer.hide(); this.input.capture = true; this.paused = false; this.last = performance.now(); }
+  resume() { this.layer.hide(); this.input.capture = true; this.paused = false; this.last = performance.now(); this.enterPlay(); }
+
+  /** Playing: pointer lock for mouse look, and fullscreen with keyboard lock so Ctrl+W (sink + forward) cannot
+   *  close the tab. Each can be refused (no user gesture, headless, unsupported); the game works without them. */
+  enterPlay() {
+    this.lockPointer();
+    const kb = (navigator as Navigator & { keyboard?: { lock?: () => Promise<void> } }).keyboard;
+    if (document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+    document.documentElement.requestFullscreen()
+      .then(() => { this.lockPointer(); return kb?.lock ? kb.lock().then(() => { this.kbLocked = !!document.fullscreenElement; }) : undefined; })
+      .catch(() => {});
+  }
+
+  lockPointer() {
+    if (this.settings.autoCamera || document.pointerLockElement || !canvas.requestPointerLock) return;
+    try { void (canvas.requestPointerLock() as unknown as Promise<void> | undefined)?.catch?.(() => {}); } catch { /* refused: click the view to retry */ }
+  }
+
+  /** Esc released the pointer or left fullscreen mid-rep: pause, so the cursor is free for the menu. */
+  lostFocus() { if (this.drill && !this.paused && !this.layer.open) this.pauseMenu(); }
+
+  setAutoCamera(on: boolean) {
+    this.settings.autoCamera = this.cam.follow = this.input.autoCamera = on;
+    this.save();
+    if (on) document.exitPointerLock?.();
+  }
+
+  /** Gameplay controls: HUD label, controls-screen action, keyboard and mouse, controller. */
+  controlRows(): [string, string, string, string][] {
+    const auto = this.settings.autoCamera;
+    return [
+      ['Move', 'Move (relative to the camera)', 'W A S D', 'Left stick'],
+      ['Sprint', 'Sprint (drives the legs in contact)', 'Shift', 'RT'],
+      ['Sink', 'Sink the hips (hold longer = lower)', this.kbLocked ? 'Ctrl' : 'Ctrl / C', 'LT (depth)'],
+      ['Thrust', 'Thrust the hips (overrides sink and torso)', 'Space', 'A'],
+      ['Dive', 'Dive forward (one press: launch, fly, land)', 'E', 'B'],
+      ['Left arm, grab', 'Raise the left arm toward the aim; grabs what it touches until released', auto ? 'J' : 'Left click', 'LB'],
+      ['Right arm, grab', 'Raise the right arm toward the aim; grabs what it touches until released', auto ? 'L' : 'Right click', 'RB'],
+      ['Torso up / down', 'Angle the torso up / down', auto ? 'I / K' : 'Scroll', 'D-pad up / down'],
+      ...(auto ? [] : [['Look', 'Camera (aims the arms)', 'Mouse', 'Right stick'] as [string, string, string, string]]),
+    ];
+  }
 
   controls(back = () => this.title()) {
-    const k = this.input.bindings.keyboard, g = this.input.bindings.gamepad;
-    const pad: Record<string, string> = { b0: 'A', b1: 'B', b2: 'X', b3: 'Y', b4: 'LB', b5: 'RB', b6: 'LT', b7: 'RT', b8: 'View', b9: 'Start', b10: 'L3', b11: 'R3', b12: 'D-pad up', b13: 'D-pad down', b14: 'D-pad left', b15: 'D-pad right' };
-    const keyName = (c: string) => c.replace(/^Key/, '').replace(/^Digit/, '').replace('ShiftLeft', 'Left Shift').replace('Backquote', '`').replace('Equal', '=');
-    const rows: [string, string, string][] = [
-      ['Move', 'W A S D', 'Left stick'], ['Sprint (Movement) / drive legs (Contact)', keyName(k.sprint[0]), 'RT'],
-      ['Contact mode on/off', keyName(k.contactMode[0]), pad[g.contactMode[0]]], ['Left / right arm reach', `${keyName(k.armL[0])} / ${keyName(k.armR[0])}`, 'LB / RB'],
-      ['Grip left / right', `${keyName(k.gripL[0])} / ${keyName(k.gripR[0])}`, 'X / B'], ['Wrap and squeeze', keyName(k.wrap[0]), 'A'],
-      ['Shoot hands', keyName(k.shoot[0]), 'Y'], ['Sink hips (hold longer = lower)', 'Space', 'LT (depth)'],
-      ['Thrust hips', keyName(k.thrustHips[0]), 'R3'], ['Lean', 'Arrow keys', 'Right stick'], ['Chop feet', keyName(k.chopFeet[0]), 'L3'],
-      ['Head tuck', keyName(k.headTuck[0]), 'D-pad down'], ['Plant to cut left / right', `${keyName(k.cutLeft[0])} / ${keyName(k.cutRight[0])}`, 'D-pad left / right'],
-      ['Dive', keyName(k.dive[0]), 'D-pad up'], ['Reset rep', 'Enter', 'Start (tap)'], ['Pause', 'Esc', 'Start (hold)'],
-      ['Performance overlay', '`', 'menu'], ['Anatomy view', 'X', 'menu'], ['Camera', 'V', 'menu'], ['Tuning panel', 'T', 'menu'], ['Quality preset', '=', 'menu'],
-    ];
-    const t = el('table', { class: 'controls' }, el('tr', {}, el('th', { text: 'Action' }), el('th', { text: 'Keyboard' }), el('th', { text: 'Controller' })),
+    const table = (head: string[], rows: string[][]) => el('table', { class: 'controls' }, el('tr', {}, ...head.map((h) => el('th', { text: h }))),
       ...rows.map((r) => el('tr', {}, ...r.map((c) => el('td', { text: c })))));
+    const play = table(['Action', this.settings.autoCamera ? 'Keyboard' : 'Keyboard and mouse', 'Controller'], this.controlRows().map(([, a, k, g]) => [a, k, g]));
+    const meta = table(['Game', 'Keyboard', 'Controller'], [
+      ['Reset rep', 'Enter', 'Start (tap)'], ['Pause', 'Esc', 'Start (hold)'], ['Tuning panel', 'T', 'menu'], ['Performance overlay', '`', 'menu'],
+      ['Anatomy view, camera view, quality, automatic camera', 'pause menu', 'pause menu'],
+    ]);
     const box = el('div', { class: 'panel menu wide' }, el('h1', { text: 'Controls' }),
-      el('p', { class: 'sub', text: 'No control is needed for balance: your athlete stays on his feet while running and cutting, so hold Sprint and hit the carrier as hard as you can. Once you make contact, physics decides who stays up.' }), t);
+      el('p', { class: 'sub', text: 'Contact mode is automatic: within about 4 m of the ball carrier your athlete settles into a ready stance with the arms up. No control is needed for balance; once you make contact, physics decides who stays up.' }),
+      play, el('p', { class: 'sub' }), meta);
     const b = el('button', { class: 'item', type: 'button' }, 'Back');
     b.addEventListener('click', back);
-    box.append(el('p', { class: 'sub', text: 'Bindings live in a data file now; a rebinding screen comes in Phase 2. A mouse is never needed.' }), b);
+    box.append(el('p', { class: 'sub', text: this.settings.autoCamera ? 'Automatic camera is on: no mouse is needed.' : 'Click the field to capture the mouse; Esc frees it and pauses. Ctrl+W can close the tab unless the browser grants keyboard lock in fullscreen, so C also sinks.' }), b);
     this.layer.show(box);
   }
 
@@ -291,7 +338,8 @@ class App {
     if (this.layer.open) {
       if (e.code === 'ArrowDown') { moveFocus(this.layer.root, 1); e.preventDefault(); }
       else if (e.code === 'ArrowUp') { moveFocus(this.layer.root, -1); e.preventDefault(); }
-      else if (e.code === 'Escape' && this.drill) this.resume();
+      // the Esc that released the pointer can also arrive as a key press: it must not resume at once
+      else if (e.code === 'Escape' && this.drill && performance.now() - this.pausedAt > 300) this.resume();
       return;
     }
     if (!this.drill) return;
@@ -299,10 +347,7 @@ class App {
     if (k.pause.includes(e.code)) this.pauseMenu();
     else if (k.reset.includes(e.code)) void this.newRep();
     else if (k.overlay.includes(e.code)) { this.settings.overlay = !this.settings.overlay; this.save(); }
-    else if (k.anatomy.includes(e.code)) this.renderer?.setXray(!this.renderer.xray);
-    else if (k.camera.includes(e.code)) this.toggleCamera();
-    else if (k.tuning.includes(e.code)) { this.paused = true; this.input.capture = false; this.tuning(); }
-    else if (k.quality.includes(e.code)) this.cyclePreset();
+    else if (k.tuning.includes(e.code)) { this.paused = true; this.pausedAt = performance.now(); this.input.capture = false; document.exitPointerLock?.(); this.tuning(); }
   }
 
   /** Gamepad buttons for menus and Start (tap = reset, hold = pause). */
@@ -340,8 +385,8 @@ class App {
       const w = d.world;
       if (!this.paused) {
         const f: InputFrame = this.input.read(0, dtReal);
-        const camYaw = Math.atan2(r.camera.getWorldDirection(r.camera.position.clone()).x, r.camera.getWorldDirection(r.camera.position.clone()).z);
-        this.human.latest = { move: f.move, lean: f.lean, sprint: f.sprint, sink: f.sink, armL: f.armL, armR: f.armR, contactMode: f.contactMode, held: f.held, cameraYaw: camYaw };
+        if (!this.cam.follow) this.cam.look(f.look.x, f.look.y);
+        this.human.latest = { move: f.move, torso: f.torso, sprint: f.sprint, sink: f.sink, armL: f.armL, armR: f.armR, held: f.held, cameraYaw: this.cam.yaw, aimPitch: this.cam.aimPitch };
         if (now / 1000 > this.slowUntil) this.timeScale = 1;
         // hit-stop freezes wall time only: the same fixed steps run afterwards, none are skipped mid-step
         if (now >= this.freezeUntil) this.acc += dtReal * this.timeScale;
@@ -397,7 +442,7 @@ class App {
   updateHud() {
     const d = this.drill!, w = d.world, me = w.athletes[0];
     const sup = w.view(me).support; // present once the world runs the active-ragdoll support
-    const mode = this.human.latest?.contactMode ? 'CONTACT' : 'MOVEMENT';
+    const mode = this.human.contact ? 'CONTACT (auto)' : 'MOVEMENT';
     this.hud.setStatus([
       `OPEN FIELD  ·  Rep ${d.rep + 1}  ·  ${Math.min(d.repTime, d.cfg.timeLimit).toFixed(1)} s`,
       `Mode: ${mode}${this.timeScale < 1 ? '   SLOW MOTION' : ''}`,
@@ -405,7 +450,7 @@ class App {
         : `Balance assist ${(this.settings.assist * 100).toFixed(0)}%${me.assistLevel < 1 ? ` (fading ${(me.assistLevel * 100).toFixed(0)}%)` : ''}`,
     ]);
     this.hud.setSpeed(this.speed, this.speed * MPH);
-    this.hud.setHint('<kbd>WASD</kbd> move  <kbd>Shift</kbd> sprint  <kbd>Tab</kbd> contact mode  <kbd>J</kbd>/<kbd>L</kbd> arms  <kbd>K</kbd> wrap  <kbd>Space</kbd> sink  <kbd>H</kbd> thrust  <kbd>B</kbd> dive  <kbd>Enter</kbd> reset  <kbd>Esc</kbd> menu');
+    this.hud.setControls(this.controlRows().map(([h, , k]) => [k, h]), this.kbLocked ? '' : 'Ctrl+W can close the tab here: C also sinks');
     if (this.settings.overlay) {
       const st = w.scene.stats();
       this.hud.setOverlay([

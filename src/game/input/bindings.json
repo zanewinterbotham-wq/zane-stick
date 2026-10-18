@@ -1,33 +1,23 @@
 {
-  "_note": "Default bindings. Keyboard values are KeyboardEvent.code; gamepad uses the W3C standard mapping (buttons b0..b16, axes a0..a3, with sign). Chosen to avoid Chromebook top-row, F-keys, Caps Lock, Home/End/Delete, numpad and Ctrl/Alt/Search combos.",
+  "_note": "Default bindings. Keyboard values are KeyboardEvent.code; Mouse0 / Mouse2 are the left / right mouse buttons and the wheel sets the torso angle. `autoCamera` replaces those entries when the Automatic camera setting is on (no mouse needed). C also sinks because Ctrl+W closes the tab unless the browser grants keyboard lock. Gamepad uses the W3C standard mapping (buttons b0..b16, axes a0..a3).",
   "keyboard": {
     "moveUp": ["KeyW"], "moveDown": ["KeyS"], "moveLeft": ["KeyA"], "moveRight": ["KeyD"],
-    "sprint": ["ShiftLeft"],
-    "contactMode": ["Tab"],
-    "armL": ["KeyJ"], "armR": ["KeyL"],
-    "gripL": ["KeyU"], "gripR": ["KeyO"],
-    "wrap": ["KeyK"], "shoot": ["KeyI"],
-    "sink": ["Space"], "thrustHips": ["KeyH"],
-    "leanFwd": ["ArrowUp"], "leanBack": ["ArrowDown"], "leanLeft": ["ArrowLeft"], "leanRight": ["ArrowRight"],
-    "chopFeet": ["KeyC"], "headTuck": ["KeyN"],
-    "cutLeft": ["KeyQ"], "cutRight": ["KeyE"],
-    "dive": ["KeyB"],
-    "reset": ["Enter"], "pause": ["Escape"],
-    "overlay": ["Backquote"], "anatomy": ["KeyX"], "camera": ["KeyV"], "tuning": ["KeyT"], "quality": ["Equal"]
+    "sprint": ["ShiftLeft", "ShiftRight"],
+    "sink": ["ControlLeft", "ControlRight", "KeyC"],
+    "thrust": ["Space"],
+    "dive": ["KeyE"],
+    "armL": ["Mouse0"], "armR": ["Mouse2"],
+    "torsoUp": [], "torsoDown": [],
+    "reset": ["Enter"], "pause": ["Escape"], "overlay": ["Backquote"], "tuning": ["KeyT"]
   },
+  "autoCamera": { "armL": ["KeyJ"], "armR": ["KeyL"], "torsoUp": ["KeyI"], "torsoDown": ["KeyK"] },
   "gamepad": {
     "moveX": ["a0"], "moveY": ["a1"],
-    "leanX": ["a2"], "leanY": ["a3"],
-    "sprint": ["b7"],
-    "contactMode": ["b8"],
+    "lookX": ["a2"], "lookY": ["a3"],
+    "sprint": ["b7"], "sink": ["b6"], "thrust": ["b0"], "dive": ["b1"],
     "armL": ["b4"], "armR": ["b5"],
-    "gripL": ["b2"], "gripR": ["b1"],
-    "wrap": ["b0"], "shoot": ["b3"],
-    "sink": ["b6"], "thrustHips": ["b11"],
-    "chopFeet": ["b10"], "headTuck": ["b13"],
-    "cutLeft": ["b14"], "cutRight": ["b15"],
-    "dive": ["b12"],
+    "torsoUp": ["b12"], "torsoDown": ["b13"],
     "reset": ["b9"]
   },
-  "options": { "contactModeHold": false, "deadzone": 0.15, "sinkRampPerSecond": 1.6 }
+  "options": { "deadzone": 0.15, "sinkRampPerSecond": 1.6, "mouseSensitivity": 0.0025, "padLookRate": 3, "wheelPerFullTorso": 600, "torsoRatePerSecond": 1.5 }
 }
