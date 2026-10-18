@@ -174,9 +174,12 @@
       "voice_exhale_03",
       "voice_exhale_01",
       "voice_exhale_02"
+    ],
+    "game_whistle_end": [
+      "game_whistle_end_02"
     ]
   },
-  "character": null,
+  "character": "voxel",
   "volumes": {
     "hit_body_body": 0.85,
     "hit_pads_pads": 0.45,
@@ -192,7 +195,7 @@
     "ball_bounce": 0.65,
     "ball_hit_body": 0.4,
     "game_whistle_start": 0.25,
-    "game_whistle_end": 0.3,
+    "game_whistle_end": 0.1,
     "crowd_ooh": 0.2,
     "crowd_ambience_loop": 0.1,
     "ui_move": 0.4,
@@ -207,7 +210,8 @@
     "air_whoosh": 0.15,
     "air_wind_loop": 0.05,
     "voice_grunt": 0.15,
-    "voice_exhale": 0.05
+    "voice_exhale": 0.05,
+    "crowd_cheer": 0.05
   },
-  "notes": ""
+  "notes": "make all the different models skins that you can unlock in the future, but for now they should just all be unlocked always.\n"
 }
