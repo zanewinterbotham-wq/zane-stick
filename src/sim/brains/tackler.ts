@@ -19,6 +19,9 @@ const PURSUE_V = 9, LEAD_MAX = 2.5, LEVERAGE = 0.7;
 /** Break down (under control, closing at BREAK_V) inside BREAK_TTC s of contact, or BREAK_D m, when closing faster
  *  than BREAK_CLOSE m/s (chasing from behind there is nothing to mirror); at most BREAK_MAX s. */
 const BREAK_TTC: [number, number] = [0.9, 1.1], BREAK_D = 6, BREAK_CLOSE = 3, BREAK_MAX = 1.5;
+/** Also break down inside BREAK_NEAR m of a carrier in front who is not running away (coming back on him after a
+ *  miss), and never lead him more than OUT_LEAD m out of bounds (the wall is 5 m beyond the sideline). */
+const BREAK_NEAR = 3.5, OUT_LEAD = 2;
 /** Strike inside this distance (m, COM to COM), wrap inside WRAP, roll the hips inside THRUST; give up the
  *  strike and pursue again beyond MISS. */
 const STRIKE = 1.9, WRAP = 1.3, THRUST = 0.8, MISS = 4.5;
@@ -108,8 +111,10 @@ export class TacklerBrain implements Brain {
     // ---- phase
     // he is in front of the way I am running (striking at someone behind me only trips me up)
     const sp = Math.hypot(me.comVel[0], me.comVel[2]), front = sp < 1 || (me.comVel[0] * dx + me.comVel[2] * dz) / (sp * d) > 0.2;
+    // back on him after a miss, slower: in close and not running away from me, break down again before striking
+    const near = d < BREAK_NEAR && front && (t.comVel[0] * dx + t.comVel[2] * dz) / d < BREAK_CLOSE;
     if (this.phase === 'pursue') {
-      if (closing > BREAK_CLOSE && (d / closing < this.breakTtc || d < BREAK_D)) { this.phase = 'breakdown'; this.phaseUntil = p.time + BREAK_MAX; }
+      if ((closing > BREAK_CLOSE && (d / closing < this.breakTtc || d < BREAK_D)) || (near && d > STRIKE)) { this.phase = 'breakdown'; this.phaseUntil = p.time + BREAK_MAX; }
       else if (d < STRIKE && front) this.phase = 'strike';
     } else if (this.phase === 'breakdown') {
       if (d < STRIKE) this.phase = 'strike';
@@ -122,20 +127,15 @@ export class TacklerBrain implements Brain {
       const lead = this.intercept(dx, dz, t.comVel, PURSUE_V * (me.lame ? HOBBLE.speed : 1)) * clamp(1 - this.diff.noise, 0.5, 1);
       // the aim error is across the line to him, the leverage toward his goal, both fading in close
       const k = Math.min(1, d / 4);
-      const ax = dx + t.comVel[0] * lead - uz * this.aimErr * k, az = dz + t.comVel[2] * lead + ux * this.aimErr * k + p.field.dirZ * LEVERAGE * k;
+      let ax = dx + t.comVel[0] * lead - uz * this.aimErr * k, az = dz + t.comVel[2] * lead + ux * this.aimErr * k + p.field.dirZ * LEVERAGE * k;
+      // he cannot run on through the wall: a lead point far out of bounds sent the chase straight into it
+      ax = clamp(me.com[0] + ax, -p.field.halfWidth - OUT_LEAD, p.field.halfWidth + OUT_LEAD) - me.com[0];
       const n = Math.hypot(ax, az) || 1e-6;
-      this.run(me, ax / n * FULL, az / n * FULL, dt, c);
+      this.chase(p, me, ax / n * FULL, az / n * FULL, dt, c);
     } else {
       const along = t.comVel[0] * ux + t.comVel[2] * uz, close = this.phase === 'breakdown' ? BREAK_V : STRIKE_V;
-      const mine = Math.max(close, along + close), vx = t.comVel[0] - along * ux + ux * mine, vz = t.comVel[2] - along * uz + uz * mine;
-      // a cut needs a cut to mirror it: plant when the way to go has swung well off the run
-      const vn = Math.hypot(vx, vz), plant = p.time >= this.plantFree && sp > PLANT_RUN && vn > 1 && (me.comVel[0] * vx + me.comVel[2] * vz) / (sp * vn) < Math.cos(PLANT_ANGLE);
-      if (plant) {
-        this.plantSide = me.comVel[2] * vx - me.comVel[0] * vz > 0 ? 1 : -1;
-        this.plantUntil = p.time + PLANT_HOLD; this.plantFree = p.time + PLANT_GAP;
-      }
-      if (p.time < this.plantUntil) c.plantCut = this.plantSide;
-      this.run(me, vx, vz, dt, c, plant);
+      const mine = Math.max(close, along + close);
+      this.chase(p, me, t.comVel[0] - along * ux + ux * mine, t.comVel[2] - along * uz + uz * mine, dt, c);
     }
     c.gait = 'sprint';
     c.contactMode = d < 4;
@@ -185,6 +185,20 @@ export class TacklerBrain implements Brain {
     if (!this.dived && rolling && sp > 4 && sp * sp > 2 * (BALL_BRAKE - 1) * d && this.onLine(me, x, z, sp)) { c.dive = true; this.dived = true; }
   }
 
+  /** Run after the carrier toward a ground velocity: a way to go that swings well off the run (a juke, a miss) is
+   *  answered with a plant and cut at speed, and turned to at once when slow, never bent in over a long arc. */
+  private chase(p: Perception, me: AthleteView, vx: number, vz: number, dt: number, c: Commands) {
+    const sp = Math.hypot(me.comVel[0], me.comVel[2]), vn = Math.hypot(vx, vz);
+    const off = vn > 1 && sp > 0.5 && (me.comVel[0] * vx + me.comVel[2] * vz) / (sp * vn) < Math.cos(PLANT_ANGLE);
+    const plant = off && sp > PLANT_RUN && p.time >= this.plantFree;
+    if (plant) {
+      this.plantSide = me.comVel[2] * vx - me.comVel[0] * vz > 0 ? 1 : -1;
+      this.plantUntil = p.time + PLANT_HOLD; this.plantFree = p.time + PLANT_GAP;
+    }
+    if (p.time < this.plantUntil) c.plantCut = this.plantSide;
+    this.run(me, vx, vz, dt, c, plant, off && sp <= PLANT_RUN);
+  }
+
   /** Whether a point (relative x, z) lies DIVE_D ahead along the current run and within DIVE_SIDE of its line. */
   private onLine(me: AthleteView, x: number, z: number, sp: number) {
     const ux = me.comVel[0] / sp, uz = me.comVel[2] / sp, along = x * ux + z * uz;
@@ -200,11 +214,11 @@ export class TacklerBrain implements Brain {
 
   /** Move toward a ground velocity (m/s, world): the heading turns no faster than footing allows at this speed
    *  (or jumps, on a plant) and the magnitude is filtered, so the command does not chatter. */
-  private run(me: AthleteView, vx: number, vz: number, dt: number, c: Commands, snap = false) {
+  private run(me: AthleteView, vx: number, vz: number, dt: number, c: Commands, snap = false, pivot = false) {
     const n = Math.hypot(vx, vz);
     if (Number.isNaN(this.heading)) this.heading = me.heading;
     if (n > 1e-3) {
-      const d = wrapAngle(Math.atan2(vx, vz) - this.heading), w = turnRate(Math.hypot(me.comVel[0], me.comVel[2])) * dt;
+      const d = wrapAngle(Math.atan2(vx, vz) - this.heading), w = (pivot ? TURN_MAX : turnRate(Math.hypot(me.comVel[0], me.comVel[2]))) * dt;
       this.heading = wrapAngle(this.heading + (snap ? d : clamp(d, -w, w)));
     }
     this.mag += (Math.min(1, n / FULL) - this.mag) * (1 - Math.exp(-dt / MOVE_TAU));
