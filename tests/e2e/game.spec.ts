@@ -131,7 +131,7 @@ test('controls screen lists the mouse controls and the game keys', async ({ page
   await page.goto('/');
   await page.getByRole('button', { name: 'Controls' }).click();
   for (const t of ['Left click', 'Right click', 'Scroll', 'Ctrl', 'Space', 'Shift', 'Esc', 'Enter']) await expect(page.locator('.menu')).toContainText(t);
-  await expect(page.locator('.menu')).not.toContainText('Dive');
+  await expect(page.locator('.menu')).toContainText('Dive forward'); // owner asked for dive on E
   await page.screenshot({ path: 'test-results/10-controls.png', fullPage: true });
   expect(errors).toEqual([]);
 });
