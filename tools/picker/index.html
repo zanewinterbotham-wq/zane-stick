@@ -10,7 +10,7 @@
   <header class="top">
     <div>
       <h1>Zane Stick picker <span class="tag">dev tool</span></h1>
-      <p class="sub">Pick the sounds and the character you like, then press <b>Save to project</b> and tell Claude.</p>
+      <p class="sub">Pick the sounds, the character and the injury effects you like, then press <b>Save to project</b> and tell Claude.</p>
     </div>
     <div class="actions">
       <button id="save" class="primary">Save to project</button>
@@ -24,6 +24,7 @@
     <button role="tab" data-tab="sounds" aria-selected="true">Sounds <span id="soundCount" class="count"></span></button>
     <button role="tab" data-tab="characters" aria-selected="false">Characters <span id="charName" class="count"></span></button>
     <button role="tab" data-tab="stadiums" aria-selected="false">Stadiums <span id="stadiumName" class="count"></span></button>
+    <button role="tab" data-tab="effects" aria-selected="false">Effects <span id="fxName" class="count"></span></button>
   </nav>
   <main>
     <section id="sounds" class="tab">
@@ -35,6 +36,10 @@
     </section>
     <section id="stadiums" class="tab" hidden>
       <div id="stadiumCards" class="cards"></div>
+    <section id="effects" class="tab" hidden>
+      <p class="sub dim">Injury effects (blood, bones, stars) in the game; players can turn them off with the Gore setting. Pick the ones you like: the game uses the first.</p>
+      <div id="fxStage" class="fxstage"></div>
+      <div id="fxCards" class="cards"></div>
     </section>
     <label class="notes">Notes for Claude
       <textarea id="notes" rows="3" placeholder="Anything about your picks, e.g. &quot;tackles should sound heavier&quot;"></textarea>

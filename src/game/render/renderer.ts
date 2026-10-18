@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import type { World } from '../../sim/world';
 import { AthleteMesh, TEAMS } from './athleteMesh';
 import { AnatomyOverlay } from './anatomy';
+import { InjuryEffects } from './effects';
 import { buildBarrier, buildField } from './field';
 import { loadStadium, OPEN_FIELD, stadiumById, type Stadium, type StadiumScene } from './stadium';
 import { CLASSIC, loadSkin, skinById, type Skin, type SkinTemplate } from './skin';
@@ -38,6 +39,9 @@ export class GameRenderer {
   private skinReq = 0;
   /** Athlete whose head is not drawn (the helmet camera looks out from inside it), or -1. */
   hideHeadOf = -1;
+  /** Injury effects (blood, bones, stars); off with the Gore setting. */
+  readonly effects = new InjuryEffects();
+  gore = true;
   /** Render time of the last frame (ms) and the last frame's draw calls. */
   lastMs = 0;
 
@@ -58,7 +62,7 @@ export class GameRenderer {
     const sc = this.sun.shadow.camera as THREE.OrthographicCamera;
     sc.left = -12; sc.right = 12; sc.top = 12; sc.bottom = -12; sc.near = 1; sc.far = 100;
     this.scene.add(this.sun, this.sun.target);
-    this.scene.add(buildField(quality.detail));
+    this.scene.add(buildField(quality.detail), this.effects.root);
     this.barrier = buildBarrier();
     this.scene.add(this.barrier);
     this.resize();
@@ -153,6 +157,8 @@ export class GameRenderer {
       this.props[i].quaternion.set(...quat);
     });
     if (this.overlay?.root.visible) this.overlay.update(w);
+    this.effects.root.visible = this.gore;
+    if (this.gore) this.effects.follow(w);
     // keep the shadow camera on the action
     const c = w.scene.athletes[0].state.com;
     this.sun.target.position.set(c[0], 0, c[2]);

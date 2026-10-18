@@ -1,4 +1,5 @@
-// Dev-only picker UI: audition sounds, choose a character style, save art/picks.json.
+// Dev-only picker UI: audition sounds, choose a character style and injury effect styles, save art/picks.json.
+import { InjuryEffects, STYLES, styleById } from '../../src/game/render/effects';
 import { emptyPicks, validate, type Picks } from './picks';
 
 interface Variant { id: string; file: string; source: string; license: string; duration: number; note: string }
@@ -287,6 +288,71 @@ async function openViewer(c: Character, kind: Kind = 'character') {
   load(0);
 }
 
+// ---- effects ----
+let fxPreview: { style: (id: string) => void; run: (on: boolean) => void } | null = null;
+let fxCurrent = STYLES[0].id, fxStarting: Promise<void> | null = null;
+
+function toggleEffect(id: string) {
+  const list = picks.effects ?? [];
+  const next = list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+  if (next.length) picks.effects = next; else delete picks.effects;
+  changed();
+}
+
+function renderEffects() {
+  const cards = $('#fxCards');
+  for (const s of STYLES) {
+    const pick = h('input', { type: 'checkbox', value: s.id });
+    pick.addEventListener('change', () => toggleEffect(s.id));
+    const prev = h('button', { textContent: 'Preview' });
+    prev.addEventListener('click', () => { fxCurrent = s.id; fxPreview?.style(s.id); refresh(); });
+    const card = h('article', { className: 'card' }, h('div', { className: 'body' },
+      h('h3', { textContent: s.label }), h('p', { className: 'dim', textContent: s.pitch }),
+      h('div', { className: 'foot' }, prev, h('label', {}, pick, 'Pick'))));
+    card.dataset.effect = s.id;
+    cards.append(card);
+  }
+}
+
+/** Live preview: a figure lying on turf, its knee breaking and its head knocked out every 2.5 s in the chosen style. */
+async function startFxPreview() {
+  const T = await import('three');
+  const stage = $('#fxStage'), renderer = new T.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  stage.append(renderer.domElement);
+  const scene = new T.Scene(), camera = new T.PerspectiveCamera(40, 16 / 9, 0.05, 50);
+  scene.background = new T.Color(0x9cc3e4);
+  scene.add(new T.HemisphereLight(0xdfeeff, 0x3c5a2c, 1.4));
+  const sun = new T.DirectionalLight(0xffffff, 2); sun.position.set(-2, 4, 2); scene.add(sun);
+  const turf = new T.Mesh(new T.PlaneGeometry(8, 8), new T.MeshLambertMaterial({ color: 0x357439 }));
+  turf.rotation.x = -Math.PI / 2; scene.add(turf);
+  // the figure: trunk, head, a thigh and the shank that breaks
+  const mat = (c: number) => new T.MeshLambertMaterial({ color: c });
+  const part = (geo: import('three').BufferGeometry, c: number, x: number, y: number, z: number, rz = 0) => { const m = new T.Mesh(geo, mat(c)); m.position.set(x, y, z); m.rotation.z = rz; scene.add(m); return m; };
+  part(new T.BoxGeometry(0.6, 0.22, 0.36), 0x1f3a68, 0, 0.12, 0);
+  part(new T.SphereGeometry(0.14, 12, 8), 0x1f3a68, -0.44, 0.14, 0);
+  part(new T.CapsuleGeometry(0.075, 0.32, 4, 8), 0xe9e6dc, 0.48, 0.09, 0.1, Math.PI / 2);
+  part(new T.CapsuleGeometry(0.055, 0.34, 4, 8), 0x1f3a68, 0.9, 0.07, 0.1, Math.PI / 2);
+  camera.position.set(0.4, 1.3, 2.1); camera.lookAt(0.2, 0.1, 0);
+  const fx = new InjuryEffects(styleById(fxCurrent));
+  scene.add(fx.root);
+  const knee: [number, number, number] = [0.7, 0.08, 0.1], shank = { pos: knee, quat: [0, 0, -Math.SQRT1_2, Math.SQRT1_2] as [number, number, number, number] };
+  let next = 0, last = performance.now();
+  const resize = () => { renderer.setSize(stage.clientWidth, stage.clientHeight, false); camera.aspect = stage.clientWidth / Math.max(1, stage.clientHeight); camera.updateProjectionMatrix(); };
+  addEventListener('resize', resize);
+  resize();
+  const frame = (now: number) => {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (now > next) { fx.clear(); fx.break(knee, () => shank, 0.8); fx.ko(() => [-0.44, 0.25, 0]); next = now + 2500; }
+    fx.step(dt);
+    renderer.render(scene, camera);
+  };
+  fxPreview = {
+    style: (id) => { fx.setStyle(id); next = 0; },
+    run: (on) => { renderer.setAnimationLoop(on ? frame : null); if (on) resize(); },
+  };
+}
+
 // ---- shared ----
 function refresh() {
   let total = 0;
@@ -307,7 +373,7 @@ function refresh() {
   $('#soundCount').textContent = `${total} picked`;
   const ch = lib.characters.find((c) => c.id === picks.character);
   $('#charName').textContent = ch ? ch.label : picks.character ?? 'none';
-  for (const card of document.querySelectorAll<HTMLElement>('#cards .card')) {
+  for (const card of document.querySelectorAll<HTMLElement>('.card[data-style]')) {
     const on = card.dataset.style === picks.character;
     card.classList.toggle('chosen', on);
     card.querySelector<HTMLInputElement>('input[type=radio]')!.checked = on;
@@ -318,6 +384,13 @@ function refresh() {
     const on = card.dataset.stadium === picks.stadium;
     card.classList.toggle('chosen', on);
     card.querySelector<HTMLInputElement>('input[type=radio]')!.checked = on;
+  }
+  const fx = picks.effects ?? [];
+  $('#fxName').textContent = fx.length ? styleById(fx[0]).label + (fx.length > 1 ? ` +${fx.length - 1}` : '') : 'none';
+  for (const card of document.querySelectorAll<HTMLElement>('[data-effect]')) {
+    card.classList.toggle('chosen', fx.includes(card.dataset.effect!));
+    card.classList.toggle('previewing', card.dataset.effect === fxCurrent);
+    card.querySelector<HTMLInputElement>('input[type=checkbox]')!.checked = fx.includes(card.dataset.effect!);
   }
   const notes = $<HTMLTextAreaElement>('#notes');
   if (notes.value !== picks.notes) notes.value = picks.notes;
@@ -352,6 +425,10 @@ function showTab(name: string) {
   $('#characters').hidden = name !== 'characters';
   $('#stadiums').hidden = name !== 'stadiums';
   if (name === 'stadiums' && !stadiumsShown) { stadiumsShown = true; renderCards('stadium'); refresh(); } // the renders load only when asked for
+  $('#effects').hidden = name !== 'effects';
+  // the preview's renderer starts on first view and only animates while its tab shows
+  if (name === 'effects') void (fxStarting ??= startFxPreview()).then(() => fxPreview?.run(!$('#effects').hidden));
+  else fxPreview?.run(false);
 }
 
 async function start() {
@@ -366,6 +443,7 @@ async function start() {
 
   renderSounds();
   renderCharacters();
+  renderEffects();
   refresh();
   status(JSON.stringify(picks) === savedJson ? `Loaded ${lib.picksPath}` : savedJson ? 'Unsaved changes' : `Nothing saved yet (will save to ${lib.picksPath})`, JSON.stringify(picks) === savedJson ? '' : 'warn');
 

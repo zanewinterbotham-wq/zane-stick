@@ -2,7 +2,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { PICKS_OUT } from '../playwright.config';
 
-test('audition, pick, choose a character, view 3D, save', async ({ page }) => {
+test('audition, pick, choose a character, view 3D, pick effects, save', async ({ page }) => {
   rmSync(PICKS_OUT, { force: true });
   const errors: string[] = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -36,7 +36,7 @@ test('audition, pick, choose a character, view 3D, save', async ({ page }) => {
   await page.screenshot({ path: 'test-results/picker/01-sounds.png', fullPage: true });
 
   await page.getByRole('tab', { name: /Characters/ }).click();
-  await expect(page.locator('.card')).toHaveCount(2);
+  await expect(page.locator('#cards .card')).toHaveCount(2);
   await page.locator('[data-style=stick]').getByText('Choose this one').click();
   await expect(page.locator('#charName')).toHaveText('Stick (fixture)');
   await page.screenshot({ path: 'test-results/picker/02-characters.png' });
@@ -49,6 +49,15 @@ test('audition, pick, choose a character, view 3D, save', async ({ page }) => {
   await page.keyboard.press('Escape');
   await expect(page.locator('.layer')).toHaveCount(0);
 
+  await page.getByRole('tab', { name: /Effects/ }).click();
+  await expect(page.locator('[data-effect]')).toHaveCount(5);
+  await page.locator('[data-effect=voxel]').getByRole('button', { name: 'Preview' }).click();
+  await page.locator('[data-effect=voxel]').getByText('Pick').click();
+  await page.locator('[data-effect=comic]').getByText('Pick').click();
+  await expect(page.locator('#fxName')).toHaveText('Voxel blood +1');
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: 'test-results/picker/04-effects.png' });
+
   await page.locator('#notes').fill('test note');
   await page.getByRole('button', { name: 'Save to project' }).click();
   await expect(page.locator('#status')).toContainText('Saved to');
@@ -56,7 +65,7 @@ test('audition, pick, choose a character, view 3D, save', async ({ page }) => {
   expect(JSON.parse(readFileSync(PICKS_OUT, 'utf8'))).toEqual({
     version: 1,
     sounds: { hit_helmet_helmet: ['hit_helmet_helmet_01', 'hit_helmet_helmet_02'], foot_step_turf: ['foot_step_turf_02'], ui_click: ['ui_click_01'] },
-    character: 'stick', volumes: { foot_step_turf: 0.5 }, notes: 'test note',
+    character: 'stick', volumes: { foot_step_turf: 0.5 }, effects: ['voxel', 'comic'], notes: 'test note',
   });
 
   // the endpoint rejects a malformed picks file
