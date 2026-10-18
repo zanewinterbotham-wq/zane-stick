@@ -23,8 +23,14 @@ Priority order when they conflict: anatomy and physical realism → controls and
 
 ## 2. Non-negotiable rules (summary)
 
-- No animation clips, keyframes or mocap playback. Ever.
-- No scripted outcomes, success rolls, canned reactions or forced ragdoll switches.
+- **Changed 2026-10-17 (owner decision):** the pure-physics locomotion controller could not keep athletes on
+  their feet, so locomotion now uses an *active ragdoll* (§6.5). Procedural animation (generated in code;
+  no clips or mocap) sets the pose the muscles track, and an invisible support carries the body along the
+  animation's path while no one touches it. The body is always simulated; there is never a switch to or
+  from a ragdoll.
+- Contact is still decided by physics: during player contact the support never pushes horizontally, and
+  its posture help fades by how badly the athlete is knocked. No scripted outcomes, success rolls, canned
+  reactions or forced ragdoll switches.
 - Bots use the same body, muscles and command vocabulary as humans. Difficulty changes reaction
   time, decision quality and precision only.
 - The simulation core (`src/sim`) imports nothing from rendering, DOM or input. Fixed timestep.
@@ -249,8 +255,32 @@ An invisible force/torque on the pelvis and thorax that only steadies posture an
   separate and the athlete has had stable footing for 0.3 s.
 - Strength 0–100 % (tuning panel); the Phase 1 report gives the level needed.
 
-If leg-driven running cannot reach believable speeds under these limits, the project stops and
-reports instead of adding a propulsion force.
+Superseded for locomotion by the support in §6.5 (owner decision 2026-10-17). The assist remains as the
+low-level posture help used in the realism suite and by the hand-built controller.
+
+### 6.5 Active ragdoll: animation tracking and support (`src/sim/anim`, `World.applySupport`)
+
+Goal: athletes run really fast (sprint ~10 m/s, like the fastest pros) and never fall on their own, so the
+player thinks about hitting, not balancing; hits and tackles still come out of the physics.
+
+- **Animator** (`src/sim/anim`): procedural, parameterised by commands and measured speed: idle / football
+  stance, walk, jog, sprint (cadence and stride from speed, so planted feet do not slide), backpedal,
+  shuffle, plant-and-cut, dive, contact overlays (arm reach, wrap, shoot, sink, drive, head tuck), ball
+  carry, get-up. Writes an `AnimFrame` (target joint angles and speeds, per-dof gain, root target).
+- **Tracking controller** (`src/sim/control/tracking.ts`): muscles track the frame through the same muscle
+  limits as before. During contact, and while the support is faded, it blends toward the hand-built
+  balance controller (`hand.ts`: capture-point stepping and push recovery), so a hit athlete steps and fights
+  for balance physically.
+- **Support** (`World.applySupport`, replaces `applyAssist` for tracked athletes), two levels per athlete:
+  - *carry* (horizontal): force on the pelvis toward the root target velocity, capped at a human
+    acceleration. **Zero during player contact** (fades out within 0.1 s of first contact; returns after
+    separation and 0.3 s of stable footing), so it never pushes anyone into an opponent.
+  - *posture* (vertical weight share + upright torque on pelvis and thorax toward the root target):
+    kept through contact, but fades by how badly this athlete is knocked: trunk tilt beyond ~25°, both feet
+    off the turf, or a large impulse received. A hitter who drives through stays up; the athlete who gets
+    blown up loses support and goes down. Zero once down; ramps back in with the get-up.
+- Settings (tuning panel): support strength, carry/posture fade thresholds, tracking stiffness.
+
 
 ## 7. Controls
 

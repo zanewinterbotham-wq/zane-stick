@@ -9,13 +9,15 @@ Engine comparison: `docs/physics-benchmark.md`.
 (school Chromebook minimum, gaming PC maximum). 4. Graphics.
 
 ## Non-negotiable rules
-- No animation clips, keyframes, or mocap playback. All motion = muscles acting on simulated bodies.
+- Active ragdoll (owner decision 2026-10-17, design §6.5): procedural animation generated in code sets the
+  pose muscles track; the body is always simulated. No animation clips or mocap; no switch to/from ragdoll.
 - Physics decides every outcome. No scripted tackles, success rolls, canned reactions, forced ragdoll.
 - Bots get the same bodies, muscles and `Commands` as humans. Difficulty = reaction/decision/precision only.
 - `src/sim/**` never imports DOM, Three.js, input or `src/game`. Fixed timestep. Seeded RNG only
   (`sim/rng.ts`); no `Math.random` / `Date.now` / `performance.now` inside the sim.
 - SI units everywhere.
-- Balance assist never applies horizontal force; fades out on player contact.
+- Support: horizontal carry only while not touching another player (zero in contact); posture support fades
+  by how badly the athlete is knocked. Never pushes anyone into an opponent.
 - If a requirement can't be met as written, stop and explain options. Never quietly substitute a shortcut.
 - Physics settings change only between reps. Every body detail level preserves mass properties.
 - Public repo: no personal info in code, docs, commits or settings. Free/open-source libraries only.
@@ -58,5 +60,5 @@ Engine comparison: `docs/physics-benchmark.md`.
 ## Current phase
 Phase 1 (foundation and first playable). Do not start Phase 2.
 Status: engine chosen (MuJoCo), anatomy, muscles, game shell, drill, presets, deployment done;
-standing balance, push recovery (realism suite) and chop steps pass; walking falls after a few
-seconds and running does not work yet.
+standing balance, push recovery (realism suite) and chop steps pass with the hand-built controller.
+Now building the active ragdoll (animator + tracking controller + support) so locomotion never falls.
