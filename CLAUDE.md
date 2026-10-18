@@ -12,7 +12,11 @@ Engine comparison: `docs/physics-benchmark.md`.
 - Active ragdoll (owner decision 2026-10-17, design §6.5): procedural animation generated in code sets the
   pose muscles track; the body is always simulated. No animation clips or mocap; no switch to/from ragdoll.
 - Physics decides every outcome. No scripted tackles, success rolls, canned reactions, forced ragdoll.
-- Bots get the same bodies, muscles and `Commands` as humans. Difficulty = reaction/decision/precision only.
+- Bots get the same bodies, muscles and `Commands` as humans. Difficulty = reaction/decision/precision only,
+  plus (owner decision 2026-10-18) "AI toughness": the bot's world support thresholds (knock, stun, held,
+  tilt) may be scaled, never its body, muscles or Commands.
+- Hit power (owner decision 2026-10-18) is an arcade knob: 1.0 = pure physics (must stay bit-identical);
+  above 1 the athlete a hit drives back gets an extra push along it, the same rule for humans and bots.
 - `src/sim/**` never imports DOM, Three.js, input or `src/game`. Fixed timestep. Seeded RNG only
   (`sim/rng.ts`); no `Math.random` / `Date.now` / `performance.now` inside the sim.
 - SI units everywhere.

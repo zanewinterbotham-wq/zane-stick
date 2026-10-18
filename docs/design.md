@@ -32,7 +32,9 @@ Priority order when they conflict: anatomy and physical realism → controls and
   its posture help fades by how badly the athlete is knocked. No scripted outcomes, success rolls, canned
   reactions or forced ragdoll switches.
 - Bots use the same body, muscles and command vocabulary as humans. Difficulty changes reaction
-  time, decision quality and precision only.
+  time, decision quality and precision only. **Changed 2026-10-18 (owner decision):** "AI toughness" may
+  also make the bot sturdier than the player, but only through its world support thresholds (§6.5), and
+  "hit power" above 1 is an arcade push on whoever a hit drives back (§6.5); hit power 1 is pure physics.
 - The simulation core (`src/sim`) imports nothing from rendering, DOM or input. Fixed timestep.
   Same start state + same inputs → same result on the same machine.
 - SI units everywhere (m, kg, s, N, N·m, rad).
@@ -290,6 +292,30 @@ player thinks about hitting, not balancing; hits and tackles still come out of t
   - grabbing: a raised hand closes on an opponent within 7 cm of its surface, a reaching arm aims at the part of
     the opponent nearest its shoulder (within 0.9 m), and a raised arm that holds an opponent rows him in
     (elbow flexion, shoulder extension, sitting back; pull 0.5 × grip strength through Jᵀ).
+- *Big-hit response*: a full big hit (impulse past `bigHit`) raises the knock within about two steps (8 ms
+  time constant; partial knocks 20 ms), and the stun's jolt (more than 0.05 in one step) blends the tracking
+  controller into the loosened balance controller the same step (otherwise over 80 ms). Posture support
+  drops below half 32 ms after first contact in a low drive at 8 m/s into a 4 m/s jogger (was 39 ms; at
+  9 m/s 25 ms, was 32): the rest is the impulse itself arriving and turning his run around. A shove's
+  slowly growing stun and small bumps keep the old rates.
+- **Difficulty (owner decisions 2026-10-18)**, three independent axes plus hit power (Difficulty screen,
+  Easy / Normal / Hard / Custom; applied from the next rep):
+  - *AI toughness* (`AthleteSetup.toughness`, 1 = the player's): multiplies the bot's `bigHit` (and so its
+    stun thresholds), held-knock timing and tilt fade thresholds. Its body, muscles and Commands are the
+    player's. Easy 0.6, Normal 1, Hard 1.6. Hard hit (low drive at 8 m/s into a 4 m/s jogger, 12 seeds):
+    downed 6 / 3 / 2 at 0.6 / 1 / 1.6.
+  - *AI juking* (`carrierSkill(k)`, 0..1): 1 = the carrier as before (`DIFFICULTY.normal`, full moves);
+    0 = 0.2 s slower to react, noisier, makes his move 0.8 s of time to contact early and does not burst out
+    of it. Easy 0, Normal 0.5, Hard 1. A straight chase with a 0.4 s lead tackles 7 / 6 / 1 of 8 reps.
+  - *Player strength / speed*: the human's `AthleteParams.strength` and `speed`. Easy 1.2 / 1.1, else 1.
+  - *Hit power* (`WorldSetup.hitPower`, 1–3, game default 1.5): an arcade knob, not physics. At 1 the
+    simulation is bit-identical to having none. Above 1, each step the athlete a hit drives back (he and
+    whoever he touches move, together, faster than 0.3 m/s along the push he gets; for the hitter that
+    combined momentum is against his push) gets (hitPower − 1) × the contact force he received in the
+    previous step, along it, half on the pelvis and half on the thorax, plus 0.5 of it upward so big hits
+    lift him off the turf. Same rule for humans and bots. The support's carry stays zero in contact. Hard
+    hit as above (12 seeds): the jogger travels 1.5 / 2.4 / 3.7 m in the 0.6 s after contact, peaks at
+    3.2 / 4.4 / 6.6 m/s backward and is downed 3 / 9 / 8 times at 1 / 1.5 / 2.5.
 - Settings (tuning panel): support strength, carry/posture fade thresholds, tracking stiffness.
 
 
