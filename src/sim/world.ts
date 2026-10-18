@@ -153,7 +153,7 @@ export class World {
       const k = level * m * g * standY * 1.5, c = level * m * standY * standY * 1.2;
       const wx = s.segAngVel[3 * i], wz = s.segAngVel[3 * i + 2];
       // torque = k (up × ŷ) − c ω_horizontal
-      this.scene.applyWrench(a.index, i, [0, 0, 0], [k * -upv[2] * -1 * -1 - c * wx, 0, k * upv[0] * -1 - c * wz]);
+      this.scene.applyWrench(a.index, i, [0, 0, 0], [-k * upv[2] - c * wx, 0, k * upv[0] - c * wz]);
     }
   }
 
