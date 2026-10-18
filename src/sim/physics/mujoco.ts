@@ -24,9 +24,9 @@ export const mujocoEngine: PhysicsEngine = {
   createScene: (desc) => new MujocoScene(desc),
 };
 
-function geomXml(g: GeomPlan, origin: Vec3, dt: number, name: string) {
+function geomXml(g: GeomPlan, origin: Vec3, dt: number, name: string, traction = TURF.mu) {
   const c = g.role === 'pad' ? CONTACT.pad : CONTACT.body;
-  const fr = g.role === 'foot' ? `${TURF.mu} ${TURF.torsional} ${TURF.rolling}` : g.role === 'hand' ? `${FRICTION.hand} 0.005 0.0001` : `${FRICTION.body} 0.005 0.0001`;
+  const fr = g.role === 'foot' ? `${traction} ${TURF.torsional} ${TURF.rolling}` : g.role === 'hand' ? `${FRICTION.hand} 0.005 0.0001` : `${FRICTION.body} 0.005 0.0001`;
   const common = `name="${name}" friction="${fr}" condim="${g.role === 'foot' ? 4 : 3}" solref="${Math.max(c.timeconst, 2 * dt)} ${c.dampRatio}" solimp="0.95 0.99 0.001" margin="0.005"`;
   if (g.type === 'capsule') return `<geom type="capsule" size="${g.size[0]}" fromto="${f(sub(g.fromto![0], origin))} ${f(sub(g.fromto![1], origin))}" ${common}/>`;
   return `<geom type="${g.type}" size="${f(g.size)}" pos="${f(sub(g.pos!, origin))}" ${common}/>`;
@@ -72,7 +72,7 @@ class MujocoScene implements PhysicsScene {
         if (j) for (const dof of j.dofs) {
           x += `<joint name="a${ai}_${j.name}_${dof.name}" type="hinge" axis="${f(dof.axis)}" range="${dof.range[0]} ${dof.range[1]}" solreflimit="${Math.max(LIMIT_TIMECONST, 2 * dt)} 1" solimplimit="${LIMIT_SOLIMP}" damping="${j.damping}"/>`;
         }
-        s.geoms.forEach((g, gi) => (x += geomXml(g, s.origin, dt, `a${ai}_${s.name}_${gi}`)));
+        s.geoms.forEach((g, gi) => (x += geomXml(g, s.origin, dt, `a${ai}_${s.name}_${gi}`, desc.traction)));
         for (const k of kids(s.name)) x += body(k);
         return x + '</body>';
       };
@@ -230,6 +230,17 @@ class MujocoScene implements PhysicsScene {
   propPose(pi: number) {
     const b = this.propBody[pi], d = this.d;
     return { pos: [d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]] as Vec3, quat: [d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3], d.xquat[4 * b]] as Quat };
+  }
+  placeProp(pi: number, pos: Vec3, quat: Quat) {
+    const b = this.propBody[pi], m = this.m, d = this.d;
+    const qa = m.jnt_qposadr[m.body_jntadr[b]], va = m.jnt_dofadr[m.body_jntadr[b]];
+    const qp = d.qpos, qv = d.qvel;
+    qp[qa] = pos[0]; qp[qa + 1] = pos[1]; qp[qa + 2] = pos[2];
+    qp[qa + 3] = quat[3]; qp[qa + 4] = quat[0]; qp[qa + 5] = quat[1]; qp[qa + 6] = quat[2];
+    for (let k = 0; k < 6; k++) qv[va + k] = 0;
+    mj.mj_forward(m, d);
+    this.views();
+    this.read();
   }
   propVel(pi: number): Vec3 {
     const b = this.propBody[pi], d = this.d, cv = d.cvel, sc = d.subtree_com;

@@ -25,6 +25,8 @@ export interface Commands {
   headTuck: boolean;
   plantCut: -1 | 0 | 1;            // −1 cut right, +1 cut left
   dive: boolean;
+  /** Carry the ball: 0 no, 1 in the left arm, 2 in the right arm (tucked, hand gripping the ball). */
+  carry: 0 | 1 | 2;
   /** Optional world point the arms should reach toward (bots, or a lock-on). */
   aim: Vec3 | null;
 }
@@ -33,7 +35,7 @@ export function neutralCommands(): Commands {
   return {
     move: { x: 0, z: 0 }, face: null, gait: 'jog', contactMode: false,
     armL: 0, armR: 0, gripL: false, gripR: false, wrap: false, shoot: false, sink: 0, thrustHips: false,
-    driveLegs: 0, chopFeet: false, lean: { fwd: 0, side: 0 }, headTuck: false, plantCut: 0, dive: false, aim: null,
+    driveLegs: 0, chopFeet: false, lean: { fwd: 0, side: 0 }, headTuck: false, plantCut: 0, dive: false, carry: 0, aim: null,
   };
 }
 

@@ -18,7 +18,8 @@ export interface AthleteSetup {
   brain: Brain;
   hasBall?: boolean;
 }
-export interface WorldSetup { physics: PhysicsSettings; athletes: AthleteSetup[]; props?: PropDesc[]; seed: number; assist: number; traction?: number }
+export interface FieldInfo { halfWidth: number; goalZ: number; dirZ: 1 | -1 }
+export interface WorldSetup { physics: PhysicsSettings; athletes: AthleteSetup[]; props?: PropDesc[]; seed: number; assist: number; field?: FieldInfo; traction?: number }
 
 /** Balance assist timing [design §6.4]. */
 const ASSIST_FADE_OUT = 0.15, ASSIST_STABLE_TIME = 0.3, ASSIST_FADE_IN = 0.3;
@@ -79,7 +80,7 @@ export class World {
     const scene = engine.createScene({
       hz: setup.physics.hz, iterations: setup.physics.iterations,
       athletes: setup.athletes.map((a, i) => ({ plan: plans[i], pos: a.pos, yaw: a.yaw })),
-      props: setup.props ?? [],
+      props: setup.props ?? [], traction: setup.traction,
     });
     const w = new World(scene, setup);
     setup.athletes.forEach((a, i) => {
@@ -112,7 +113,7 @@ export class World {
         heading: headingOf(fwd), down: a.downBy !== null, hasBall: a.index === this.ballCarrier,
       };
     });
-    return { time: this.time, self, athletes, field: { halfWidth: 24.38, goalZ: 50, dirZ: 1 } };
+    return { time: this.time, self, athletes, field: this.setup.field ?? { halfWidth: 24.38, goalZ: 50, dirZ: 1 } };
   }
 
   step() {
@@ -211,7 +212,7 @@ export class World {
   }
 
   private updateGrips(a: Athlete, dt: number) {
-    const want = [a.cmd.gripL || a.cmd.wrap, a.cmd.gripR || a.cmd.wrap];
+    const want = [a.cmd.gripL || a.cmd.wrap || a.cmd.carry === 1, a.cmd.gripR || a.cmd.wrap || a.cmd.carry === 2];
     for (const h of [0, 1] as const) {
       const g = a.grips[h];
       g.cooldown = Math.max(0, g.cooldown - dt);
@@ -234,6 +235,13 @@ export class World {
         g.active = true; g.force = 0;
       }
     }
+  }
+
+  /** Setup only: start a rep with a hand already gripping something (e.g. the carrier holding the ball). */
+  attachGrip(ai: number, hand: 0 | 1, target: { athlete: number; seg: number }, point: Vec3) {
+    const a = this.athletes[ai], g = a.grips[hand];
+    this.scene.gripOn(ai, hand, target, point, GRIP_TIMECONST.hand);
+    g.active = true; g.force = 0; g.jersey = false; g.limit = a.plan.gripStrength;
   }
 
   private updateHeadAccel(a: Athlete, dt: number) {

@@ -32,15 +32,38 @@ export interface Gains {
   /** Gait shape: minimum walking step time (s), touchdown gate (fraction of step), swing clearance (m),
    *  stance knee bend (rad), walking arm swing, how far the speed reference may lead the actual speed (m/s). */
   stepTMin: number; touchFrac: number; clearance: number; stanceKneeBend: number; armSwing: number; vLead: number;
+  /** Trunk lean with speed (rad per m/s) and with the speed still to gain (rad per m/s). */
+  leanSpeed: number; leanAccel: number;
 }
 export const DEFAULT_GAINS: Gains = {
-  posture: 0.6, stanceKnee: 2.0, stanceAnkle: 0.5, stanceHip: 2.5, spine: 3.0, neck: 2.5,
-  swingWn: 28, armWn: 12, dampT: 0.05,
-  pelvisAtt: 1.0, thoraxAtt: 1.0, headAtt: 1.0,
-  dcmK: 3.0, heightKp: 40, heightKd: 12,
-  footK: 0.12, stepWidth: 0.1, footMargin: 0.05,
-  torsoKp: 1.6, torsoKd: 0.18,
-  stepTMin: 0.38, touchFrac: 0.7, clearance: 0.1, stanceKneeBend: 0.1, armSwing: 0.6, vLead: 0.6,
+  // Tuned by bench/tune (CMA-ES over stand, walk, jog and four push directions), 2026-10-17.
+  posture: 0.647,
+  stanceKnee: 1.86,
+  stanceAnkle: 0.39,
+  stanceHip: 1.75,
+  spine: 1.34,
+  neck: 3.38,
+  swingWn: 114,
+  armWn: 48.3,
+  dampT: 0.0289,
+  pelvisAtt: 0.659,
+  thoraxAtt: 0.715,
+  headAtt: 0.4,
+  dcmK: 2.65,
+  heightKp: 107,
+  heightKd: 18.4,
+  footK: 0.0296,
+  stepWidth: 0.0822,
+  footMargin: 0.0546,
+  torsoKp: 0.617,
+  torsoKd: 0.309,
+  stepTMin: 0.36,
+  touchFrac: 0.6,
+  clearance: 0.09,
+  stanceKneeBend: 0.326,
+  armSwing: 0.151,
+  vLead: 0.539,
+  leanSpeed: 0.015, leanAccel: 0.04,
 };
 
 /** Target speeds (m/s) for the reference athlete; the body's own limits decide what is reached. */
@@ -80,6 +103,8 @@ export class HandController implements MotorController {
   private walkT = 0;
   private vRef: Vec3 = [0, 0, 0];
   private prevQ: Float64Array;
+  private carried: number[][] = [];
+  private segMass!: Float64Array;
   /** 1 for free-limb dofs whose damping should follow the moving target. */
   private tracking: Uint8Array;
   private qdFilt: Float64Array;
@@ -91,6 +116,10 @@ export class HandController implements MotorController {
     this.mass = plan.segments.reduce((a, s) => a + s.mass, 0);
     this.T0 = muscles.tPos.map((t, i) => 0.5 * (t + muscles.tNeg[i]));
     this.prevQ = new Float64Array(muscles.n).fill(NaN);
+    // segments carried by each dof (its joint's child and everything below it), for gravity compensation
+    const below = (name: string): number[] => [this.S(name), ...plan.segments.filter((x) => x.parent === name).flatMap((x) => below(x.name))];
+    this.carried = plan.joints.flatMap((j) => j.dofs.map(() => below(j.child)));
+    this.segMass = Float64Array.from(plan.segments.map((x) => x.mass));
     this.tracking = new Uint8Array(muscles.n);
     this.qdFilt = new Float64Array(muscles.n);
     this.pelvisSeg = this.S('pelvis');
@@ -150,6 +179,22 @@ export class HandController implements MotorController {
     out.kd[i] = 2 * Math.sqrt(kp * I);
     this.tracking[i] = 1;
   }
+  /** Gravity compensation: feed-forward torque that holds up the weight each dof carries, so joint
+   *  stiffness only has to correct errors (Coros et al. 2010). */
+  private gravityComp(v: BodyView, dofs: number[], out: MuscleTargets) {
+    const s = v.state;
+    for (const i of dofs) {
+      if (i < 0) continue;
+      let m = 0, cx = 0, cy = 0, cz = 0;
+      for (const k of this.carried[i]) { const mk = this.segMass[k]; m += mk; cx += mk * s.segCom[3 * k]; cy += mk * s.segCom[3 * k + 1]; cz += mk * s.segCom[3 * k + 2]; }
+      const a = this.anchor(v, i), ax = this.axis(v, i);
+      const rx = cx / m - a[0], rz = cz / m - a[2];
+      // gravity torque on the carried part: r × (0, −mg, 0) = (rz·mg, 0, −rx·mg); the joint supplies the opposite
+      out.tff[i] += -(ax[0] * rz * m * G - ax[2] * rx * m * G);
+      void cy;
+    }
+  }
+
   private segQuat(v: BodyView, s: number): Quat { const q = v.state.segQuat; return [q[4 * s], q[4 * s + 1], q[4 * s + 2], q[4 * s + 3]]; }
   private segVec(a: Float64Array, s: number): Vec3 { return [a[3 * s], a[3 * s + 1], a[3 * s + 2]]; }
   private axis(v: BodyView, i: number): Vec3 { const a = v.state.dofAxis; return [a[3 * i], a[3 * i + 1], a[3 * i + 2]]; }
@@ -208,13 +253,13 @@ export class HandController implements MotorController {
     let stepT = 1 / clamp(1.75 + 0.32 * vRef, 1.75, 4.8);
     const running = vRef > 2.6;
     // Recovery steps are quicker: shorten the step as the capture point leaves the base of support.
-    if (vRef < 2.6) stepT = clamp(stepT, g.stepTMin, g.stepTMin + 0.12);
+    if (vRef < 2.6) stepT = clamp(stepT, Math.max(0.36, g.stepTMin), 0.6); // ~0.5 s steps at a brisk walk, like people
 
     // ---- posture intent: COM height, trunk lean
     const sink = clamp(cmd.sink, 0, 1);
     let hd = this.standCom - 0.01 * vRef - sink * 0.3 * (this.plan.params.height / 1.83);
     const accelFwd = dot([vd[0] - cv[0], 0, vd[2] - cv[2]], fwdD);
-    let pitchD = clamp(0.015 * vRef + 0.04 * accelFwd, -0.1, 0.4) + 0.55 * sink + 0.45 * cmd.lean.fwd;
+    let pitchD = clamp(g.leanSpeed * vRef + g.leanAccel * accelFwd, -0.1, 0.45) + 0.55 * sink + 0.45 * cmd.lean.fwd;
     const rollD = 0.3 * cmd.lean.side;
     if (cmd.thrustHips && this.thrustT <= 0) this.thrustT = 0.3;
     if (this.thrustT > 0) { this.thrustT -= v.dt; hd += 0.1; pitchD -= 0.25; }
@@ -248,7 +293,7 @@ export class HandController implements MotorController {
       const travel: Vec3 = speed > 0.2 ? [cv[0] / speed, 0, cv[2] / speed] : fwdD;
       const st = this.legs[this.stanceIdx];
       const ahead = dot([ank[sw.k][0] - ank[st.k][0], 0, ank[sw.k][2] - ank[st.k][2]], travel) > -0.05;
-      if ((feet[sw.k].touching && this.walkT > g.touchFrac * stepT && ahead) || this.walkT > 1.5 * stepT) {
+      if ((feet[sw.k].touching && this.walkT > clamp(g.touchFrac, 0.5, 0.9) * stepT && ahead) || this.walkT > 1.5 * stepT) {
         // step complete: stop if nothing is pushing us on, otherwise the other leg swings next
         if (vdMag < 0.1 && speed < 0.35 && cpOut === 0) this.standing = true;
         else { this.stanceIdx = sw.k; this.walkT = 0; this.legs[1 - sw.k].liftPos = ank[1 - sw.k]; }
@@ -301,6 +346,9 @@ export class HandController implements MotorController {
     }
 
     this.armsControl(v, cmd, out, running, vRef);
+    this.gravityComp(v, [...this.lumbarDofs, ...this.thoracicDofs, ...this.neckDofs], out);
+    for (const A of this.arms) this.gravityComp(v, [...A.sc, A.flex, A.abd, A.rot, A.elbow, A.pron, ...A.wrist], out);
+    if (!this.standing) this.gravityComp(v, this.legs[1 - this.stanceIdx].chain, out);
     // Target velocity = how fast each final target moves (lets damping follow motion instead of resisting it).
     for (let i = 0; i < this.muscles.n; i++) {
       const prev = this.prevQ[i];
@@ -325,7 +373,7 @@ export class HandController implements MotorController {
     const legLen = sw.L1 + sw.L2;
     const b = 1 / (Math.exp(w0 * T) - 1);
     // Aim a little short of the capture point (footMargin) so the stance ankle can finish the job.
-    const offS = clamp(vS / w0 + g.footK * (vS - vdS) - vdS * T * b - g.footMargin * Math.sign(vS - vdS), -0.15, 1.0);
+    const offS = clamp(vS / w0 + g.footK * (vS - vdS) - vdS * T * b - (vS > vdS ? g.footMargin : 0), -0.15, 1.0);
     const offL = clamp(g.stepWidth + vL / w0 + g.footK * (vL - vdL), -0.12, 0.55);
     // Foothold from balance feedback; the foot travels there from where it lifted off along a clearance
     // arc (over the foothold by 80 % of the step, then sets down), solved by leg IK.
@@ -352,7 +400,8 @@ export class HandController implements MotorController {
     this.freq(out, sw.hip[2], -sw.side * clamp(yawDiff, -0.6, 0.6), g.swingWn * 0.6);
     this.freq(out, sw.knee[0], knee, g.swingWn);
     this.freq(out, sw.knee[1], 0, g.swingWn * 0.5);
-    this.freq(out, sw.ankle[0], pelvisPitch - hipFlex + knee + 0.08, g.swingWn * 0.7);
+    // foot kept level-to-toes-up through the swing so the toes cannot catch the turf
+    this.freq(out, sw.ankle[0], pelvisPitch - hipFlex + knee + 0.15, g.swingWn * 0.7);
     this.freq(out, sw.ankle[1], 0, g.swingWn * 0.5);
     this.freq(out, sw.toe, 0.15, g.swingWn * 0.5);
     // --- stance knee and ankle: posture + gravity compensation through J-transpose at the mid-foot
@@ -481,6 +530,10 @@ export class HandController implements MotorController {
         abd = cmd.wrap ? -0.5 : 0.15;
         rot = cmd.wrap ? 0.4 : 0;
         wn = cmd.shoot ? g.armWn * 2.5 : g.armWn * 1.6;
+      }
+      if (cmd.carry === (A.side > 0 ? 1 : 2)) {
+        // ball tucked: forearm across the ribs, ball pinned between hand, forearm and chest
+        flex = 0.35; abd = -0.05; rot = 0.7; elbow = 1.9; wn = g.armWn * 1.6;
       }
       this.freq(out, A.flex, flex, wn);
       this.freq(out, A.abd, abd, wn);

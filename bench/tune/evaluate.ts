@@ -53,7 +53,8 @@ export async function evaluate(gains: Partial<Gains>): Promise<{ score: number; 
     const k = Math.floor(r.vFwd.length * 2.5 / 7);
     const late = r.vFwd.slice(k), lat = r.vLat.slice(k);
     const sag = Math.max(0, 1.0 - Math.min(...r.comY, 1.07));
-    parts[gait] = fall(r) + 4 * Math.abs(mean(late) - v) + 3 * rms(lat) + 3 * r.tilt + 10 * sag;
+    // speed error weighted so that standing still always scores worse than trying and falling late
+    parts[gait] = fall(r) + (gait === 'walk' ? 25 : 12) * Math.abs(mean(late) - v) + 3 * rms(lat) + 3 * r.tilt + 10 * sag;
   }
   // push recovery from four directions
   for (const [dir, imp] of [[0, 80], [180, 60], [90, 50], [-90, 50]] as const) {

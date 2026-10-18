@@ -12,7 +12,8 @@ const nWorkers = +(process.argv[3] ?? Math.max(1, cpus().length - 1));
 const keys = Object.keys(DEFAULT_GAINS) as (keyof Gains)[];
 const startFile = 'bench/out/gains-best.json';
 const start: Gains = existsSync(startFile) ? { ...DEFAULT_GAINS, ...JSON.parse(readFileSync(startFile, 'utf8')).gains } : DEFAULT_GAINS;
-const toGains = (x: number[]) => Object.fromEntries(keys.map((k, i) => [k, start[k] * Math.exp(x[i])])) as unknown as Gains;
+// every gain stays within 1/4x..4x of its starting value (log-space clamp)
+const toGains = (x: number[]) => Object.fromEntries(keys.map((k, i) => [k, start[k] * Math.exp(Math.max(-1.4, Math.min(1.4, x[i])))])) as unknown as Gains;
 
 const workers = Array.from({ length: nWorkers }, () => new Worker(new URL('./worker.ts', import.meta.url), { execArgv: ['--import', 'tsx'] }));
 let nextId = 0;
@@ -33,7 +34,7 @@ function evalGains(g: Gains): Promise<{ score: number; parts: Record<string, num
 
 let seed = 12345;
 const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-const es = new CMAES(new Array(keys.length).fill(0), 0.25, Math.max(12, nWorkers), rand);
+const es = new CMAES(new Array(keys.length).fill(0), 0.25, +(process.argv[4] ?? Math.max(12, nWorkers)), rand);
 const base = await evalGains(start);
 console.log('start score', base.score.toFixed(2), JSON.stringify(Object.fromEntries(Object.entries(base.parts).map(([k, v]) => [k, +v.toFixed(2)]))));
 let best = { score: base.score, gains: start, parts: base.parts };

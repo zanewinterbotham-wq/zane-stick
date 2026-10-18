@@ -13,7 +13,7 @@ export interface PropDesc {
   friction?: number;
   soft?: boolean;          // padded (bags, dummies)
 }
-export interface SceneDesc { hz: number; iterations: number; athletes: AthleteDesc[]; props: PropDesc[] }
+export interface SceneDesc { hz: number; iterations: number; athletes: AthleteDesc[]; props: PropDesc[]; /** Cleat–turf friction override (tuning panel). */ traction?: number }
 
 /** Who a contact touches. athlete −1 = prop (seg = prop index) or ground (seg = −1). */
 export interface LinkRef { athlete: number; seg: number }
@@ -55,6 +55,8 @@ export interface PhysicsScene {
   gripForce(athlete: number, hand: 0 | 1): number;
   propPose(prop: number): { pos: Vec3; quat: Quat };
   propVel(prop: number): Vec3;
+  /** Setup only (before a rep starts): place a dynamic prop at rest. Never used during play. */
+  placeProp(prop: number, pos: Vec3, quat: Quat): void;
   /** Counts for the overlay and tests. `instabilities` = times the solver diverged and auto-reset (must stay 0). */
   stats(): { contacts: number; bodies: number; instabilities: number };
   destroy(): void;

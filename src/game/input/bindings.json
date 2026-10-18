@@ -1,0 +1,33 @@
+{
+  "_note": "Default bindings. Keyboard values are KeyboardEvent.code; gamepad uses the W3C standard mapping (buttons b0..b16, axes a0..a3, with sign). Chosen to avoid Chromebook top-row, F-keys, Caps Lock, Home/End/Delete, numpad and Ctrl/Alt/Search combos.",
+  "keyboard": {
+    "moveUp": ["KeyW"], "moveDown": ["KeyS"], "moveLeft": ["KeyA"], "moveRight": ["KeyD"],
+    "sprint": ["ShiftLeft"],
+    "contactMode": ["Tab"],
+    "armL": ["KeyJ"], "armR": ["KeyL"],
+    "gripL": ["KeyU"], "gripR": ["KeyO"],
+    "wrap": ["KeyK"], "shoot": ["KeyI"],
+    "sink": ["Space"], "thrustHips": ["KeyH"],
+    "leanFwd": ["ArrowUp"], "leanBack": ["ArrowDown"], "leanLeft": ["ArrowLeft"], "leanRight": ["ArrowRight"],
+    "chopFeet": ["KeyC"], "headTuck": ["KeyN"],
+    "cutLeft": ["KeyQ"], "cutRight": ["KeyE"],
+    "dive": ["KeyB"],
+    "reset": ["Enter"], "pause": ["Escape"],
+    "overlay": ["Backquote"], "anatomy": ["KeyX"], "camera": ["KeyV"], "tuning": ["KeyT"], "quality": ["Equal"]
+  },
+  "gamepad": {
+    "moveX": ["a0"], "moveY": ["a1"],
+    "leanX": ["a2"], "leanY": ["a3"],
+    "sprint": ["b7"],
+    "contactMode": ["b8"],
+    "armL": ["b4"], "armR": ["b5"],
+    "gripL": ["b2"], "gripR": ["b1"],
+    "wrap": ["b0"], "shoot": ["b3"],
+    "sink": ["b6"], "thrustHips": ["b11"],
+    "chopFeet": ["b10"], "headTuck": ["b13"],
+    "cutLeft": ["b14"], "cutRight": ["b15"],
+    "dive": ["b12"],
+    "reset": ["b9"]
+  },
+  "options": { "contactModeHold": false, "deadzone": 0.15, "sinkRampPerSecond": 1.6 }
+}
