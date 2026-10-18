@@ -182,10 +182,10 @@ describe('support in contact', () => {
 });
 
 describe('ball carry', () => {
-  /** Open-field drill with the human running off to the side: the bot carrier runs and cuts away from him. */
+  /** Open-field drill with the human walking at the carrier: the bot carrier runs and cuts around him. */
   async function carry(physics: PhysicsSettings, rep: number, carrierGait: Gait) {
-    const away = new ScriptBrain((_t, _p, c) => { c.move = { x: 1, z: 0 }; c.gait = 'jog'; });
-    const d = await OpenFieldDrill.create(mujocoEngine, { ...DEFAULT_OPEN_FIELD, physics, carrierGait }, away, rep);
+    const walker = new ScriptBrain((_t, _p, c) => { c.move = { x: 0, z: 1 }; c.gait = 'walk'; });
+    const d = await OpenFieldDrill.create(mujocoEngine, { ...DEFAULT_OPEN_FIELD, physics, carrierGait }, walker, rep);
     const w = d.world, a = w.athletes[d.carrier], s = w.scene.athletes[d.carrier].state;
     let held = true, contact = false, cut = 0, far = 0, top = 0;
     while (d.repTime < 6 && !d.ended) {

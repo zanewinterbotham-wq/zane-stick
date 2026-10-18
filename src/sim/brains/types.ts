@@ -14,6 +14,8 @@ export interface Perception {
   self: number;
   athletes: AthleteView[];
   field: { halfWidth: number; goalZ: number; dirZ: 1 | -1 }; // goal the ball carrier runs toward
+  /** The ball (a prop named 'ball'), wherever it is: in a hand or loose; absent when the drill has none. */
+  ball?: { pos: Vec3; vel: Vec3 };
 }
 
 /** Decides what to do; outputs the same Commands a human produces. Swappable (hand-written or learned). */

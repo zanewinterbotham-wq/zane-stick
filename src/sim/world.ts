@@ -165,7 +165,9 @@ export class World {
         heading: headingOf(fwd), down: a.downBy !== null, hasBall: a.index === this.ballCarrier,
       };
     });
-    return { time: this.time, self, athletes, field: this.setup.field ?? { halfWidth: 24.38, goalZ: 50, dirZ: 1 } };
+    const bi = this.setup.props?.findIndex((p) => p.name === 'ball') ?? -1;
+    const ball = bi >= 0 ? { pos: this.scene.propPose(bi).pos, vel: this.scene.propVel(bi) } : undefined;
+    return { time: this.time, self, athletes, field: this.setup.field ?? { halfWidth: 24.38, goalZ: 50, dirZ: 1 }, ball };
   }
 
   step() {
