@@ -755,7 +755,8 @@ export class HandController implements MotorController {
         // (heel recovery) and is straight again before touchdown. Its duration: the next leg lands in tNext,
         // the trailing one a step after that.
         const Tl = L.t + (L.k === this.stanceIdx ? tNext + Ts : tNext);
-        const sPh = clamp(L.t / Tl, 0, 1);
+        // Tl is 0 for a leg that just lifted while a crouched COM is already below touchdown height (0/0 = NaN)
+        const sPh = clamp(L.t / Math.max(Tl, 1e-3), 0, 1);
         const outD: Vec3 = [-rightD[0] * L.side, 0, -rightD[2] * L.side];
         // Raibert: neutral point (COM travel to mid-stance) plus feedback on the velocity error, per axis; the
         // feet stay a hip width apart, or the thighs collide as the swing leg passes the stance leg
