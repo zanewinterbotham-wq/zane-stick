@@ -7,7 +7,7 @@ import type { Vec3 } from '../math';
 
 /** Where the support should carry the pelvis/trunk. */
 export interface RootTarget {
-  vel: Vec3;        // desired COM velocity (world), m/s; y is used only by a dive's launch
+  vel: Vec3;        // desired COM velocity (world), m/s; y: a dive's take-off, else the pelvis target's vertical speed from posture changes
   height: number;   // desired pelvis height above the turf, m
   heading: number;  // desired pelvis yaw, rad, atan2(x, z) convention (0 = facing +Z)
   pitch: number;    // desired trunk forward lean, rad

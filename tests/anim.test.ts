@@ -182,6 +182,55 @@ describe('procedural animator', () => {
     expect(sprint.cadence).toBeGreaterThan(jog.cadence);
   });
 
+  it('runs on legs that bend like a runner’s: knee ~20° at touchdown, 35–50° at most in stance, the hips bobbing 3–6 cm', () => {
+    for (const v of [4, 7, 10]) {
+      const r = kinematicRig(), kn = r.muscles.index('kneeL.flex'), deg = 180 / Math.PI;
+      r.cmd.move = { x: 0, z: 1 }; r.cmd.gait = v < 4.3 ? 'jog' : 'sprint';
+      let was = true, td: number[] = [], st = 0, hi = 0, lo = 9;
+      for (let i = 0; i < 240 * 5; i++) {
+        r.step([0, v]);
+        if (i < 240 * 3) continue;
+        const p = r.frame.planted[0], q = r.frame.q[kn] * deg;
+        if (p && !was) td.push(q);
+        if (p) st = Math.max(st, q);
+        hi = Math.max(hi, r.frame.root.height); lo = Math.min(lo, r.frame.root.height);
+        was = p;
+      }
+      const tdMean = td.reduce((a, b) => a + b, 0) / td.length;
+      expect(tdMean, `${v} m/s touchdown knee`).toBeGreaterThan(12); expect(tdMean).toBeLessThan(30);
+      expect(st, `${v} m/s stance knee`).toBeGreaterThan(35); expect(st).toBeLessThan(50);
+      expect(hi - lo, `${v} m/s bob`).toBeGreaterThan(0.03); expect(hi - lo).toBeLessThan(0.06);
+    }
+  });
+
+  it('sinks fast: the hips reach 90 % of a full sink in ~0.25 s (no faster than a fall), and rise out of it more slowly', () => {
+    const r = kinematicRig();
+    run(r, 1, () => {});
+    const h0 = r.frame.root.height, down: number[] = [], up: number[] = [];
+    run(r, 1, (_t, c) => { c.contactMode = true; c.sink = 1; }, () => down.push(h0 - r.frame.root.height), 1);
+    const depth = down[down.length - 1], t90 = down.findIndex((d) => d >= 0.9 * depth) * DT;
+    expect(depth).toBeGreaterThan(0.25);
+    expect(t90).toBeLessThan(0.28);
+    // the hips never drop faster than free fall from rest would take them
+    expect(down.every((d, k) => d <= 0.5 * 9.81 * ((k + 1) * DT) ** 2 + 1e-3)).toBe(true);
+    run(r, 1, () => {}, () => up.push(r.frame.root.height), 2);
+    expect(up.findIndex((h) => h - (h0 - depth) >= 0.9 * depth) * DT).toBeGreaterThan(t90);
+  });
+
+  it('a full forward lean brings the trunk level with the turf, hips back and down on bent knees; half a lean is in between', () => {
+    const lean = (fwd: number) => {
+      const r = kinematicRig(), i = (n: string) => r.muscles.index(n);
+      run(r, 1.5, (_t, c) => { c.contactMode = true; c.lean = { fwd, side: 0 }; });
+      return { pitch: r.frame.root.pitch, drop: r.plan.standHeight - r.frame.root.height, knee: r.frame.q[i('kneeL.flex')], spine: r.frame.q[i('lumbar.flex')] + r.frame.q[i('thoracic.flex')] };
+    };
+    const none = lean(0), half = lean(0.5), full = lean(1);
+    expect(full.pitch).toBeGreaterThan(1.4);                 // ~83°: shoulders level with the hips
+    expect(full.drop).toBeGreaterThan(0.15);
+    expect(full.knee).toBeGreaterThan(0.9);
+    expect(full.spine).toBeGreaterThan(0.6 * full.pitch);    // the pelvis turns through only part of the lean
+    expect(half.pitch).toBeGreaterThan(none.pitch + 0.1); expect(half.pitch).toBeLessThan(full.pitch - 0.5);
+  });
+
   it('accelerates the root target like a sprinter to ~10 m/s and turns at a bounded rate', () => {
     const r = kinematicRig();
     let peakA = 0, prevV = 0, t10 = NaN, prevH = 0, peakTurn = 0;

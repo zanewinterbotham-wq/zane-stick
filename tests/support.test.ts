@@ -18,14 +18,20 @@ beforeAll(() => mujocoEngine.init());
 
 async function run(gait: Gait | null, seconds: number, opts: { physics?: PhysicsSettings; cutAt?: number } = {}) {
   const w = await World.create(mujocoEngine, supportRunScenario(opts.physics ?? STD, gait, { cutAt: opts.cutAt }).setup);
-  let top = 0, maxTilt = 0, fellAt = -1;
+  let top = 0, maxTilt = 0, fellAt = -1, grf = 0, nGrf = 0, knee = 0, slip = 0, nSlip = 0;
+  const a = w.athletes[0], s = w.scene.athletes[0].state, BW = a.mass * 9.81, kn = a.muscles.index('kneeL.flex'), toe = a.segIndex.get('toesL')!;
   for (let i = 0, n = Math.round(seconds / w.dt); i < n; i++) {
     w.step();
     const m = metrics(w);
     top = Math.max(top, m.speed); maxTilt = Math.max(maxTilt, m.tilt);
     if (m.down) { fellAt = w.time; break; }
+    if (w.time < seconds / 2) continue;
+    // steady running: the share of body weight the feet push into the turf (the rest is the posture support's), and
+    // while the left foot is loaded, how far its knee bends and how fast the foot slides
+    grf += a.feet[0].force + a.feet[1].force; nGrf++;
+    if (a.feet[0].force > 0.3 * BW) { knee = Math.max(knee, s.q[kn]); slip += Math.hypot(s.segVel[3 * toe], s.segVel[3 * toe + 2]); nSlip++; }
   }
-  const out = { top, maxTiltDeg: maxTilt * 180 / Math.PI, fellAt, instabilities: w.scene.stats().instabilities, world: w };
+  const out = { top, maxTiltDeg: maxTilt * 180 / Math.PI, fellAt, legShare: grf / Math.max(1, nGrf) / BW, kneeDeg: knee * 180 / Math.PI, slip: slip / Math.max(1, nSlip), instabilities: w.scene.stats().instabilities, world: w };
   return out;
 }
 
@@ -39,11 +45,37 @@ describe('supported locomotion', () => {
   });
   it.each([['walk', 1.2], ['jog', 3.6], ['sprint', 9]] as const)('%s 10 s without falling, reaching ≥ %s m/s', async (gait, speed) => {
     const r = await run(gait, 10);
-    console.log(`${gait}: top ${r.top.toFixed(2)} m/s, max trunk tilt ${r.maxTiltDeg.toFixed(0)}°`);
+    console.log(`${gait}: top ${r.top.toFixed(2)} m/s, max trunk tilt ${r.maxTiltDeg.toFixed(0)}°, legs carry ${(100 * r.legShare).toFixed(0)} % of body weight, stance knee ≤ ${r.kneeDeg.toFixed(0)}°, foot slip ${r.slip.toFixed(2)} m/s`);
     expect(r.fellAt).toBe(-1);
     expect(r.instabilities).toBe(0);
     expect(r.top).toBeGreaterThanOrEqual(speed);
     r.world.destroy();
+  });
+  it('jogging, the loaded leg stays a runner’s leg: the knee bends less than 50° and the planted foot does not slide', async () => {
+    const r = await run('jog', 10);
+    expect(r.fellAt).toBe(-1);
+    // were ~65° and ~3 m/s when the support held the athlete up on bent legs whose feet dragged along the turf
+    expect(r.kneeDeg).toBeLessThan(50);
+    expect(r.slip).toBeLessThan(1);
+    expect(r.legShare).toBeGreaterThan(0.33);
+    r.world.destroy();
+  });
+  it('a full forward lean holds the trunk near parallel to the turf, balanced and with full posture support', async () => {
+    const sc = supportRunScenario(STD, null);
+    sc.setup.athletes[0].brain = new ScriptBrain((t, _p, c) => { if (t > 0.5) { c.contactMode = true; c.lean = { fwd: 1, side: 0 }; } });
+    const w = await World.create(mujocoEngine, sc.setup);
+    const a = w.athletes[0];
+    let minPosture = 1;
+    while (w.time < 3) { w.step(); if (w.time > 0.5) minPosture = Math.min(minPosture, a.support.posture); }
+    const m = metrics(w), feet = a.feet[0].force + a.feet[1].force;
+    console.log(`full lean: trunk ${(m.tilt * 180 / Math.PI).toFixed(0)}° from upright, pelvis ${m.pelvisY.toFixed(2)} m, feet carry ${(100 * feet / (a.mass * 9.81)).toFixed(0)} %`);
+    expect(m.tilt).toBeGreaterThan(70 * Math.PI / 180);
+    expect(m.down).toBe(null);
+    // a commanded lean is not read as a knock (the feet only unload briefly as the trunk swings down)
+    expect(minPosture).toBeGreaterThan(0.6);
+    expect(a.support.posture).toBe(1);
+    expect(m.pelvisY).toBeLessThan(a.plan.standHeight - 0.12);
+    w.destroy();
   });
   it('accelerates quickly: 0 → 9 m/s in under 2.5 s from the sprint command', async () => {
     const w = await World.create(mujocoEngine, supportRunScenario(STD, 'sprint').setup);
@@ -78,7 +110,7 @@ describe('support in contact', () => {
   const support = { ...DEFAULT_SUPPORT };
   /** Rates over seeds; also checks the carry force is exactly zero on every step an athlete touches another. */
   async function rates(a: Side, b: Side, n: number, seconds = 2) {
-    let aDown = 0, bDown = 0, instabilities = 0, violations = 0, contactSteps = 0, carriedBefore = 0;
+    let aDown = 0, bDown = 0, bBack = 0, instabilities = 0, violations = 0, contactSteps = 0, carriedBefore = 0;
     for (let seed = 1; seed <= n; seed++) {
       // carryForce read before a step is the force applied in the previous one, which saw the previous contact state
       const prev = [false, false];
@@ -90,9 +122,9 @@ describe('support in contact', () => {
           prev[k] = x.playerContact;
         }),
       });
-      aDown += +r.aDown; bDown += +r.bDown; instabilities += r.instabilities;
+      aDown += +r.aDown; bDown += +r.bDown; bBack += r.bBack; instabilities += r.instabilities;
     }
-    return { aDown: aDown / n, bDown: bDown / n, instabilities, violations, contactSteps, carriedBefore };
+    return { aDown: aDown / n, bDown: bDown / n, bBack: bBack / n, instabilities, violations, contactSteps, carriedBefore };
   }
   const drive = (speed: number, mass = 95): Side => ({ speed, script: technique.lowDrive, params: { ...DEFAULT_ATHLETE, mass } });
   const upright = (speed: number, mass = 95): Side => ({ speed, script: technique.upright, params: { ...DEFAULT_ATHLETE, mass } });
@@ -104,7 +136,10 @@ describe('support in contact', () => {
     expect(r.carriedBefore).toBeGreaterThan(0);
     expect(r.violations).toBe(0);
     expect(r.instabilities).toBe(0);
-    expect(r.bDown).toBeGreaterThanOrEqual(0.3);
+    // Since the jogger runs on straighter legs (not crouched on the support) he keeps his feet more often when hit
+    // 0.15 s into his run (~25 % downed, was ~67 %): he is driven back ~5 m instead.
+    expect(r.bDown).toBeGreaterThanOrEqual(0.15);
+    expect(r.bBack).toBeGreaterThan(3);
     expect(r.aDown).toBeLessThan(r.bDown);
   });
   it('rates move with speed: a faster hit downs the athlete hit more often', async () => {
@@ -137,8 +172,11 @@ describe('support in contact', () => {
   });
   it('rates move with mass: a light athlete is downed more often than a heavy one by the same hit', async () => {
     const light = await rates(drive(5), upright(3, 65), 12), heavy = await rates(drive(5), upright(3, 130), 12);
-    console.log('B down: 65 kg', light.bDown, '130 kg', heavy.bDown);
-    expect(light.bDown).toBeGreaterThan(heavy.bDown + 0.3);
+    console.log('B down: 65 kg', light.bDown, '130 kg', heavy.bDown, 'driven back', light.bBack.toFixed(2), heavy.bBack.toFixed(2));
+    // the light athlete is downed more often and driven back much farther (down rates fell once the jogger ran on
+    // straighter legs: ~17 % vs 0 %, was ~58 % vs 0 %)
+    expect(light.bDown).toBeGreaterThan(heavy.bDown);
+    expect(light.bBack).toBeGreaterThan(heavy.bBack + 1);
     expect(light.instabilities + heavy.instabilities).toBe(0);
   });
 });

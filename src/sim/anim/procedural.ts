@@ -48,6 +48,9 @@ const BACK_MAX = 6.5, SIDE_MAX = 7; // fastest backpedal / sideways movement, m/
 const TURN_RATE = 8;                 // heading rate limit, rad/s
 const LEAD = 2.5;                    // farthest the root velocity may lead the measured velocity, m/s
 const GETUP_T = 2.0;
+/** Trunk pitch of a full forward lean (rad, ~83°: shoulders level with the hips), and the share of a posture
+ *  lean the spine takes (the world's support turns the pelvis through the other 0.3). */
+const LEAN_MAX = 1.45, PELVIS_REST = 0.7, LEAN_RATE = 1.5;
 /** Dive: load and push times (s) from a standing start / from a sprint, take-off velocity from a standing start
  *  and its upward part from a stand / a sprint (m/s), longest flight before giving up on a landing (s). A standing
  *  dive leaves at ~3 m/s, about a standing long jump's take-off; from a sprint the stride is the load. */
@@ -85,7 +88,7 @@ export class ProceduralAnimator implements Animator {
   private phase = 0; private frozen = true;
   private heading = NaN; private omega = 0;
   private vel: Vec3 = [0, 0, 0]; private vPlan: [number, number] = [0, 0]; private aFwd = 0; private aLat = 0;
-  private height: number; private pitch = 0; private roll = 0;
+  private height: number; private pitch = 0; private roll = 0; private bend = 0; private dropF = 0.008; private dropV = 0; private pitchV = 0;
   private lv = { gait: 0, stance: 0, sink: 0, chop: 0, drive: 0, thrust: 0, tuck: 0, leanF: 0, leanS: 0, reachL: 0, reachR: 0,
     wrap: 0, shoot: 0, carryL: 0, carryR: 0, contact: 0, cut: 0, aimL: 0, aimR: 0, bp: 0, shuffle: 0 };
   private aimAng = [[0, 0], [0, 0]];
@@ -182,14 +185,14 @@ export class ProceduralAnimator implements Animator {
    *  the heel rises and the foot rolls onto its ball instead, as in a real stance and push-off. `ok` is false
    *  when even that fails (with margin `m` for planning). With `prevG`, the heel comes back down by at most
    *  `maxStep` from it (it rises as fast as the leg needs; easing it down avoids flips between solutions). */
-  private solve(L: Leg, F: [number, number], yaw: number, g: number, m = 0, prevG = NaN, maxStep = Infinity): { q: LegQ; ok: boolean } {
-    const inv = qconj(rootQuat(0, this.pitch, this.roll));
+  private solve(L: Leg, F: [number, number], yaw: number, g: number, m = 0, prevG = NaN, maxStep = Infinity, h = this.height, pp = this.pitch - this.bend): { q: LegQ; ok: boolean } {
+    const inv = qconj(rootQuat(0, pp, this.roll));
     const rot = clamp(-L.side * yaw, this.lo[L.rot], this.hi[L.rot]);
-    const reach = (L.L1 + L.L2) * (0.99 - 0.03 * m), hfMin = this.lo[L.hf] + 0.01 + 0.05 * m, dmax = this.hi[L.dor] - 0.02;
+    const reach = (L.L1 + L.L2) * (0.99 - 0.015 * m), hfMin = this.lo[L.hf] + 0.01 + 0.05 * m, dmax = this.hi[L.dor] - 0.02;
     const r: LegQ = [0, 0, 0, 0, 0, yaw, g];
     const at = (gg: number) => {
       const a = this.rocker(F, yaw, gg);
-      const p = qrot(inv, [a[0], a[1] - this.height, a[2]]);
+      const p = qrot(inv, [a[0], a[1] - h, a[2]]);
       const rel: Vec3 = [p[0] - L.hipOff[0], p[1] - L.hipOff[1], p[2] - L.hipOff[2]];
       const [hf, ab, kn] = legIK(L, rel, rot);
       r[0] = hf; r[1] = ab; r[2] = kn; r[3] = gg + this.pitch - hf + kn; r[4] = Math.max(0, -gg); r[6] = gg;
@@ -291,7 +294,9 @@ export class ProceduralAnimator implements Animator {
     out.root.heading = this.heading;
     out.root.vel[0] = this.vel[0]; out.root.vel[2] = this.vel[2];
     const dive = this.mode === 'dive' ? this.dv.stage : 'none';
-    out.root.vel[1] = dive === 'launch' ? this.dv.vy : 0;
+    // the root's vertical speed: a dive's take-off, else how fast the posture lowers or raises the hips (the support
+    // damps the pelvis toward it, so a quick sink is not braked as if it were a fall)
+    out.root.vel[1] = dive === 'launch' ? this.dv.vy : this.mode === 'loco' ? -this.dropV : 0;
     out.root.dive = dive;
     out.root.thrust = this.mode === 'loco' ? this.lv.thrust : 0;
     out.clip = this.mode === 'loco' ? this.clip : this.mode;
@@ -301,7 +306,7 @@ export class ProceduralAnimator implements Animator {
     this.blendFrom.set(this.prevQ);
     this.blendRoot = { height: this.height, pitch: this.pitch, roll: this.roll };
     this.blendW = 0; this.blendDur = blend;
-    this.mode = mode; this.modeT = 0; this.settleT = 0;
+    this.mode = mode; this.modeT = 0; this.settleT = 0; this.bend = 0;
     if (mode === 'loco') this.resetFeet();
   }
 
@@ -383,8 +388,11 @@ export class ProceduralAnimator implements Animator {
     const thrusting = cmd.thrustHips && !hold;
     const moving = mag > 0.05 || (sp > 0.4 && !thrusting) || cmd.chopFeet || cmd.driveLegs > 0.05;
     lv.gait = follow(lv.gait, moving && !hold ? 1 : 0, dt, 0.15);
-    lv.stance = follow(lv.stance, contact && cmd.sink > 0 && sp < 1.5 && !hold && !thrusting ? 1 : 0, dt, 0.2);
-    lv.sink = follow(lv.sink, hold || thrusting ? 0 : clamp(cmd.sink, 0, 1), dt, 0.12);
+    // Dropping into a sink is quick (the muscles let go and gravity pulls the hips down, full depth in ~0.25 s);
+    // rising out of it takes work and is slower.
+    const stanceT = contact && cmd.sink > 0 && sp < 1.5 && !hold && !thrusting ? 1 : 0, sinkT = hold || thrusting ? 0 : clamp(cmd.sink, 0, 1);
+    lv.stance = follow(lv.stance, stanceT, dt, stanceT > lv.stance ? 0.07 : 0.2);
+    lv.sink = follow(lv.sink, sinkT, dt, sinkT > lv.sink ? 0.07 : 0.12);
     lv.chop = follow(lv.chop, cmd.chopFeet && !hold ? 1 : 0, dt, 0.1);
     lv.drive = follow(lv.drive, hold ? 0 : clamp(cmd.driveLegs, 0, 1), dt, 0.12);
     lv.thrust = follow(lv.thrust, thrusting ? 1 : 0, dt, 0.15);
@@ -415,7 +423,8 @@ export class ProceduralAnimator implements Animator {
     let beta = lerp(WALK_DUTY, interp(CONTACT, sp) * f / 2, run);
     beta = lerp(beta, 0.45, Math.max(lv.chop, lv.drive) * (1 - run));
     const Tc = beta * T;
-    const w = 0.12 - 0.02 * gl - 0.04 * run * gl + 0.12 * lv.stance + 0.06 * lv.drive + 0.03 * shuffle;
+    // running feet stay about under the hips: any narrower and the thighs (thick, padded) knock as they pass
+    const w = 0.12 - 0.02 * gl - 0.01 * run * gl + 0.12 * lv.stance + 0.06 * lv.drive + 0.03 * shuffle;
     const zh = 0.17 * Math.sin(this.pitch);
     const both = this.legs[0].stance && this.legs[1].stance;
     const near = this.legs.every((L) => L.reachOK && Math.hypot(L.F[0] - L.side * w, L.F[1] - zh) < 0.1 && Math.abs(L.yaw - L.side * 0.08) < 0.35);
@@ -423,17 +432,43 @@ export class ProceduralAnimator implements Animator {
     if (!this.frozen) this.phase += dt * f / 2;
 
     // ---- pelvis pose (height, lean) for this step
-    let drop = lerp(0.008, lerp(0.05, 0.075, run), gl) + lv.stance * (0.12 + 0.16 * lv.sink) + 0.18 * lv.sink * (1 - lv.stance)
-      + 0.05 * bp + 0.07 * shuffle + 0.08 * lv.cut + 0.12 * lv.drive + 0.06 * lv.chop;
+    // Running: the stance knee flexes from ~20° at touchdown to ~40–45° at mid-stance (less as speed rises) and
+    // the COM bobs ~5 cm at a jog, ~4 cm at a sprint, lowest at mid-stance (typical human running values; an
+    // assumption until docs/realism-sources.md has a source). Walking vaults over a nearly straight leg.
+    const fast = clamp((sp - 4) / 6, 0, 1);
+    const leanDn = Math.max(0, lv.leanF) ** 3;
+    // a deep forward lean sits the hips back and down on bent knees, keeping the weight over the feet
+    let drop = lerp(0.008, lerp(0.03, 0.025, run), gl) + lv.stance * (0.12 + 0.16 * lv.sink) + 0.18 * lv.sink * (1 - lv.stance)
+      + 0.05 * bp + 0.07 * shuffle + 0.08 * lv.cut + 0.12 * lv.drive + 0.06 * lv.chop + 0.2 * leanDn;
     // thrust: hips, knees and ankles extend until the athlete is up on the balls of his feet
     drop = clamp(lerp(drop, -0.02, lv.thrust), -0.04, 0.4);
-    const amp = gl * (0.03 * (1 - run) - 0.025 * run) * (1 - Math.max(lv.chop, lv.drive));
+    // The hips drop no faster than gravity can take them (the muscles let go, nothing pulls the body down) and stop
+    // on the legs at up to ~2.5 g, so the pose never folds the legs ahead of the falling body and lifts the feet.
+    const eD = drop - this.dropF, vStop = Math.sign(eD) * Math.sqrt(2 * 2.5 * G * Math.abs(eD)), aD = (vStop > this.dropV ? 0.9 : 2.5) * G * dt;
+    this.dropV += clamp(vStop - this.dropV, -aD, aD);
+    this.dropF += this.dropV * dt;
+    drop = lerp(this.dropF, drop, lv.thrust); // a thrust rises on the legs' own push
+    const amp = gl * (0.025 * (1 - run) - lerp(0.025, 0.02, fast) * run) * (1 - Math.max(lv.chop, lv.drive));
     const p0 = this.legPhase(this.legs[0]);
-    this.height = this.standH - drop + amp * Math.cos(TAU * (2 * p0 - beta));
-    const pitchT = 0.012 * vf + 0.05 * this.aFwd + 0.25 * bp + 0.15 * shuffle + lv.stance * (0.35 + 0.3 * lv.sink) + 0.3 * lv.sink * (1 - lv.stance)
-      + 0.35 * lv.drive + 0.15 * lv.chop + 0.35 * lv.leanF;
+    // extreme when the stance foot passes under the hip: about a third of the way through stance, since the foot
+    // lands closer ahead of the hip than it leaves behind it
+    this.height = this.standH - drop + amp * Math.cos(TAU * (2 * p0 - 0.7 * beta));
+    const runP = 0.012 * vf + 0.05 * this.aFwd;
+    let pitchT = runP + 0.25 * bp + 0.15 * shuffle + lv.stance * (0.35 + 0.3 * lv.sink) + 0.3 * lv.sink * (1 - lv.stance)
+      + 0.35 * lv.drive + 0.15 * lv.chop;
+    // Forward lean: 0.35 rad per unit near upright, steepening so a full lean brings the trunk level
+    // with the turf (cubic, so the light leans tackles are built on keep their feel). Leaning back stays small.
+    pitchT += 0.35 * lv.leanF + (lv.leanF > 0 ? Math.max(0, LEAN_MAX - pitchT - 0.35) * lv.leanF ** 3 : 0);
     // the trunk rises out of the sink, still leaning slightly into whatever it drives
-    this.pitch = follow(this.pitch, clamp(lerp(pitchT, 0.15, lv.thrust), -0.4, 1.0), dt, 0.08);
+    pitchT = clamp(lerp(pitchT, 0.15, lv.thrust), -0.4, LEAN_MAX);
+    // leaning in no faster than the trunk can follow (~1 s to a full lean), so the support never reads the lag
+    // behind a commanded lean as being knocked over
+    const prevPitch = this.pitch;
+    this.pitch = Math.min(follow(this.pitch, pitchT, dt, 0.08), this.pitch + LEAN_RATE * dt);
+    this.pitchV = (this.pitch - prevPitch) / dt;
+    // The world's support turns the pelvis through only part of a posture lean (as the balance controller does):
+    // the spine flexes through the rest, and the legs are solved for that pelvis.
+    this.bend = follow(this.bend, PELVIS_REST * Math.max(0, pitchT - runP), dt, 0.08);
     // lean into a turn or cut as a runner does: tan(roll) = sideways acceleration / g
     const rollT = Math.atan(this.aLat / G) + 0.3 * lv.leanS;
     this.roll = follow(this.roll, clamp(rollT, -0.4, 0.4), dt, 0.08);
@@ -441,6 +476,11 @@ export class ProceduralAnimator implements Animator {
     // ---- legs
     const sgnO = Math.sign(this.omega);
     const gTD = gl * lerp(0.22, -0.08, run) * (1 - lv.stance);
+    // Standing, while the hips drop or the trunk leans in, planted legs are solved for the pelvis where it really is
+    // (a little behind its target): the feet stay on the turf and the legs yield under the body instead of lifting.
+    const pv = this.segAxis(v, this.pelvisSeg, [0, 0, 1]), pPel = Math.atan2(-pv[1], Math.hypot(pv[0], pv[2]));
+    const hUp = Math.max(0, s.segPos[3 * this.pelvisSeg + 1] - this.height), hIK = this.height + hUp * clamp(this.dropV / 0.3, 0, 1) * (1 - gl);
+    const pIK = this.pitch - this.bend - Math.max(0, this.pitch - this.bend - pPel) * clamp(this.pitchV / 0.5, 0, 1) * (1 - gl);
     for (const L of this.legs) {
       const phi = this.legPhase(L);
       if (!hold) {
@@ -467,7 +507,10 @@ export class ProceduralAnimator implements Animator {
         const u = clamp(phi / beta, 0, 1);
         const gw = 0.22 * (1 - s01(u / 0.15)) - 0.5 * s01((u - 0.55) / 0.45);
         const gr = -0.08 * (1 - s01(u / 0.3)) - 0.6 * s01((u - 0.35) / 0.65);
-        const r = this.solve(L, L.F, L.yaw, gl * lerp(gw, gr, run) * (1 - lv.stance), 0, L.q[6], ROLL_RATE * dt);
+        // running, in contact or changing posture, a planted foot that has not found the turf (the body came down
+        // higher than planned, or the trunk swung the hips up) reaches for it (idle standing it would keep hopping)
+        const h = v.feet[L.side > 0 ? 0 : 1].touching ? hIK : this.height + hUp * Math.max(gl, lv.contact, clamp(this.dropV / 0.3, 0, 1), clamp(this.pitchV / 0.5, 0, 1));
+        const r = this.solve(L, L.F, L.yaw, gl * lerp(gw, gr, run) * (1 - lv.stance), 0, L.q[6], ROLL_RATE * dt, h, pIK);
         L.reachOK = r.ok; q = r.q;
         // the planted foot has left the leg's reach: it comes off the turf now rather than slide
         if (!r.ok && !this.frozen && !hold) this.lift(L, phi);
@@ -480,12 +523,16 @@ export class ProceduralAnimator implements Animator {
         L.tdG = Number.isNaN(L.tdG) ? gRaw : follow(L.tdG, gRaw, dt, 0.03);
         const td = this.solve(L, L.tdF, L.tdYaw, L.tdG, 0, L.tdG, 0).q;
         const fwd = clamp(vf / 10, 0, 1), low = 1 - 0.6 * Math.max(lv.chop, lv.drive * (1 - run));
-        const drive = (0.15 + 0.6 * fwd) * low, fold = (0.6 + 1.4 * clamp(sp / 10, 0, 1)) * low;
+        const drive = (0.1 + 0.6 * fwd ** 1.5) * low, fold = (0.6 + 1.4 * clamp(sp / 10, 0, 1)) * low;
+        // The thigh swings through early (hip flexion is fastest just after toe-off), so the folded shank passes
+        // under the hip with the toe clear of the turf; it peaks past the touchdown angle and retracts onto it.
+        const hh = minJerk(sw / lerp(1, 0.75, gl));
         q = [
-          lerp(L.qLift[0], td[0], hm) + drive * bump(sw, 3.4, 1.8),
+          lerp(L.qLift[0], td[0], hh) + drive * bump(sw, 2.6, 1.8),
           lerp(L.qLift[1], td[1], hm),
           lerp(L.qLift[2], td[2], hm) + fold * bump(sw, 2, 3.2),
-          lerp(L.qLift[3], td[3], hm) + 0.25 * bump(sw, 2, 2),
+          // the ankle cocks up soon after toe-off (toe clearance) and only settles onto its touchdown angle late
+          lerp(lerp(L.qLift[3], 0.1, s01(sw / 0.35)), td[3], s01((sw - 0.6) / 0.4)),
           lerp(L.qLift[4], td[4], hm),
           lerp(L.qLift[5], td[5], hm),
           lerp(L.qLift[6], td[6], hm),
@@ -496,8 +543,8 @@ export class ProceduralAnimator implements Animator {
 
     // ---- trunk, head, arms
     const ready = Math.max(lv.stance, shuffle, 0.7 * bp, 0.6 * lv.contact * (1 - run));
-    this.add('thoracic.flex', (0.15 * lv.wrap + 0.1 * lv.stance) * (1 - lv.thrust));
-    this.add('lumbar.flex', 0.1 * lv.sink - 0.2 * lv.thrust);
+    this.add('thoracic.flex', (0.15 * lv.wrap + 0.1 * lv.stance) * (1 - lv.thrust) + 0.4 * this.bend);
+    this.add('lumbar.flex', 0.1 * lv.sink - 0.2 * lv.thrust + 0.6 * this.bend);
     this.head(-0.9 * this.pitch + 0.35 * lv.tuck);
     const A = lerp(lerp(0.25, 0.85, clamp(sp / 9, 0, 1)) * gl, 0.15 * gl, ready);
     const c = Math.cos(TAU * p0);

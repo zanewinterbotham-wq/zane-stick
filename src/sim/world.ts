@@ -198,7 +198,7 @@ export class World {
     // A dive loads and pushes off the athlete's own legs, and so does a hip thrust: the posture support leaves the
     // weight to them (the tracking controller's legShare), so it never lifts the athlete or what he drives.
     const ps = p * weightSupport(r);
-    if (ps > 0) fy = clamp(ps * (S.weightShare * m * G + m * SUP.hKp * (r.height - s.segPos[3 * pi + 1]) - m * SUP.hKd * s.segVel[3 * pi + 1]), 0, 1.5 * ps * m * G);
+    if (ps > 0) fy = clamp(ps * (S.weightShare * m * G + m * SUP.hKp * (r.height - s.segPos[3 * pi + 1]) - m * SUP.hKd * (s.segVel[3 * pi + 1] - r.vel[1])), 0, 1.5 * ps * m * G);
     this.scene.applyWrench(a.index, pi, [a.carryForce[0], fy + a.carryForce[1], a.carryForce[2]], [0, 0, 0]);
     if (p <= 0) return;
     const H = a.plan.standHeight, kUp = p * SUP.kUp * m * G * H, cUp = 0.5 * p * SUP.cUp * m * H * H;
