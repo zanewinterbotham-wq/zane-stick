@@ -25,19 +25,28 @@ export interface Gains {
   pelvisAtt: number; thoraxAtt: number; headAtt: number;
   /** Capture-point convergence rate (1/s) and COM height PD (1/s², 1/s). */
   dcmK: number; heightKp: number; heightKd: number;
-  /** Raibert foot-placement feedback on velocity error (s), running. */
-  footK: number;
+  /** Foot-placement feedback on velocity error (s) and nominal step width (m). */
+  footK: number; stepWidth: number; footMargin: number;
+  /** Trunk balance through the stance hip, in units of m·g·h per rad and per rad/s. */
+  torsoKp: number; torsoKd: number;
+  /** Gait shape: minimum walking step time (s), touchdown gate (fraction of step), swing clearance (m),
+   *  stance knee bend (rad), walking arm swing, how far the speed reference may lead the actual speed (m/s). */
+  stepTMin: number; touchFrac: number; clearance: number; stanceKneeBend: number; armSwing: number; vLead: number;
 }
 export const DEFAULT_GAINS: Gains = {
   posture: 0.6, stanceKnee: 2.0, stanceAnkle: 0.5, stanceHip: 2.5, spine: 3.0, neck: 2.5,
   swingWn: 28, armWn: 12, dampT: 0.05,
   pelvisAtt: 1.0, thoraxAtt: 1.0, headAtt: 1.0,
   dcmK: 3.0, heightKp: 40, heightKd: 12,
-  footK: 0.12,
+  footK: 0.12, stepWidth: 0.1, footMargin: 0.05,
+  torsoKp: 1.6, torsoKd: 0.18,
+  stepTMin: 0.38, touchFrac: 0.7, clearance: 0.1, stanceKneeBend: 0.1, armSwing: 0.6, vLead: 0.6,
 };
 
 /** Target speeds (m/s) for the reference athlete; the body's own limits decide what is reached. */
 export const GAIT_SPEED = { walk: 1.6, jog: 4.2, sprint: 10.5 };
+/** Acceleration the foot placement aims for (m/s²); sprint starts reach ~5–7 m/s² [S4]. */
+export const GAIT_ACCEL = { walk: 1.5, jog: 3, sprint: 6 };
 
 const G = 9.81;
 
@@ -66,8 +75,10 @@ export class HandController implements MotorController {
   private dbg: Record<string, number | string> = {};
   private thrustT = 0; private diveT = 0;
   private dt = 1 / 240;
-  private lastCpOut = 0;
   private headingHold: number | null = null;
+  private stanceIdx: 0 | 1 = 0;
+  private walkT = 0;
+  private vRef: Vec3 = [0, 0, 0];
   private prevQ: Float64Array;
   /** 1 for free-limb dofs whose damping should follow the moving target. */
   private tracking: Uint8Array;
@@ -169,24 +180,35 @@ export class HandController implements MotorController {
     const c = s.com, cv = s.comVel;
     const speedCap = GAIT_SPEED[cmd.gait] * this.plan.params.speed;
     const mvLen = Math.hypot(cmd.move.x, cmd.move.z), mv = Math.min(1, mvLen);
-    const vd: Vec3 = mv > 0.05 ? [(cmd.move.x / mvLen) * mv * speedCap, 0, (cmd.move.z / mvLen) * mv * speedCap] : [0, 0, 0];
+    const vdRaw: Vec3 = mv > 0.05 ? [(cmd.move.x / mvLen) * mv * speedCap, 0, (cmd.move.z / mvLen) * mv * speedCap] : [0, 0, 0];
+    // The velocity the legs aim for slews toward the command at a human acceleration rate, starting from
+    // the current velocity: placing feet for an instant jump to full speed would outrun the stance leg.
+    const aMax = GAIT_ACCEL[cmd.gait];
+    const vdx = this.vRef[0] + clamp(vdRaw[0] - this.vRef[0], -aMax * v.dt, aMax * v.dt);
+    const vdz = this.vRef[2] + clamp(vdRaw[2] - this.vRef[2], -aMax * v.dt, aMax * v.dt);
+    // never let the reference run ahead of the actual speed by more than a short ramp
+    const lead = g.vLead;
+    this.vRef = [clamp(vdx, s.comVel[0] - lead, s.comVel[0] + lead), 0, clamp(vdz, s.comVel[2] - lead, s.comVel[2] + lead)];
+    if (mv <= 0.05) this.vRef = [0, 0, 0];
+    const vd: Vec3 = this.vRef;
     const vdMag = Math.hypot(vd[0], vd[2]);
-    const faceDir = cmd.face ?? (vdMag > 0.3 ? { x: vd[0], z: vd[2] } : null);
+    const faceDir = cmd.face ?? (Math.hypot(vdRaw[0], vdRaw[2]) > 0.3 ? { x: vdRaw[0], z: vdRaw[2] } : null);
     // Hold the last commanded heading when there is no command (otherwise yaw would be uncontrolled).
     if (this.headingHold === null) this.headingHold = heading;
     if (faceDir) this.headingHold = Math.atan2(faceDir.x, faceDir.z);
     const headingD = this.headingHold;
     const speed = Math.hypot(cv[0], cv[2]);
     const fwdD: Vec3 = [Math.sin(headingD), 0, Math.cos(headingD)];
-    const rightD: Vec3 = [Math.cos(headingD), 0, -Math.sin(headingD)];
+    const rightD: Vec3 = [-Math.cos(headingD), 0, Math.sin(headingD)]; // athlete faces +Z, +X is LEFT
 
     // ---- gait timing: cadence and contact time vary with speed [S4]
     const vRef = Math.max(speed, vdMag);
+    // Step duration: ~0.4 s walking down to ~0.21 s at sprint cadence [S4]. A swing leg cannot cross
+    // faster than its hip flexors allow, so walking/recovery steps never go below 0.38 s.
     let stepT = 1 / clamp(1.75 + 0.32 * vRef, 1.75, 4.8);
     const running = vRef > 2.6;
     // Recovery steps are quicker: shorten the step as the capture point leaves the base of support.
-    stepT = lerp(stepT, Math.min(stepT, 0.3), clamp(this.lastCpOut / 0.25, 0, 1));
-    const stanceT = running ? clamp(0.95 / Math.max(vRef, 0.1), 0.095, stepT * 0.95) : stepT * 1.25;
+    if (vRef < 2.6) stepT = clamp(stepT, g.stepTMin, g.stepTMin + 0.12);
 
     // ---- posture intent: COM height, trunk lean
     const sink = clamp(cmd.sink, 0, 1);
@@ -207,55 +229,31 @@ export class HandController implements MotorController {
     const footFwd = this.legs.map((L) => { const f = qrot(this.segQuat(v, L.foot), [0, 0, 1]); const n = Math.hypot(f[0], f[2]) || 1; return [f[0] / n, 0, f[2] / n] as Vec3; });
     const mid: Vec3 = [(ank[0][0] + ank[1][0]) / 2, 0, (ank[0][2] + ank[1][2]) / 2];
     const cpOut = this.outsideSupport(xi, ank, headingD);
-    this.lastCpOut = cpOut;
 
-    // ---- stepping state machine
+    // ---- mode: quiet standing (capture-point balance) or stepping (SIMBICON-style cycle)
     const wantMove = vdMag > 0.15 || speed > 0.45 || cpOut > 0.03;
     if (this.standing && wantMove) {
       this.standing = false;
+      // first swing: the leg on the side the capture point is leaving through, else the less loaded one
       const first = cpOut > 0.03 ? this.sideToward(xi, mid, rightD) : feet[0].force < feet[1].force ? 0 : 1;
-      this.startSwing(this.legs[first], v);
-      this.legs[1 - first].phase = 'stance'; this.legs[1 - first].t = 0;
-    } else if (!this.standing && !wantMove && this.legs.every((L) => L.phase === 'stance') && speed < 0.3) {
-      this.standing = true;
+      this.stanceIdx = (1 - first) as 0 | 1;
+      this.walkT = 0;
+      this.legs[first].liftPos = ank[first];
     }
-    for (const L of this.legs) {
-      L.t += v.dt;
-      if (this.standing) { L.phase = 'stance'; continue; }
-      const f = feet[L.k], other = this.legs[1 - L.k];
-      const swingT = running ? Math.max(0.12, 2 * stepT - stanceT) : Math.max(0.3, 2 * stepT - stanceT);
-      if (L.phase === 'swing') {
-        // Land only near the planned foothold or late in the swing (a scuff mid-swing is not a step).
-        const near = Math.hypot(ank[L.k][0] - L.target[0], ank[L.k][2] - L.target[2]) < 0.12;
-        if (f.touching && ((near && L.t > 0.5 * swingT) || L.t > 0.85 * swingT)) { L.phase = 'stance'; L.t = 0; }
-      } else {
-        // One leg swings at a time: only the trailing leg (planted longer) may lift, once the other has
-        // taken weight, and only while a step is still wanted.
-        const otherLoaded = other.phase === 'stance' && other.t > 0.05 && feet[other.k].force > 0.3 * m * G;
-        // the leg to lift is the one farther from where the body is heading (the capture point)
-        const dMe = Math.hypot(ank[L.k][0] - xi[0], ank[L.k][2] - xi[2]), dOther = Math.hypot(ank[other.k][0] - xi[0], ank[other.k][2] - xi[2]);
-        const trailing = other.phase === 'stance' && (running ? L.t > other.t : dMe > dOther);
-        if (wantMove && trailing && ((running && L.t > stanceT) || (!running && otherLoaded))) this.startSwing(L, v);
+    if (!this.standing) {
+      this.walkT += v.dt;
+      const sw = this.legs[1 - this.stanceIdx];
+      // Touchdown counts once the swing foot is past the stance foot along the direction of travel
+      // (a toe scuff behind the body is not a step), or when the step has run long.
+      const travel: Vec3 = speed > 0.2 ? [cv[0] / speed, 0, cv[2] / speed] : fwdD;
+      const st = this.legs[this.stanceIdx];
+      const ahead = dot([ank[sw.k][0] - ank[st.k][0], 0, ank[sw.k][2] - ank[st.k][2]], travel) > -0.05;
+      if ((feet[sw.k].touching && this.walkT > g.touchFrac * stepT && ahead) || this.walkT > 1.5 * stepT) {
+        // step complete: stop if nothing is pushing us on, otherwise the other leg swings next
+        if (vdMag < 0.1 && speed < 0.35 && cpOut === 0) this.standing = true;
+        else { this.stanceIdx = sw.k; this.walkT = 0; this.legs[1 - sw.k].liftPos = ank[1 - sw.k]; }
       }
     }
-
-    // ---- desired centre of pressure and ground force (capture-point law)
-    const stance = this.legs.filter((L) => L.phase === 'stance' && feet[L.k].touching);
-    let xiD: Vec3;
-    if (this.standing) xiD = [mid[0] + 0.03 * fwdD[0], 0, mid[2] + 0.03 * fwdD[2]];
-    else xiD = [xi[0] + (vd[0] - cv[0]) / w0, 0, xi[2] + (vd[2] - cv[2]) / w0];
-    let p: Vec3 = [xi[0] + (g.dcmK / w0) * (xi[0] - xiD[0]), 0, xi[2] + (g.dcmK / w0) * (xi[2] - xiD[2])];
-    p = this.clampToFeet(p, stance.map((L) => ank[L.k]), stance.map((L) => footFwd[L.k]));
-    const Fy = Math.max(0, m * (G + g.heightKp * (hd - c[1]) - g.heightKd * cv[1]));
-    const h = Math.max(0.4, c[1]);
-    const F: Vec3 = [Fy * (c[0] - p[0]) / h, Fy, Fy * (c[2] - p[2]) / h];
-    // Load share: where p lies between the feet across the heading (lateral balance by weight transfer).
-    const shares = [0, 0];
-    if (stance.length === 2) {
-      const rl = dot(ank[0], rightD), rr = dot(ank[1], rightD), rp = dot(p, rightD);
-      const a = clamp((rr - rp) / ((rr - rl) || 1e-6), 0, 1);
-      shares[0] = a; shares[1] = 1 - a;
-    } else if (stance.length === 1) shares[stance[0].k] = 1;
 
     // ---- trunk attitude: world error → joint target offsets (stance hips, spine, neck)
     const ePel = this.err(this.orient(headingD, clamp(0.3 * pitchD, -0.1, 0.25), 0.3 * rollD), pq);
@@ -277,9 +275,29 @@ export class HandController implements MotorController {
     this.neckDofs.forEach((i, k) => this.stiff(out, i, tNk[k], g.neck));
 
     // ---- legs
-    for (const L of this.legs) {
-      if (L.phase === 'stance') this.stanceLeg(v, L, out, F, shares[L.k], p, ank[L.k], footFwd[L.k], ePel, stance.length);
-      else this.swingLeg(v, L, out, c, cv, vd, xi, w0, rightD, stepT, stanceT, running, p, headingD);
+    if (this.standing) {
+      for (const L of this.legs) L.phase = 'stance';
+      const stance = this.legs.filter((L) => feet[L.k].touching);
+      const xiD: Vec3 = [mid[0] + 0.03 * fwdD[0], 0, mid[2] + 0.03 * fwdD[2]];
+      let p: Vec3 = [xi[0] + (g.dcmK / w0) * (xi[0] - xiD[0]), 0, xi[2] + (g.dcmK / w0) * (xi[2] - xiD[2])];
+      p = this.clampToFeet(p, stance.map((L) => ank[L.k]), stance.map((L) => footFwd[L.k]));
+      const Fy = Math.max(0, m * (G + g.heightKp * (hd - c[1]) - g.heightKd * cv[1]));
+      const h = Math.max(0.4, c[1]);
+      const F: Vec3 = [Fy * (c[0] - p[0]) / h, Fy, Fy * (c[2] - p[2]) / h];
+      // Load share: where p lies between the feet across the heading (lateral balance by weight transfer).
+      const shares = [0, 0];
+      if (stance.length === 2) {
+        const rl = dot(ank[0], rightD), rr = dot(ank[1], rightD), rp = dot(p, rightD);
+        const a = clamp((rr - rp) / ((rr - rl) || 1e-6), 0, 1);
+        shares[0] = a; shares[1] = 1 - a;
+      } else if (stance.length === 1) shares[stance[0].k] = 1;
+      for (const L of this.legs) this.stanceLeg(v, L, out, F, shares[L.k], p, ank[L.k], footFwd[L.k], ePel, stance.length);
+      this.dbg = { mode: 'stand', cpOut, speed, px: p[0], pz: p[2], shareL: shares[0] };
+    } else {
+      const st = this.legs[this.stanceIdx], sw = this.legs[1 - this.stanceIdx];
+      st.phase = 'stance'; sw.phase = 'swing';
+      this.stepCycle(v, st, sw, out, c, cv, vd, headingD, fwdD, rightD, w0, stepT, running, pitchD, rollD, ank[st.k], footFwd[st.k], hd);
+      this.dbg = { mode: 'step', stance: st.k, t: this.walkT, stepT, cpOut, speed, vd: vdMag };
     }
 
     this.armsControl(v, cmd, out, running, vRef);
@@ -291,12 +309,89 @@ export class HandController implements MotorController {
       out.qd[i] = this.tracking[i] ? this.qdFilt[i] : 0;
       this.prevQ[i] = out.q[i];
     }
-    this.dbg = { standing: this.standing ? 1 : 0, legL: this.legs[0].phase, legR: this.legs[1].phase, stepT, stanceT, hd, Fy, cpOut, speed, vd: vdMag, px: p[0], pz: p[2], shareL: shares[0] };
   }
 
-  private startSwing(L: Leg, v: BodyView) {
-    L.phase = 'swing'; L.t = 0;
-    L.liftPos = this.segVec(v.state.segPos, L.foot);
+
+  /** One SIMBICON-style step: the swing thigh is aimed by balance feedback (capture point), the stance
+   *  hip holds the trunk upright and cancels the swing hip's reaction, the stance knee/ankle carry weight. */
+  private stepCycle(v: BodyView, st: Leg, sw: Leg, out: MuscleTargets, c: Vec3, cv: Vec3, vd: Vec3, headingD: number, fwdD: Vec3, rightD: Vec3,
+    w0: number, T: number, running: boolean, pitchD: number, rollD: number, stAnkle: Vec3, stFwd: Vec3, hd: number) {
+    const s = v.state, g = this.gains, m = this.mass;
+    const pq = this.segQuat(v, this.pelvisSeg), pw = this.segVec(s.segAngVel, this.pelvisSeg);
+    const sPh = clamp(this.walkT / T, 0, 1);
+    // --- swing thigh: where the foot should land relative to the COM (heading frame)
+    const outD: Vec3 = [-rightD[0] * sw.side, 0, -rightD[2] * sw.side]; // outward for the swing side
+    const vS = dot(cv, fwdD), vL = dot(cv, outD), vdS = dot(vd, fwdD), vdL = dot(vd, outD);
+    const legLen = sw.L1 + sw.L2;
+    const b = 1 / (Math.exp(w0 * T) - 1);
+    // Aim a little short of the capture point (footMargin) so the stance ankle can finish the job.
+    const offS = clamp(vS / w0 + g.footK * (vS - vdS) - vdS * T * b - g.footMargin * Math.sign(vS - vdS), -0.15, 1.0);
+    const offL = clamp(g.stepWidth + vL / w0 + g.footK * (vL - vdL), -0.12, 0.55);
+    // Foothold from balance feedback; the foot travels there from where it lifted off along a clearance
+    // arc (over the foothold by 80 % of the step, then sets down), solved by leg IK.
+    const hold: Vec3 = [c[0] + fwdD[0] * offS + outD[0] * offL, 0, c[2] + fwdD[2] * offS + outD[2] * offL];
+    sw.target = hold;
+    const u = Math.min(1, sPh / 0.8), ease = u * u * (3 - 2 * u);
+    const clear = running ? g.clearance + 0.02 + 0.02 * Math.hypot(cv[0], cv[2]) : g.clearance;
+    const ankT: Vec3 = [lerp(sw.liftPos[0], hold[0], ease), sw.ankleH + clear * Math.sin(Math.PI * Math.min(1, sPh / 0.9)), lerp(sw.liftPos[2], hold[2], ease)];
+    const pelvisPos = this.segVec(s.segPos, this.pelvisSeg);
+    const hoff = qrot(pq, sw.hipOff);
+    const rel = qrot(qconj(pq), [ankT[0] - pelvisPos[0] - hoff[0], ankT[1] - pelvisPos[1] - hoff[1], ankT[2] - pelvisPos[2] - hoff[2]]);
+    const n = Math.hypot(...rel) || 1;
+    const d = Math.min(n, legLen * 0.995);
+    const dir: Vec3 = [rel[0] / n, rel[1] / n, rel[2] / n];
+    const kneeIK = Math.PI - Math.acos(clamp((sw.L1 ** 2 + sw.L2 ** 2 - d * d) / (2 * sw.L1 * sw.L2), -1, 1));
+    const alpha = Math.acos(clamp((sw.L1 ** 2 + d * d - sw.L2 ** 2) / (2 * sw.L1 * d), -1, 1));
+    const hipFlex = Math.atan2(dir[2], -dir[1]) + alpha, hipAbd = Math.asin(clamp(dir[0] * sw.side, -1, 1));
+    const knee = kneeIK + (running ? 1.0 * Math.sin(Math.PI * Math.min(1, sPh / 0.7)) : 0); // heel recovery when running
+    const pelvisPitch = -Math.asin(clamp(qrot(pq, [0, 0, 1])[1], -1, 1));
+    const pelvisYaw = headingOf(qrot(pq, [0, 0, 1]));
+    const yawDiff = Math.atan2(Math.sin(headingD - pelvisYaw), Math.cos(headingD - pelvisYaw));
+    this.freq(out, sw.hip[0], hipFlex, g.swingWn);
+    this.freq(out, sw.hip[1], hipAbd, g.swingWn);
+    this.freq(out, sw.hip[2], -sw.side * clamp(yawDiff, -0.6, 0.6), g.swingWn * 0.6);
+    this.freq(out, sw.knee[0], knee, g.swingWn);
+    this.freq(out, sw.knee[1], 0, g.swingWn * 0.5);
+    this.freq(out, sw.ankle[0], pelvisPitch - hipFlex + knee + 0.08, g.swingWn * 0.7);
+    this.freq(out, sw.ankle[1], 0, g.swingWn * 0.5);
+    this.freq(out, sw.toe, 0.15, g.swingWn * 0.5);
+    // --- stance knee and ankle: posture + gravity compensation through J-transpose at the mid-foot
+    this.stiff(out, st.knee[0], g.stanceKneeBend, g.stanceKnee);
+    this.stiff(out, st.knee[1], 0, g.stanceKnee * 0.5);
+    this.stiff(out, st.ankle[0], 0, g.stanceAnkle);
+    this.stiff(out, st.ankle[1], 0, g.stanceAnkle);
+    this.stiff(out, st.toe, 0, g.posture);
+    // In-stance balance: the capture-point law picks the centre of pressure inside the stance foot and
+    // the matching ground force (ankle strategy), as in quiet standing.
+    const xi: Vec3 = [c[0] + cv[0] / w0, 0, c[2] + cv[2] / w0];
+    const xiD: Vec3 = [xi[0] + (vd[0] - cv[0]) / w0, 0, xi[2] + (vd[2] - cv[2]) / w0];
+    const pDes: Vec3 = [xi[0] + (g.dcmK / w0) * (xi[0] - xiD[0]), 0, xi[2] + (g.dcmK / w0) * (xi[2] - xiD[2])];
+    const pf = this.clampToFeet(pDes, [stAnkle], [stFwd]);
+    const h = Math.max(0.4, c[1]);
+    // The knee pushes for the height-regulating vertical force (keeps the hips up so the next foot lands
+    // on a nearly straight leg). The ankle is scaled by the load this foot actually carries: asking it for
+    // torque against weight that is not on the foot just rolls the foot onto its toes.
+    const Fy = clamp(m * (G + g.heightKp * (hd - c[1]) - g.heightKd * cv[1]), 0, 2.5 * m * G);
+    const load = clamp(v.feet[st.k].force, 0, 1.5 * m * G);
+    const Fk: Vec3 = [Fy * (c[0] - pf[0]) / h, Fy, Fy * (c[2] - pf[2]) / h];
+    const Fa: Vec3 = [load * (c[0] - pf[0]) / h, load, load * (c[2] - pf[2]) / h];
+    for (const [dofs, F] of [[st.knee, Fk], [st.ankle, Fa]] as const) for (const i of dofs) {
+      const a = this.anchor(v, i);
+      out.tff[i] += -dot(cross(this.axis(v, i), [pf[0] - a[0], pf[1] - a[1], pf[2] - a[2]]), F);
+    }
+    // --- stance hip: trunk balance torque on the pelvis, plus cancel the swing hip's reaction on it
+    const e = this.err(this.orient(headingD, clamp(0.3 * pitchD, -0.1, 0.25), 0.3 * rollD), pq);
+    const mgh = m * G * this.standCom;
+    const yaw = clamp(e[1], -0.2, 0.2) * 0.3;
+    const Ttorso: Vec3 = [mgh * (g.torsoKp * e[0] - g.torsoKd * pw[0]), mgh * (g.torsoKp * yaw - g.torsoKd * 0.3 * pw[1]), mgh * (g.torsoKp * e[2] - g.torsoKd * pw[2])];
+    const R: Vec3 = [0, 0, 0];
+    for (const i of sw.hip) {
+      const tau = out.kp[i] * (out.q[i] - s.q[i]) + out.kd[i] * (out.qd[i] - s.qd[i]);
+      const a = this.axis(v, i);
+      R[0] += tau * a[0]; R[1] += tau * a[1]; R[2] += tau * a[2];
+    }
+    const tH = this.rotToDofs(v, st.hip, [-(Ttorso[0] + R[0]), -(Ttorso[1] + R[1]), -(Ttorso[2] + R[2])]);
+    st.hip.forEach((i, k) => { this.stiff(out, i, s.q[i], 0.1); out.tff[i] += tH[k]; });
   }
 
   /** Footprint of a foot: from heel to toe tip along its forward direction, ± half width. */
@@ -371,63 +466,13 @@ export class HandController implements MotorController {
     this.stiff(out, L.toe, 0, g.posture);
   }
 
-  private swingLeg(v: BodyView, L: Leg, out: MuscleTargets, c: Vec3, cv: Vec3, vd: Vec3, xi: Vec3, w0: number, right: Vec3, stepT: number, stanceT: number, running: boolean, p: Vec3, headingD: number) {
-    const s = v.state, g = this.gains;
-    const pq = this.segQuat(v, this.pelvisSeg);
-    const pelvisPos = this.segVec(s.segPos, this.pelvisSeg);
-    const hoff = qrot(pq, L.hipOff);
-    const hipW: Vec3 = [pelvisPos[0] + hoff[0], pelvisPos[1] + hoff[1], pelvisPos[2] + hoff[2]];
-    const swingT = running ? Math.max(0.12, 2 * stepT - stanceT) : Math.max(0.3, 2 * stepT - stanceT);
-    const sPh = clamp(L.t / swingT, 0, 1);
-    const remaining = Math.max(0, swingT - L.t);
-    let tgt: Vec3;
-    if (running) {
-      // Raibert: neutral point (half the stance travel ahead) + velocity-error feedback.
-      tgt = [c[0] + cv[0] * (remaining + 0.5 * stanceT) + g.footK * (cv[0] - vd[0]), 0, c[2] + cv[2] * (remaining + 0.5 * stanceT) + g.footK * (cv[2] - vd[2])];
-    } else {
-      // Capture point predicted at touchdown, minus the offset that keeps a steady walk at vd.
-      const e = Math.exp(w0 * remaining);
-      const xiT: Vec3 = [p[0] + (xi[0] - p[0]) * e, 0, p[2] + (xi[2] - p[2]) * e];
-      const b = 1 / (Math.exp(w0 * stepT) - 1);
-      tgt = [xiT[0] - vd[0] * stepT * b, 0, xiT[2] - vd[2] * stepT * b];
-    }
-    // step width: each foot lands a little outside the line of travel
-    tgt = [tgt[0] - right[0] * L.side * 0.09, 0, tgt[2] - right[2] * L.side * 0.09];
-    L.target = tgt;
-    // The foot gets over the foothold by 80 % of the swing, then sets down.
-    const u = Math.min(1, sPh / 0.8), e = u * u * (3 - 2 * u);
-    const clear = running ? 0.1 + 0.025 * Math.hypot(cv[0], cv[2]) : 0.08;
-    const ankleTarget: Vec3 = [lerp(L.liftPos[0], tgt[0], e), L.ankleH + clear * Math.sin(Math.PI * Math.min(1, sPh / 0.9)), lerp(L.liftPos[2], tgt[2], e)];
-    const rel = qrot(qconj(pq), [ankleTarget[0] - hipW[0], ankleTarget[1] - hipW[1], ankleTarget[2] - hipW[2]]);
-    const n = Math.hypot(...rel) || 1;
-    const d = Math.min(n, (L.L1 + L.L2) * 0.995);
-    const dir: Vec3 = [rel[0] / n, rel[1] / n, rel[2] / n];
-    const kneeFlex = Math.PI - Math.acos(clamp((L.L1 ** 2 + L.L2 ** 2 - d * d) / (2 * L.L1 * L.L2), -1, 1));
-    const alpha = Math.acos(clamp((L.L1 ** 2 + d * d - L.L2 ** 2) / (2 * L.L1 * d), -1, 1));
-    const hipFlex = Math.atan2(dir[2], -dir[1]) + alpha;
-    const hipAbd = Math.asin(clamp(dir[0] * L.side, -1, 1));
-    const pelvisPitch = -Math.asin(clamp(qrot(pq, [0, 0, 1])[1], -1, 1));
-    const heelUp = running ? 1.0 * Math.sin(Math.PI * sPh) : 0;
-    this.freq(out, L.hip[0], hipFlex, g.swingWn);
-    this.freq(out, L.hip[1], hipAbd, g.swingWn);
-    // Point the landing foot along the desired heading: hip rotation makes up the pelvis yaw error.
-    const pelvisYaw = headingOf(qrot(pq, [0, 0, 1]));
-    const yawDiff = Math.atan2(Math.sin(headingD - pelvisYaw), Math.cos(headingD - pelvisYaw));
-    this.freq(out, L.hip[2], -L.side * clamp(yawDiff, -0.6, 0.6), g.swingWn * 0.6);
-    this.freq(out, L.knee[0], kneeFlex + heelUp, g.swingWn);
-    this.freq(out, L.knee[1], 0, g.swingWn * 0.5);
-    this.freq(out, L.ankle[0], pelvisPitch - hipFlex + kneeFlex + 0.05, g.swingWn * 0.7);
-    this.freq(out, L.ankle[1], 0, g.swingWn * 0.5);
-    this.freq(out, L.toe, 0.1, g.swingWn * 0.5);
-  }
-
   private armsControl(v: BodyView, cmd: Commands, out: MuscleTargets, running: boolean, vRef: number) {
     const g = this.gains;
     const hipL = v.state.q[this.legs[0].hip[0]], hipR = v.state.q[this.legs[1].hip[0]];
     for (const A of this.arms) {
       const reach = A.side > 0 ? cmd.armL : cmd.armR;
       // Arms swing against the legs: cancels the yaw the swinging leg puts on the trunk.
-      const swingAmp = running ? clamp(0.5 + 0.06 * vRef, 0, 1.1) : 0.6;
+      const swingAmp = running ? clamp(0.5 + 0.06 * vRef, 0, 1.1) : g.armSwing;
       const own = A.side > 0 ? hipL : hipR, opp = A.side > 0 ? hipR : hipL;
       let flex = -swingAmp * (own - opp) * 0.9, abd = 0.12, elbow = running ? 1.4 : 0.35, rot = 0, wn = g.armWn;
       if (cmd.contactMode && (reach > 0 || cmd.shoot || cmd.wrap)) {
