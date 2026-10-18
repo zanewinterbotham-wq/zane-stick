@@ -1,0 +1,688 @@
+{
+ "height": 1.83,
+ "segments": [
+  {
+   "name": "pelvis",
+   "parent": null,
+   "side": 0,
+   "origin": [
+    0,
+    1.0418,
+    0
+   ],
+   "geoms": [
+    {
+     "name": "pelvis",
+     "type": "box",
+     "role": "body",
+     "size": [
+      0.1821,
+      0.1025,
+      0.1296
+     ],
+     "pos": [
+      0,
+      1.0311,
+      -0.0183
+     ]
+    }
+   ]
+  },
+  {
+   "name": "lumbar",
+   "parent": "pelvis",
+   "side": 0,
+   "origin": [
+    0,
+    1.1336,
+    -0.0549
+   ],
+   "geoms": [
+    {
+     "name": "lumbar",
+     "type": "box",
+     "role": "body",
+     "size": [
+      0.1721,
+      0.111,
+      0.1259
+     ],
+     "pos": [
+      0,
+      1.2445,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "name": "thorax",
+   "parent": "lumbar",
+   "side": 0,
+   "origin": [
+    0,
+    1.3555,
+    -0.0549
+   ],
+   "geoms": [
+    {
+     "name": "thorax",
+     "type": "box",
+     "role": "body",
+     "size": [
+      0.1525,
+      0.1155,
+      0.1338
+     ],
+     "pos": [
+      0,
+      1.471,
+      0
+     ]
+    },
+    {
+     "name": "pads",
+     "type": "box",
+     "role": "pad",
+     "size": [
+      0.2514,
+      0.07,
+      0.1618
+     ],
+     "pos": [
+      0,
+      1.5073,
+      -0.005
+     ]
+    }
+   ]
+  },
+  {
+   "name": "neck",
+   "parent": "thorax",
+   "side": 0,
+   "origin": [
+    0,
+    1.6048,
+    -0.0362
+   ],
+   "geoms": [
+    {
+     "name": "neck",
+     "type": "capsule",
+     "role": "body",
+     "size": [
+      0.0666
+     ],
+     "fromto": [
+      [
+       0,
+       1.6048,
+       -0.0274
+      ],
+      [
+       0,
+       1.672,
+       0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "name": "head",
+   "parent": "neck",
+   "side": 0,
+   "origin": [
+    0,
+    1.672,
+    -0.011
+   ],
+   "geoms": [
+    {
+     "name": "helmet",
+     "type": "sphere",
+     "role": "helmet",
+     "size": [
+      0.135
+     ],
+     "pos": [
+      0,
+      1.755,
+      0.012
+     ]
+    },
+    {
+     "name": "facemask",
+     "type": "capsule",
+     "role": "facemask",
+     "size": [
+      0.022
+     ],
+     "fromto": [
+      [
+       -0.07,
+       1.695,
+       0.137
+      ],
+      [
+       0.07,
+       1.695,
+       0.137
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "name": "clavicleL",
+   "parent": "thorax",
+   "side": 1,
+   "origin": [
+    0.022,
+    1.5313,
+    0.0641
+   ],
+   "geoms": [
+    {
+     "name": "clavicleL",
+     "type": "capsule",
+     "role": "body",
+     "size": [
+      0.0407
+     ],
+     "fromto": [
+      [
+       0.022,
+       1.5313,
+       0.0641
+      ],
+      [
+       0.2013,
+       1.489,
+       0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "name": "upperArmL",
+   "parent": "clavicleL",
+   "side": 1,
+   "origin": [
+    0.2013,
+    1.489,
+    0
+   ],
+   "geoms": [
+    {
+     "name": "upperArmL",
+     "type": "capsule",
+     "role": "body",
+     "size": [
+      0.0481
+     ],
+     "fromto": [
+      [
+       0.2013,
+       1.489,
+       0
+      ],
+      [
+       0.2013,
+       1.1929,
+       0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "name": "forearmL",
+   "parent": "upperArmL",
+   "side": 1,
+   "origin": [
+    0.2013,
+    1.1929,
+    0
+   ],
+   "geoms": [
+    {
+     "name": "forearmL",
+     "type": "capsule",
+     "role": "body",
+     "size": [
+      0.0389
+     ],
+     "fromto": [
+      [
+       0.2013,
+       1.1929,
+       0
+      ],
+      [
+       0.2013,
+       0.9103,
+       0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "name": "handL",
+   "parent": "forearmL",
+   "side": 1,
+   "origin": [
+    0.2013,
+    0.9103,
+    0
+   ],
+   "geoms": [
+    {
+     "name": "handL",
+     "type": "box",
+     "role": "hand",
+     "size": [
+      0.0241,
+      0.1007,
+      0.0458
+     ],
+     "pos": [
+      0.2013,
+      0.8096,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "name": "clavicleR",
+   "parent": "thorax",
+   "side": -1,
+   "origin": [
+    -0.022,
+    1.5313,
+    0.0641
+   ],
+   "geoms": [
+    {
+     "name": "clavicleR",
+     "type": "capsule",
+     "role": "body",
+     "size": [
+      0.0407
+     ],
+     "fromto": [
+      [
+       -0.022,
+       1.5313,
+       0.0641
+      ],
+      [
+       -0.2013,
+       1.489,
+       0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "name": "upperArmR",
+   "parent": "clavicleR",
+   "side": -1,
+   "origin": [
+    -0.2013,
+    1.489,
+    0
+   ],
+   "geoms": [
+    {
+     "name": "upperArmR",
+     "type": "capsule",
+     "role": "body",
+     "size": [
+      0.0481
+     ],
+     "fromto": [
+      [
+       -0.2013,
+       1.489,
+       0
+      ],
+      [
+       -0.2013,
+       1.1929,
+       0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "name": "forearmR",
+   "parent": "upperArmR",
+   "side": -1,
+   "origin": [
+    -0.2013,
+    1.1929,
+    0
+   ],
+   "geoms": [
+    {
+     "name": "forearmR",
+     "type": "capsule",
+     "role": "body",
+     "size": [
+      0.0389
+     ],
+     "fromto": [
+      [
+       -0.2013,
+       1.1929,
+       0
+      ],
+      [
+       -0.2013,
+       0.9103,
+       0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "name": "handR",
+   "parent": "forearmR",
+   "side": -1,
+   "origin": [
+    -0.2013,
+    0.9103,
+    0
+   ],
+   "geoms": [
+    {
+     "name": "handR",
+     "type": "box",
+     "role": "hand",
+     "size": [
+      0.0241,
+      0.1007,
+      0.0458
+     ],
+     "pos": [
+      -0.2013,
+      0.8096,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "name": "thighL",
+   "parent": "pelvis",
+   "side": 1,
+   "origin": [
+    0.0952,
+    0.9835,
+    0
+   ],
+   "geoms": [
+    {
+     "name": "thighL",
+     "type": "capsule",
+     "role": "body",
+     "size": [
+      0.0833
+     ],
+     "fromto": [
+      [
+       0.0952,
+       0.9835,
+       0
+      ],
+      [
+       0.0952,
+       0.5487,
+       0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "name": "shankL",
+   "parent": "thighL",
+   "side": 1,
+   "origin": [
+    0.0952,
+    0.5487,
+    0
+   ],
+   "geoms": [
+    {
+     "name": "shankL",
+     "type": "capsule",
+     "role": "body",
+     "size": [
+      0.0518
+     ],
+     "fromto": [
+      [
+       0.0952,
+       0.5487,
+       0
+      ],
+      [
+       0.0952,
+       0.0953,
+       0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "name": "footL",
+   "parent": "shankL",
+   "side": 1,
+   "origin": [
+    0.0952,
+    0.0953,
+    0
+   ],
+   "geoms": [
+    {
+     "name": "footL",
+     "type": "box",
+     "role": "foot",
+     "size": [
+      0.0537,
+      0.0367,
+      0.0977
+     ],
+     "pos": [
+      0.0952,
+      0.0367,
+      0.0407
+     ]
+    }
+   ]
+  },
+  {
+   "name": "toesL",
+   "parent": "footL",
+   "side": 1,
+   "origin": [
+    0.0952,
+    0.0396,
+    0.1384
+   ],
+   "geoms": [
+    {
+     "name": "toesL",
+     "type": "box",
+     "role": "foot",
+     "size": [
+      0.0537,
+      0.0271,
+      0.038
+     ],
+     "pos": [
+      0.0952,
+      0.0271,
+      0.1763
+     ]
+    }
+   ]
+  },
+  {
+   "name": "thighR",
+   "parent": "pelvis",
+   "side": -1,
+   "origin": [
+    -0.0952,
+    0.9835,
+    0
+   ],
+   "geoms": [
+    {
+     "name": "thighR",
+     "type": "capsule",
+     "role": "body",
+     "size": [
+      0.0833
+     ],
+     "fromto": [
+      [
+       -0.0952,
+       0.9835,
+       0
+      ],
+      [
+       -0.0952,
+       0.5487,
+       0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "name": "shankR",
+   "parent": "thighR",
+   "side": -1,
+   "origin": [
+    -0.0952,
+    0.5487,
+    0
+   ],
+   "geoms": [
+    {
+     "name": "shankR",
+     "type": "capsule",
+     "role": "body",
+     "size": [
+      0.0518
+     ],
+     "fromto": [
+      [
+       -0.0952,
+       0.5487,
+       0
+      ],
+      [
+       -0.0952,
+       0.0953,
+       0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "name": "footR",
+   "parent": "shankR",
+   "side": -1,
+   "origin": [
+    -0.0952,
+    0.0953,
+    0
+   ],
+   "geoms": [
+    {
+     "name": "footR",
+     "type": "box",
+     "role": "foot",
+     "size": [
+      0.0537,
+      0.0367,
+      0.0977
+     ],
+     "pos": [
+      -0.0952,
+      0.0367,
+      0.0407
+     ]
+    }
+   ]
+  },
+  {
+   "name": "toesR",
+   "parent": "footR",
+   "side": -1,
+   "origin": [
+    -0.0952,
+    0.0396,
+    0.1384
+   ],
+   "geoms": [
+    {
+     "name": "toesR",
+     "type": "box",
+     "role": "foot",
+     "size": [
+      0.0537,
+      0.0271,
+      0.038
+     ],
+     "pos": [
+      -0.0952,
+      0.0271,
+      0.1763
+     ]
+    }
+   ]
+  }
+ ],
+ "teams": [
+  {
+   "name": "harbor-gulls",
+   "colors": {
+    "jersey": 2046568,
+    "trim": 15921900,
+    "pants": 15328988,
+    "helmet": 2046568,
+    "mask": 14211288,
+    "skin": 9263675,
+    "socks": 2046568,
+    "cleats": 1447446
+   }
+  },
+  {
+   "name": "ridge-foxes",
+   "colors": {
+    "jersey": 14246686,
+    "trim": 2829099,
+    "pants": 3092275,
+    "helmet": 15759915,
+    "mask": 2236962,
+    "skin": 14264190,
+    "socks": 2829099,
+    "cleats": 15921906
+   }
+  }
+ ]
+}

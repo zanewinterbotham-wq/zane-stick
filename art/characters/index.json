@@ -1,0 +1,66 @@
+{
+ "clay": {
+  "title": "Claymation",
+  "pitch": "Stop-motion plasticine: lumpy hand-pressed surfaces, soft matte, 1.65x head.",
+  "triangles": 9416,
+  "bytes": 193056,
+  "headScale": 1.65,
+  "file": "clay/clay.glb"
+ },
+ "future": {
+  "title": "Future Armor",
+  "pitch": "Sleek armored future football: visor helmet with fin, hard plates, light strips.",
+  "triangles": 4438,
+  "bytes": 104644,
+  "headScale": 1.5,
+  "file": "future/future.glb"
+ },
+ "lowpoly": {
+  "title": "Low-Poly Facet",
+  "pitch": "Faceted crystal-cut athlete: six-sided limbs, jittered flat facets, 1.55x head.",
+  "triangles": 2722,
+  "bytes": 47768,
+  "headScale": 1.55,
+  "file": "lowpoly/lowpoly.glb"
+ },
+ "paper": {
+  "title": "Paper Cutout",
+  "pitch": "Layered cardstock puppet: flat silhouettes, paper-white borders, 1.7x head.",
+  "triangles": 5624,
+  "bytes": 78972,
+  "headScale": 1.7,
+  "file": "paper/paper.glb"
+ },
+ "rubberhose": {
+  "title": "Rubber Hose",
+  "pitch": "1930s cartoon: noodle limbs, white mitts, pie-cut eyes, huge shoes, 1.95x head.",
+  "triangles": 9184,
+  "bytes": 219284,
+  "headScale": 1.95,
+  "file": "rubberhose/rubberhose.glb"
+ },
+ "toon": {
+  "title": "Ink Toon",
+  "pitch": "Saturday-morning cel shading: two-tone ramps, rim highlight, inked outlines, 1.75x head.",
+  "triangles": 9952,
+  "bytes": 218464,
+  "headScale": 1.75,
+  "file": "toon/toon.glb"
+ },
+ "vinyl": {
+  "title": "Vinyl Toy",
+  "pitch": "Chunky designer-toy figure: glossy rounded plastic, mitten hands, 1.9x head.",
+  "triangles": 10814,
+  "bytes": 212200,
+  "headScale": 1.9,
+  "file": "vinyl/vinyl.glb"
+ },
+ "voxel": {
+  "title": "Voxel Block",
+  "pitch": "3.4 cm voxels on one world grid with merged faces: a sandbox-game athlete, 1.6x head.",
+  "triangles": 2540,
+  "bytes": 53036,
+  "headScale": 1.6,
+  "file": "voxel/voxel.glb"
+ }
+}
