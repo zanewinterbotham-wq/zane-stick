@@ -485,7 +485,10 @@ export class HandController implements MotorController {
     // torque against weight that is not on the foot just rolls the foot onto its toes.
     const Fy = clamp(m * (G + g.heightKp * (hd - c[1]) - g.heightKd * cv[1]), 0, 2.5 * m * G);
     const load = clamp(v.feet[st.k].force, 0, 1.5 * m * G);
-    const Fk: Vec3 = [Fy * (c[0] - pf[0]) / h, Fy, Fy * (c[2] - pf[2]) / h];
+    // A stance foot that has been pushed off the ground cannot push back: every ground-force and trunk
+    // torque through it is scaled by how loaded it actually is (otherwise it flings the leg).
+    const grounded = clamp(v.feet[st.k].force / (0.3 * m * G), 0, 1);
+    const Fk: Vec3 = [grounded * Fy * (c[0] - pf[0]) / h, grounded * Fy, grounded * Fy * (c[2] - pf[2]) / h];
     const Fa: Vec3 = [load * (c[0] - pf[0]) / h, load, load * (c[2] - pf[2]) / h];
     for (const [dofs, F] of [[st.knee, Fk], [st.ankle, Fa]] as const) for (const i of dofs) {
       const a = this.anchor(v, i);
@@ -505,7 +508,7 @@ export class HandController implements MotorController {
       const a = this.axis(v, i);
       R[0] += tau * a[0]; R[1] += tau * a[1]; R[2] += tau * a[2];
     }
-    const tH = this.rotToDofs(v, st.hip, [-(Ttorso[0] + R[0]), -(Ttorso[1] + R[1]), -(Ttorso[2] + R[2])]);
+    const tH = this.rotToDofs(v, st.hip, [-(Ttorso[0] + R[0]) * grounded, -(Ttorso[1] + R[1]) * grounded, -(Ttorso[2] + R[2]) * grounded]);
     st.hip.forEach((i, k) => { this.stiff(out, i, s.q[i], 0.1); out.tff[i] += tH[k]; });
   }
 
@@ -579,7 +582,8 @@ export class HandController implements MotorController {
         const kh = clamp(1 + g.runHeightK * (hd - c[1]), 0.6, 1.5);
         const Fy = m * G * (Ts / Tc) * (Math.PI / 2) * Math.sin(Math.PI * ph) * kh * g.runPush;
         const Fh = clamp(m * g.runAccel * (vdAlong - vAlong) + m * g.runDrive * Math.sin(Math.PI * ph), -0.3 * Fy, 0.9 * Fy);
-        const F: Vec3 = [travel[0] * Fh, Fy, travel[2] * Fh];
+        const gr = clamp(feet[L.k].force / (0.2 * m * G), 0, 1);
+        const F: Vec3 = [travel[0] * Fh * gr, Fy * gr, travel[2] * Fh * gr];
         const pf: Vec3 = [ank[L.k][0] + 0.12 * footFwd[L.k][0], 0, ank[L.k][2] + 0.12 * footFwd[L.k][2]];
         for (const i of L.chain) {
           const a = this.anchor(v, i);
@@ -642,7 +646,8 @@ export class HandController implements MotorController {
         const a = this.axis(v, i);
         R[0] += tau * a[0]; R[1] += tau * a[1]; R[2] += tau * a[2];
       }
-      const tH = this.rotToDofs(v, stance.hip, [-(Tpel[0] + R[0]), -(Tpel[1] + R[1]), -(Tpel[2] + R[2])]);
+      const gr = clamp(feet[stance.k].force / (0.2 * m * G), 0, 1);
+      const tH = this.rotToDofs(v, stance.hip, [-(Tpel[0] + R[0]) * gr, -(Tpel[1] + R[1]) * gr, -(Tpel[2] + R[2]) * gr]);
       stance.hip.forEach((i, k) => (out.tff[i] += tH[k]));
     }
     this.dbg = { mode: 'run', stance: this.stanceIdx, t: this.walkT, Tc, Ts, speed, vd: Math.hypot(vd[0], vd[2]), legL: this.legs[0].phase, legR: this.legs[1].phase };
