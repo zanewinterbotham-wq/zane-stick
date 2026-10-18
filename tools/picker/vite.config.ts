@@ -11,7 +11,7 @@ const repo = resolve(here, '../..');
 // PICKER_LIBRARY=fixtures develops against the tiny fixtures instead of the real art/ library.
 const lib = process.env.PICKER_LIBRARY === 'fixtures' ? join(here, 'fixtures') : join(repo, 'art');
 const picksPath = process.env.PICKER_PICKS ? resolve(process.env.PICKER_PICKS) : join(lib, 'picks.json');
-const mounts: Record<string, string> = { sfx: join(lib, 'sfx'), characters: join(lib, 'characters'), concepts: join(lib, 'concepts') };
+const mounts: Record<string, string> = { sfx: join(lib, 'sfx'), characters: join(lib, 'characters'), stadiums: join(lib, 'stadiums'), concepts: join(lib, 'concepts') };
 const types: Record<string, string> = { ogg: 'audio/ogg', wav: 'audio/wav', mp3: 'audio/mpeg', flac: 'audio/flac', glb: 'model/gltf-binary', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', json: 'application/json' };
 
 const readJson = async (file: string): Promise<unknown> => JSON.parse(await fs.readFile(file, 'utf8'));
@@ -47,6 +47,25 @@ async function characters() {
   return out;
 }
 
+/** Stadiums: every art/stadiums/<id>/ folder, with its render art/concepts/stadiums/<id>.png (or the game preview). */
+async function stadiums() {
+  const out = [];
+  for (const d of (await dirs(mounts.stadiums)).filter((x) => x.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
+    const id = d.name, dir = join(mounts.stadiums, id);
+    const models = (await dirs(dir)).filter((f) => f.isFile() && f.name.endsWith('.glb')).map((f) => f.name).sort();
+    let info: { label?: unknown; pitch?: unknown } = {};
+    try { if (existsSync(join(dir, 'info.json'))) info = await readJson(join(dir, 'info.json')) as typeof info; } catch { /* bad info.json: show the folder name */ }
+    out.push({
+      id,
+      label: typeof info.label === 'string' ? info.label : id,
+      pitch: typeof info.pitch === 'string' ? info.pitch : '',
+      models: models.map((m) => ({ name: m.slice(0, -4), url: `/lib/stadiums/${encodeURIComponent(id)}/${encodeURIComponent(m)}` })),
+      concept: existsSync(join(mounts.concepts, 'stadiums', `${id}.png`)) ? `/lib/concepts/stadiums/${encodeURIComponent(id)}.png` : null,
+    });
+  }
+  return out;
+}
+
 async function readBody(req: IncomingMessage): Promise<string> {
   let body = '';
   for await (const chunk of req) {
@@ -62,7 +81,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
   if (path === '/api/library' && req.method === 'GET') {
     const manifest = join(mounts.sfx, 'manifest.json');
     const sfx = existsSync(manifest) ? await readJson(manifest) : { version: 1, categories: [] };
-    return send(res, 200, { sfx, characters: await characters(), picksPath: relative(repo, picksPath).split(sep).join('/') });
+    return send(res, 200, { sfx, characters: await characters(), stadiums: await stadiums(), picksPath: relative(repo, picksPath).split(sep).join('/') });
   }
   if (path === '/api/picks' && req.method === 'GET') {
     return send(res, 200, existsSync(picksPath) ? await readJson(picksPath) : null);
@@ -78,7 +97,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
     await fs.rename(`${picksPath}.tmp`, picksPath);
     return send(res, 200, { ok: true, path: relative(repo, picksPath).split(sep).join('/') });
   }
-  const m = /^\/lib\/(sfx|characters|concepts)\/(.+)$/.exec(path);
+  const m = /^\/lib\/(sfx|characters|stadiums|concepts)\/(.+)$/.exec(path);
   if (m && req.method === 'GET') {
     const base = mounts[m[1]];
     const file = resolve(base, m[2]);

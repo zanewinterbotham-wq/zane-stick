@@ -6,6 +6,8 @@ export interface Picks {
   sounds: Record<string, string[]>;
   /** style id under art/characters/, or null when none chosen yet. */
   character: string | null;
+  /** stadium id under art/stadiums/; absent or null until chosen (older picks files have no such field). */
+  stadium?: string | null;
   /** categoryId -> gain multiplier (1 = as recorded). */
   volumes: Record<string, number>;
   notes: string;
@@ -32,6 +34,7 @@ export function validate(x: unknown): { ok: true; picks: Picks } | { ok: false; 
     else if (ids.length) sounds[cat] = [...ids];
   }
   if (x.character !== null && (typeof x.character !== 'string' || !x.character)) errors.push('character must be a style id or null');
+  if (x.stadium != null && (typeof x.stadium !== 'string' || !x.stadium)) errors.push('stadium must be a stadium id or null');
   const volumes: Record<string, number> = {};
   if (!isObj(x.volumes)) errors.push('volumes must be an object');
   else for (const [cat, v] of Object.entries(x.volumes)) {
@@ -40,5 +43,5 @@ export function validate(x: unknown): { ok: true; picks: Picks } | { ok: false; 
   }
   if (typeof x.notes !== 'string') errors.push('notes must be a string');
   if (errors.length) return { ok: false, errors };
-  return { ok: true, picks: { version: 1, sounds, character: x.character as string | null, volumes, notes: x.notes as string } };
+  return { ok: true, picks: { version: 1, sounds, character: x.character as string | null, ...(x.stadium ? { stadium: x.stadium as string } : {}), volumes, notes: x.notes as string } };
 }

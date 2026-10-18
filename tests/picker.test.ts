@@ -10,6 +10,13 @@ describe('picker picks validate()', () => {
       character: 'stick', volumes: { hit_helmet_helmet: 0.8 }, notes: 'louder hits' } });
   });
 
+  it('the stadium field is optional: older files stay valid, a chosen stadium is kept, a bad one is refused', () => {
+    expect(validate({ ...emptyPicks(), stadium: 'pro' })).toEqual({ ok: true, picks: { ...emptyPicks(), stadium: 'pro' } });
+    expect(validate({ ...emptyPicks(), stadium: null })).toEqual({ ok: true, picks: emptyPicks() });
+    const bad = validate({ ...emptyPicks(), stadium: 5 });
+    expect(bad.ok ? [] : bad.errors).toEqual(['stadium must be a stadium id or null']);
+  });
+
   it('rejects bad shapes with readable errors', () => {
     expect(validate(null).ok).toBe(false);
     expect(validate([]).ok).toBe(false);

@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import type { World } from '../../sim/world';
 import { AthleteMesh, TEAMS } from './athleteMesh';
 import { AnatomyOverlay } from './anatomy';
-import { buildField } from './field';
+import { buildBarrier, buildField } from './field';
+import { loadStadium, OPEN_FIELD, stadiumById, type Stadium, type StadiumScene } from './stadium';
 import { CLASSIC, loadSkin, skinById, type Skin, type SkinTemplate } from './skin';
 
 export interface RenderQuality { scale: number; shadows: boolean; detail: 'low' | 'high'; antialias: boolean }
@@ -11,6 +12,9 @@ export const RENDER_PRESETS: Record<'minimum' | 'high', RenderQuality> = {
   minimum: { scale: 0.6, shadows: false, detail: 'low', antialias: false },
   high: { scale: 1, shadows: true, detail: 'high', antialias: true },
 };
+
+/** The Open Field's sky and light (what the renderer starts with). */
+const OPEN_SCENE: StadiumScene = { sky: '#9cc3e4', fog: ['#9cc3e4', 80, 220], hemi: ['#dfeeff', '#3c5a2c', 1.1], sun: ['#ffffff', 2.2] };
 
 export class GameRenderer {
   readonly renderer: THREE.WebGLRenderer;
@@ -22,6 +26,11 @@ export class GameRenderer {
   /** Tint muscles by effort; only in the anatomy view, where it reads as data rather than as damage. */
   effortShading = true;
   private sun: THREE.DirectionalLight;
+  private hemi: THREE.HemisphereLight;
+  private barrier: THREE.Group;
+  stadium: Stadium = OPEN_FIELD;
+  private stadiumRoot: THREE.Group | null = null;
+  private stadiumReq = 0;
   private props: THREE.Object3D[] = [];
   private world: World | null = null;
   skin: Skin = CLASSIC;
@@ -39,7 +48,8 @@ export class GameRenderer {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.scene.background = new THREE.Color(0x9cc3e4);
     this.scene.fog = new THREE.Fog(0x9cc3e4, 80, 220);
-    this.scene.add(new THREE.HemisphereLight(0xdfeeff, 0x3c5a2c, 1.1));
+    this.hemi = new THREE.HemisphereLight(0xdfeeff, 0x3c5a2c, 1.1);
+    this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xffffff, 2.2);
     this.sun.position.set(-20, 40, 15);
     this.sun.castShadow = quality.shadows;
@@ -49,7 +59,29 @@ export class GameRenderer {
     sc.left = -12; sc.right = 12; sc.top = 12; sc.bottom = -12; sc.near = 1; sc.far = 100;
     this.scene.add(this.sun, this.sun.target);
     this.scene.add(buildField(quality.detail));
+    this.barrier = buildBarrier();
+    this.scene.add(this.barrier);
     this.resize();
+  }
+
+  /** Load a stadium (fetched once) and put it round the field with its sky and light; an unknown, locked or
+   *  unloadable stadium is the Open Field. */
+  async setStadium(id: string) {
+    const want = stadiumById(id), req = ++this.stadiumReq;
+    if (want === this.stadium && (this.stadiumRoot || !want.file)) return;
+    let root: THREE.Group | null = null;
+    try { root = (await loadStadium(want)) ?? null; } catch (e) { console.warn(`stadium ${want.id} failed to load; using the Open Field`, e); }
+    if (req !== this.stadiumReq) return; // a later choice won
+    this.stadium = root ? want : OPEN_FIELD;
+    if (this.stadiumRoot) this.scene.remove(this.stadiumRoot);
+    this.stadiumRoot = root;
+    if (root) this.scene.add(root);
+    this.barrier.visible = !root;
+    const sc = this.stadium.scene ?? OPEN_SCENE;
+    (this.scene.background as THREE.Color).set(sc.sky);
+    this.scene.fog = new THREE.Fog(sc.fog[0], sc.fog[1], sc.fog[2]);
+    this.hemi.color.set(sc.hemi[0]); this.hemi.groundColor.set(sc.hemi[1]); this.hemi.intensity = sc.hemi[2];
+    this.sun.color.set(sc.sun[0]); this.sun.intensity = sc.sun[1];
   }
 
   /** Load a skin (fetched once) and dress the athletes in it now; a locked, unknown or unloadable skin is Classic. */
@@ -76,6 +108,7 @@ export class GameRenderer {
     if (this.overlay) this.scene.remove(this.overlay.root);
     this.dress(w);
     this.props = (w.setup.props ?? []).map((p) => {
+      if (p.hidden) return new THREE.Object3D(); // a collision wall: the stadium draws it (kept so prop indices line up)
       const geo = p.shape === 'box' ? new THREE.BoxGeometry(2 * p.size[0], 2 * p.size[1], 2 * p.size[2])
         : p.shape === 'capsule' ? new THREE.CapsuleGeometry(p.size[0], 2 * p.size[1], 4, 10)
         : new THREE.SphereGeometry(1, 16, 12).scale(p.size[0], p.size[1], p.size[2]);

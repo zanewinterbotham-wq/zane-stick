@@ -1,0 +1,21 @@
+{
+ "label": "Backyard Sandlot",
+ "pitch": "Neighbourhood backyard behind a picket fence: lawn chairs, houses, a pickup truck and a swing set.",
+ "scene": {
+  "sky": "#86c5f0",
+  "fog": [
+   "#cfe6f2",
+   90,
+   280
+  ],
+  "hemi": [
+   "#e8f3ff",
+   "#5a7a3a",
+   1.15
+  ],
+  "sun": [
+   "#fff1d2",
+   2.3
+  ]
+ }
+}

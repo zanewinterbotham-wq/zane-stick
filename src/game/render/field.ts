@@ -1,5 +1,6 @@
 // Regulation field: 120 yd × 53⅓ yd including end zones, yard lines every 5 yd, hash marks, numbers.
 import * as THREE from 'three';
+import { BARRIER } from '../../sim/drills/openField';
 
 export const YD = 0.9144;
 export const FIELD = { length: 120 * YD, width: (160 / 3) * YD };
@@ -11,6 +12,23 @@ export function buildField(quality: 'low' | 'high'): THREE.Group {
   turf.rotation.x = -Math.PI / 2;
   turf.receiveShadow = true;
   g.add(turf);
+  return g;
+}
+
+/** The Open Field's padded wall, on the physics barrier (the stadium models draw their own). */
+export function buildBarrier(): THREE.Group {
+  const g = new THREE.Group();
+  const { halfWidth: hw, halfLength: hl } = BARRIER, h = 1.3, t = 0.5;
+  const pad = new THREE.MeshStandardMaterial({ color: 0x1f3a68, roughness: 0.9 }), trim = new THREE.MeshStandardMaterial({ color: 0xf0f0e8, roughness: 0.9 });
+  const add = (mat: THREE.Material, x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+    m.position.set(x, y, z);
+    g.add(m);
+  };
+  for (const s of [-1, 1]) {
+    add(pad, s * (hw + t / 2), h / 2, 0, t, h, 2 * hl + 2 * t); add(trim, s * (hw + t / 2), h + 0.04, 0, t + 0.04, 0.08, 2 * hl + 2 * t);
+    add(pad, 0, h / 2, s * (hl + t / 2), 2 * hw + 2 * t, h, t); add(trim, 0, h + 0.04, s * (hl + t / 2), 2 * hw + 2 * t, 0.08, t + 0.04);
+  }
   return g;
 }
 

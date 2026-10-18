@@ -511,6 +511,21 @@ transforms, so physics stays the only driver. Sound: Web Audio synthesis (noise 
 thumps for pads, clicks for cleats), gain from contact force, mute toggle. No sampled audio is
 required; any CC0 sample used later is credited in `docs/realism-sources.md`.
 
+### 13.1 Stadiums, the barrier and the inventory
+
+- **Barrier** (`BARRIER` in `src/sim/drills/openField.ts`): four static, padded, collision-only boxes of the physics
+  scene stand 5 m beyond the sidelines and end lines (4 m tall, 1 m thick), so nobody walks into the void. They are
+  ordinary static props (`PropDesc.hidden`): athletes and the ball meet them like any body, and contact with them is
+  neither ground nor player contact (no down-by-contact, no carry cut). Tests: `tests/stadium-barrier.test.ts`.
+- **Stadiums** are low-poly environments built procedurally in Blender (`art/blender/stadium.py`, background mode),
+  one mesh and a handful of flat colours each (under 400 KB), with a tiny pixel-art crowd strip. The padded wall in
+  the art sits on the barrier. `npm run models:export` ships them to `public/models/stadiums/` and writes
+  `src/game/stadiums.json` (label, pitch, preview, sky/fog/light); only the equipped one is fetched, at the next rep.
+  The Open Field is the plain look with a procedural wall. Renders: `art/concepts/stadiums/<id>.png`.
+- **Inventory** (`src/game/inventory.ts`, menu in `ui.ts`): one tab per category (Skins, Stadiums; add a category by
+  adding one entry to `CATEGORIES`), a card per item with preview, name, pitch, locked state and Equip. Everything is
+  unlocked for now. The equipped skin and stadium persist in settings and show from the next rep.
+
 ## 14. Quality presets
 
 | Preset | Step rate | Solver iters | Body detail | Render scale | Shadows | Effects |

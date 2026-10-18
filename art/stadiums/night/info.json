@@ -1,0 +1,21 @@
+{
+ "label": "Under the Lights",
+ "pitch": "Night game: floodlight masts, a glowing rim, stars and phone lights in the stands.",
+ "scene": {
+  "sky": "#0a1230",
+  "fog": [
+   "#0d1738",
+   70,
+   300
+  ],
+  "hemi": [
+   "#8fa6e0",
+   "#2a3a30",
+   1.1
+  ],
+  "sun": [
+   "#fff0d0",
+   2.3
+  ]
+ }
+}

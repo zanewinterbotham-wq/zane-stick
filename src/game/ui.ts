@@ -1,5 +1,8 @@
+/// <reference types="vite/client" />
 // DOM overlay: menus, HUD, results card, performance overlay and panels. Menus work with a keyboard
 // (arrows/Tab + Enter, Escape to go back), a controller (D-pad + A, B to go back) or the mouse.
+import type { InventoryCategory } from './inventory';
+import type { Settings } from './settings';
 
 export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -27,6 +30,56 @@ export function menu(title: string, items: MenuItem[], subtitle?: string): HTMLE
   });
   box.append(list);
   return box;
+}
+
+/** The inventory: a tab per category, a card per item (preview, name, pitch, state, Equip). `equip` returns false
+ *  when the item cannot be equipped; `escape` makes Esc go back (the pause menu keeps Esc for resuming). */
+export function inventoryPanel(cats: InventoryCategory[], settings: Settings, hooks: { equip(cat: string, item: string): boolean; back(): void; escape?: boolean }, tab = cats[0].id): HTMLElement {
+  let cur = cats.find((c) => c.id === tab) ?? cats[0];
+  const root = el('div', { class: 'panel menu inventory', role: 'dialog', 'aria-label': 'Inventory' });
+  const tabs = el('div', { class: 'inv-tabs', role: 'tablist' });
+  const grid = el('div', { class: 'inv-grid' });
+  const note = el('p', { class: 'sub', role: 'status' });
+  const back = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back');
+  back.addEventListener('click', hooks.back);
+  const render = (focusId?: string) => {
+    tabs.replaceChildren(...cats.map((c) => {
+      const t = el('button', { type: 'button', role: 'tab', class: 'inv-tab', 'aria-selected': String(c === cur), 'data-cat': c.id, text: c.label });
+      t.addEventListener('click', () => { cur = c; note.textContent = ''; render(); (tabs.querySelector('[aria-selected=true]') as HTMLElement).focus(); });
+      return t;
+    }));
+    const equipped = cur.equipped(settings), items = cur.items();
+    grid.dataset.cat = cur.id;
+    grid.setAttribute('role', 'list');
+    grid.replaceChildren(...items.map((it) => {
+      const on = it.id === equipped;
+      const pic = el('div', { class: 'pic' + (it.preview ? '' : ' none') });
+      if (it.preview) pic.append(el('img', { src: import.meta.env.BASE_URL + it.preview, alt: `${it.label} preview`, loading: 'lazy', draggable: 'false' }));
+      else pic.append(el('span', { text: it.label.slice(0, 1) }));
+      const state = on ? 'Equipped' : it.unlocked ? 'Equip' : 'Locked';
+      const btn = el('button', { type: 'button', class: 'equip', 'data-item': it.id, 'data-sfx': 'ui_confirm', 'aria-disabled': String(on || !it.unlocked), 'aria-label': `${state}: ${it.label}`, text: state });
+      btn.addEventListener('click', () => {
+        if (on || !it.unlocked || !hooks.equip(cur.id, it.id)) return;
+        note.textContent = `${it.label} equipped. It shows from the next rep.`;
+        render(it.id);
+      });
+      return el('article', { class: 'inv-card' + (on ? ' equipped' : '') + (it.unlocked ? '' : ' locked'), role: 'listitem', 'data-item': it.id },
+        pic, el('div', { class: 'inv-info' }, el('h3', { text: it.label }), el('p', { text: it.pitch })), btn);
+    }));
+    if (focusId) grid.querySelector<HTMLElement>(`button[data-item="${focusId}"]`)?.focus();
+  };
+  tabs.addEventListener('keydown', (e) => {
+    const i = cats.indexOf(cur), d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!d) return;
+    cur = cats[(i + d + cats.length) % cats.length];
+    render();
+    (tabs.querySelector('[aria-selected=true]') as HTMLElement).focus();
+    e.preventDefault();
+  });
+  if (hooks.escape) root.addEventListener('keydown', (e) => { if (e.key === 'Escape') hooks.back(); });
+  render();
+  root.append(el('h1', { text: 'Inventory' }), el('p', { class: 'sub', text: 'Everything you can equip. Changes show from the next rep.' }), tabs, grid, note, back);
+  return root;
 }
 
 /** Move focus within the topmost menu (keyboard arrows or gamepad D-pad). */

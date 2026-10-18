@@ -1,0 +1,21 @@
+{
+ "label": "Metro Dome",
+ "pitch": "Pro arena with suites, a steep upper deck, a roof ring with a video band and tall light towers.",
+ "scene": {
+  "sky": "#9cc3e4",
+  "fog": [
+   "#bfd8ee",
+   110,
+   340
+  ],
+  "hemi": [
+   "#e3efff",
+   "#4b5a4a",
+   1.05
+  ],
+  "sun": [
+   "#ffffff",
+   2.0
+  ]
+ }
+}

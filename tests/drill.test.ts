@@ -75,7 +75,8 @@ describe('open-field rep end', () => {
 
   it('running out of bounds no longer ends it, nor does the old 10 s limit', async () => {
     const d = await drill(still());
-    d.brains[d.carrier] = script((_t, c) => { c.move = { x: 1, z: 0 }; c.gait = 'sprint'; c.carry = 2; });
+    // out past the sideline, then he stops: the padded wall further out (BARRIER) is not what this test is about
+    d.brains[d.carrier] = script((_t, c) => { const out = d.world.scene.athletes[d.carrier].state.com[0] > 26.5; c.move = { x: out ? 0 : 1, z: 0 }; c.gait = out ? 'walk' : 'sprint'; c.carry = 2; });
     let out = 0;
     run(d, 12, () => { out = Math.max(out, Math.abs(d.world.scene.athletes[d.carrier].state.com[0])); });
     console.log('sideline run: furthest |x|', out.toFixed(1), 'm, ended', d.ended, 'at', d.repTime.toFixed(1), 's');

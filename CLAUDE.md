@@ -53,7 +53,8 @@ Engine comparison: `docs/physics-benchmark.md`.
   compare controller changes with `--avg` (mean over small gain perturbations), never single runs
 - `npm run picker` — dev-only sound/character picker (localhost:5180); saves `art/picks.json`
 - `npm run sfx:export` — copy only the picked sounds (+ volumes) into `public/sfx` and `src/game/sfx-picks.json`;
-  `npm run sfx:build` regenerates the dev library in `art/sfx`; `npm run models:export` ships the skins
+  `npm run sfx:build` regenerates the dev library in `art/sfx`; `npm run models:export` ships the skins and
+  stadiums (+ inventory previews; stadiums are built by `blender -b --factory-startup --python art/blender/stadium.py`)
 - `npm run typecheck`
 - `npm run picker` — dev-only sound/character picker (tools/picker, never built or deployed); the owner's
   choices land in `art/picks.json` (format and validate() in `tools/picker/picks.ts`). `npm run test:picker`

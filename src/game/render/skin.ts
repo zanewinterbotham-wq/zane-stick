@@ -6,8 +6,8 @@ import * as THREE from 'three';
 import { buildBody, DEFAULT_ATHLETE } from '../../sim/anatomy/body';
 import list from '../skins.json';
 
-export interface Skin { id: string; label: string; pitch: string; file: string | null; look: string; unlocked: boolean }
-export const CLASSIC: Skin = { id: 'classic', label: 'Classic', pitch: 'The physics collision shapes themselves.', file: null, look: 'standard', unlocked: true };
+export interface Skin { id: string; label: string; pitch: string; file: string | null; preview?: string | null; look: string; unlocked: boolean }
+export const CLASSIC: Skin = { id: 'classic', label: 'Classic', pitch: 'The physics collision shapes themselves.', file: null, preview: null, look: 'standard', unlocked: true };
 export const SKINS: Skin[] = [...list, CLASSIC];
 export const unlockedSkins = () => SKINS.filter((s) => s.unlocked);
 /** Unknown or locked ids fall back to Classic. */

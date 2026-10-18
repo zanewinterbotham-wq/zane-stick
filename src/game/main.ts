@@ -20,7 +20,8 @@ import { PRESETS, type PresetName } from './presets';
 import { GameRenderer, RENDER_PRESETS } from './render/renderer';
 import { DEFAULT_SETTINGS, DIFFICULTY_PRESETS, GAME_SUPPORT, PLAYER_BASE, difficultyOf, loadSettings, saveSettings, type Settings } from './settings';
 import { skinById, unlockedSkins } from './render/skin';
-import { el, Hud, Layer, menu, moveFocus } from './ui';
+import { CATEGORIES, equipItem } from './inventory';
+import { el, Hud, inventoryPanel, Layer, menu, moveFocus } from './ui';
 
 /** Rebindable actions on the Controls screen: binding name, what it does, controller button. */
 const REBIND: [string, string, string][] = [
@@ -63,6 +64,7 @@ async function devScenario(name: string) {
   const world = await World.create(mujocoEngine, sc.setup);
   const r = new GameRenderer(canvas, RENDER_PRESETS[(params.get('gfx') as 'minimum' | 'high') ?? 'high']);
   await r.setSkin(params.get('skin') ?? DEFAULT_SETTINGS.skin);
+  await r.setStadium(params.get('stadium') ?? 'field'); // the dev scenarios have no barrier in their physics
   r.setWorld(world);
   r.setXray(params.get('xray') === '1');
   const cam = new ChaseCamera();
@@ -181,6 +183,7 @@ class App {
       { label: 'Key test', action: () => this.keyTest() },
       { label: `Quality: ${this.preset.label}`, hint: 'next rep', action: () => { this.cyclePreset(); this.title(); } },
       { label: `Skin: ${skinById(this.settings.skin).label}`, action: () => { this.cycleSkin(); this.title(); } },
+      { label: 'Inventory', hint: 'skins, stadiums', action: () => this.inventory() },
       { label: 'Benchmark', action: () => this.benchmark() },
     ], 'Physics football. Every movement is muscles on a simulated body.'));
   }
@@ -222,6 +225,7 @@ class App {
       this.rendererPreset = p.name;
     }
     await this.renderer.setSkin(s.skin);
+    await this.renderer.setStadium(params.get('stadium') ?? s.stadium);
     this.renderer.setWorld(this.drill.world);
     this.renderer.setXray(this.renderer.xray);
     this.renderer.effortShading = s.effortShading;
@@ -243,6 +247,7 @@ class App {
       { label: `Difficulty: ${DIFF_LABEL[difficultyOf(s)]}`, hint: 'next rep', action: () => this.difficulty(() => this.pauseMenu()) },
       { label: `Quality: ${this.preset.label}`, hint: 'next rep', action: () => { this.cyclePreset(); this.pauseMenu(); } },
       { label: `Skin: ${skinById(s.skin).label}`, action: () => { this.cycleSkin(); this.pauseMenu(); } },
+      { label: 'Inventory', hint: 'next rep', action: () => this.inventory(() => this.pauseMenu(), false) },
       { label: `Anatomy view: ${this.renderer?.xray ? 'on' : 'off'}`, action: () => { this.renderer?.setXray(!this.renderer.xray); this.pauseMenu(); } },
       { label: `Effort shading (anatomy view): ${s.effortShading ? 'on' : 'off'}`, action: () => { s.effortShading = !s.effortShading; if (this.renderer) this.renderer.effortShading = s.effortShading; this.save(); this.pauseMenu(); } },
       { label: `Big-hit slow motion: ${s.slowMo ? 'on' : 'off'}`, action: () => { s.slowMo = !s.slowMo; this.save(); this.pauseMenu(); } },
@@ -422,6 +427,12 @@ class App {
     this.layer.show(el('div', { class: 'panel menu wide', role: 'dialog', 'aria-label': 'Difficulty' }, el('h1', { text: 'Difficulty' }), status, presets, grid,
       el('p', { class: 'sub', text: 'AI toughness: how hard the bot is to knock off balance (its hit, stun and wrap-up thresholds). AI juking: how well the bot carrier reads you, times his cuts and bursts away. Hit power above 1 adds an arcade push to whoever a hit drives back (the bot can blow you back too); 1 is pure physics. Steer assist turns your run part way toward the ball carrier (or a loose ball) when he is near and ahead.' }),
       b));
+  }
+
+  /** Everything equippable (skins, stadiums, ...), with previews. Equipped items show from the next rep. */
+  inventory(back = () => this.title(), escape = true) {
+    const equip = (cat: string, item: string) => { const ok = equipItem(this.settings, cat, item); if (ok) this.save(); return ok; };
+    this.layer.show(inventoryPanel(CATEGORIES, this.settings, { equip, back, escape }));
   }
 
   tuning() {

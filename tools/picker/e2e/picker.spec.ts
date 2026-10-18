@@ -68,3 +68,24 @@ test('audition, pick, choose a character, view 3D, save', async ({ page }) => {
   await expect(page.locator('#status')).toContainText('Loaded');
   expect(errors).toEqual([]);
 });
+
+test('choose a stadium, view it in 3D, save', async ({ page }) => {
+  rmSync(PICKS_OUT, { force: true });
+  const errors: string[] = [];
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.getByRole('tab', { name: /Stadiums/ }).click();
+  await expect(page.locator('#stadiumCards .card')).toHaveCount(1);
+  await page.locator('[data-stadium=arena]').getByText('Choose this one').click();
+  await expect(page.locator('#stadiumName')).toHaveText('Arena (fixture)');
+  await expect(page.locator('[data-stadium=arena]')).toHaveClass(/chosen/);
+  await page.screenshot({ path: 'test-results/picker/04-stadiums.png' });
+  await page.locator('[data-stadium=arena]').getByRole('button', { name: 'View 3D' }).click();
+  await expect(page.locator('.vstatus')).toContainText('arena.glb', { timeout: 20_000 });
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Save to project' }).click();
+  await expect(page.locator('#status')).toContainText('Saved to');
+  expect(JSON.parse(readFileSync(PICKS_OUT, 'utf8'))).toEqual({ version: 1, sounds: {}, character: null, stadium: 'arena', volumes: {}, notes: '' });
+  expect(errors).toEqual([]);
+});

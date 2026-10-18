@@ -23,6 +23,7 @@
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="sounds" aria-selected="true">Sounds <span id="soundCount" class="count"></span></button>
     <button role="tab" data-tab="characters" aria-selected="false">Characters <span id="charName" class="count"></span></button>
+    <button role="tab" data-tab="stadiums" aria-selected="false">Stadiums <span id="stadiumName" class="count"></span></button>
   </nav>
   <main>
     <section id="sounds" class="tab">
@@ -31,6 +32,9 @@
     </section>
     <section id="characters" class="tab" hidden>
       <div id="cards" class="cards"></div>
+    </section>
+    <section id="stadiums" class="tab" hidden>
+      <div id="stadiumCards" class="cards"></div>
     </section>
     <label class="notes">Notes for Claude
       <textarea id="notes" rows="3" placeholder="Anything about your picks, e.g. &quot;tackles should sound heavier&quot;"></textarea>

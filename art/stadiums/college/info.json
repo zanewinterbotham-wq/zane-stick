@@ -1,0 +1,21 @@
+{
+ "label": "State U Bowl",
+ "pitch": "Two-deck college bowl in maroon and gold: banners over the rim, a video board and a full house.",
+ "scene": {
+  "sky": "#a6cbe9",
+  "fog": [
+   "#c7dcee",
+   100,
+   330
+  ],
+  "hemi": [
+   "#e0eeff",
+   "#52623f",
+   1.1
+  ],
+  "sun": [
+   "#fff7e8",
+   2.2
+  ]
+ }
+}

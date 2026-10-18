@@ -4,6 +4,7 @@
     "label": "Voxel Block",
     "pitch": "3.4 cm voxels on one world grid with merged faces: a sandbox-game athlete, 1.6x head.",
     "file": "models/voxel.glb",
+    "preview": "models/previews/voxel.jpg",
     "look": "standard",
     "unlocked": true
   },
@@ -12,6 +13,7 @@
     "label": "Vinyl Toy",
     "pitch": "Chunky designer-toy figure: glossy rounded plastic, mitten hands, 1.9x head.",
     "file": "models/vinyl.glb",
+    "preview": "models/previews/vinyl.jpg",
     "look": "standard",
     "unlocked": true
   },
@@ -20,6 +22,7 @@
     "label": "Low-Poly Facet",
     "pitch": "Faceted crystal-cut athlete: six-sided limbs, jittered flat facets, 1.55x head.",
     "file": "models/lowpoly.glb",
+    "preview": "models/previews/lowpoly.jpg",
     "look": "standard",
     "unlocked": true
   },
@@ -28,6 +31,7 @@
     "label": "Ink Toon",
     "pitch": "Saturday-morning cel shading: two-tone ramps, rim highlight, inked outlines, 1.75x head.",
     "file": "models/toon.glb",
+    "preview": "models/previews/toon.jpg",
     "look": "toon",
     "unlocked": true
   },
@@ -36,6 +40,7 @@
     "label": "Claymation",
     "pitch": "Stop-motion plasticine: lumpy hand-pressed surfaces, soft matte, 1.65x head.",
     "file": "models/clay.glb",
+    "preview": "models/previews/clay.jpg",
     "look": "clay",
     "unlocked": true
   },
@@ -44,6 +49,7 @@
     "label": "Future Armor",
     "pitch": "Sleek armored future football: visor helmet with fin, hard plates, light strips.",
     "file": "models/future.glb",
+    "preview": "models/previews/future.jpg",
     "look": "standard",
     "unlocked": true
   },
@@ -52,6 +58,7 @@
     "label": "Paper Cutout",
     "pitch": "Layered cardstock puppet: flat silhouettes, paper-white borders, 1.7x head.",
     "file": "models/paper.glb",
+    "preview": "models/previews/paper.jpg",
     "look": "paper",
     "unlocked": true
   },
@@ -60,6 +67,7 @@
     "label": "Rubber Hose",
     "pitch": "1930s cartoon: noodle limbs, white mitts, pie-cut eyes, huge shoes, 1.95x head.",
     "file": "models/rubberhose.glb",
+    "preview": "models/previews/rubberhose.jpg",
     "look": "toon",
     "unlocked": true
   }

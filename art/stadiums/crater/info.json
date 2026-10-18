@@ -1,0 +1,21 @@
+{
+ "label": "Crater Rim",
+ "pitch": "Volcanic arena: black rock tiers, lava streams, glowing crystals and a moat of fire.",
+ "scene": {
+  "sky": "#3b0f10",
+  "fog": [
+   "#4d1712",
+   40,
+   250
+  ],
+  "hemi": [
+   "#ffb090",
+   "#6a3028",
+   1.5
+  ],
+  "sun": [
+   "#ffc896",
+   2.4
+  ]
+ }
+}

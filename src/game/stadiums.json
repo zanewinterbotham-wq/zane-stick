@@ -1,0 +1,152 @@
+[
+  {
+    "id": "college",
+    "label": "State U Bowl",
+    "pitch": "Two-deck college bowl in maroon and gold: banners over the rim, a video board and a full house.",
+    "file": "models/stadiums/college.glb",
+    "preview": "models/previews/stadium-college.jpg",
+    "scene": {
+      "sky": "#a6cbe9",
+      "fog": [
+        "#c7dcee",
+        100,
+        330
+      ],
+      "hemi": [
+        "#e0eeff",
+        "#52623f",
+        1.1
+      ],
+      "sun": [
+        "#fff7e8",
+        2.2
+      ]
+    },
+    "unlocked": true
+  },
+  {
+    "id": "highschool",
+    "label": "Hometown High",
+    "pitch": "Friday-afternoon high school field: silver bleachers, a track, chain-link fence and a hand-lit scoreboard.",
+    "file": "models/stadiums/highschool.glb",
+    "preview": "models/previews/stadium-highschool.jpg",
+    "scene": {
+      "sky": "#8fc7ee",
+      "fog": [
+        "#b9d9ee",
+        90,
+        300
+      ],
+      "hemi": [
+        "#e4f0ff",
+        "#456b31",
+        1.1
+      ],
+      "sun": [
+        "#ffffff",
+        2.2
+      ]
+    },
+    "unlocked": true
+  },
+  {
+    "id": "pro",
+    "label": "Metro Dome",
+    "pitch": "Pro arena with suites, a steep upper deck, a roof ring with a video band and tall light towers.",
+    "file": "models/stadiums/pro.glb",
+    "preview": "models/previews/stadium-pro.jpg",
+    "scene": {
+      "sky": "#9cc3e4",
+      "fog": [
+        "#bfd8ee",
+        110,
+        340
+      ],
+      "hemi": [
+        "#e3efff",
+        "#4b5a4a",
+        1.05
+      ],
+      "sun": [
+        "#ffffff",
+        2
+      ]
+    },
+    "unlocked": true
+  },
+  {
+    "id": "night",
+    "label": "Under the Lights",
+    "pitch": "Night game: floodlight masts, a glowing rim, stars and phone lights in the stands.",
+    "file": "models/stadiums/night.glb",
+    "preview": "models/previews/stadium-night.jpg",
+    "scene": {
+      "sky": "#0a1230",
+      "fog": [
+        "#0d1738",
+        70,
+        300
+      ],
+      "hemi": [
+        "#8fa6e0",
+        "#2a3a30",
+        1.1
+      ],
+      "sun": [
+        "#fff0d0",
+        2.3
+      ]
+    },
+    "unlocked": true
+  },
+  {
+    "id": "backyard",
+    "label": "Backyard Sandlot",
+    "pitch": "Neighbourhood backyard behind a picket fence: lawn chairs, houses, a pickup truck and a swing set.",
+    "file": "models/stadiums/backyard.glb",
+    "preview": "models/previews/stadium-backyard.jpg",
+    "scene": {
+      "sky": "#86c5f0",
+      "fog": [
+        "#cfe6f2",
+        90,
+        280
+      ],
+      "hemi": [
+        "#e8f3ff",
+        "#5a7a3a",
+        1.15
+      ],
+      "sun": [
+        "#fff1d2",
+        2.3
+      ]
+    },
+    "unlocked": true
+  },
+  {
+    "id": "crater",
+    "label": "Crater Rim",
+    "pitch": "Volcanic arena: black rock tiers, lava streams, glowing crystals and a moat of fire.",
+    "file": "models/stadiums/crater.glb",
+    "preview": "models/previews/stadium-crater.jpg",
+    "scene": {
+      "sky": "#3b0f10",
+      "fog": [
+        "#4d1712",
+        40,
+        250
+      ],
+      "hemi": [
+        "#ffb090",
+        "#6a3028",
+        1.5
+      ],
+      "sun": [
+        "#ffc896",
+        2.4
+      ]
+    },
+    "unlocked": true
+  }
+]

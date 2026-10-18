@@ -10,7 +10,7 @@ import type { Brain } from '../brains/types';
 import type { Gains } from '../control/hand';
 import type { Gait } from '../control/types';
 import { qaxis, qmul, qrot, type Quat, type Vec3 } from '../math';
-import type { PhysicsEngine } from '../physics/engine';
+import type { PhysicsEngine, PropDesc } from '../physics/engine';
 import { Rng } from '../rng';
 import { World, type AthleteSetup, type PhysicsSettings, type WorldSetup } from '../world';
 import { makeCarrier, makeTackler } from './brains';
@@ -48,6 +48,18 @@ export const DEFAULT_OPEN_FIELD: Omit<OpenFieldConfig, 'physics'> = {
 const ctl = (cfg: OpenFieldConfig): AthleteSetup['controller'] => (p, m) => makeController(p, m, 'tracking', cfg.gains);
 
 const HALF_WIDTH = (160 / 3) * 0.9144 / 2; // 24.38 m
+/** Padded wall round the playing area (end zones included), `gap` m beyond the sidelines and end lines: static
+ *  boxes of the physics scene, so athletes and the ball meet it like any other body. The stadium art draws it. */
+export const BARRIER = { gap: 5, halfWidth: HALF_WIDTH + 5, halfLength: 60 * 0.9144 + 5, height: 4, thickness: 1 };
+function barrierProps(): PropDesc[] {
+  const { halfWidth: hw, halfLength: hl, height: h, thickness: t } = BARRIER, hh = h / 2, ht = t / 2;
+  // each wall's inner face sits on the line; the end walls span the corners too
+  const wall = (name: string, pos: Vec3, size: number[]): PropDesc => ({ name, shape: 'box', size, mass: 0, pos, friction: 0.3, soft: true, hidden: true });
+  return [
+    wall('wall+x', [hw + ht, hh, 0], [ht, hh, hl + t]), wall('wall-x', [-hw - ht, hh, 0], [ht, hh, hl + t]),
+    wall('wall+z', [0, hh, hl + ht], [hw + t, hh, ht]), wall('wall-z', [0, hh, -hl - ht], [hw + t, hh, ht]),
+  ];
+}
 /** Goal lines at ±50 yd. The bot (team 1) attacks −Z, the human's goal line behind his start; the human, once
  *  he has the ball, attacks +Z. */
 export const GOAL_LINE = 50 * 0.9144;
@@ -98,7 +110,7 @@ export class OpenFieldDrill {
         { params: cfg.carrier, pos: [cx, 0, gap], yaw: Math.PI, team: 1, controller: ctl(cfg), brain: possess(1), hasBall: !carry, toughness: cfg.toughness },
       ],
       // ball parked under the field until the carrier has tucked his arm (setup only)
-      props: [{ name: 'ball', shape: 'ellipsoid', size: [BALL.diameter / 2, BALL.diameter / 2, BALL.length / 2], mass: BALL.mass, pos: carry ? [hx, -5, 0] : [cx, -5, gap], friction: 0.8 }],
+      props: [{ name: 'ball', shape: 'ellipsoid', size: [BALL.diameter / 2, BALL.diameter / 2, BALL.length / 2], mass: BALL.mass, pos: carry ? [hx, -5, 0] : [cx, -5, gap], friction: 0.8 }, ...barrierProps()],
       support: cfg.support && { ...cfg.support },
     };
     const world = await World.create(engine, setup);

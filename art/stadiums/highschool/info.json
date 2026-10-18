@@ -1,0 +1,21 @@
+{
+ "label": "Hometown High",
+ "pitch": "Friday-afternoon high school field: silver bleachers, a track, chain-link fence and a hand-lit scoreboard.",
+ "scene": {
+  "sky": "#8fc7ee",
+  "fog": [
+   "#b9d9ee",
+   90,
+   300
+  ],
+  "hemi": [
+   "#e4f0ff",
+   "#456b31",
+   1.1
+  ],
+  "sun": [
+   "#ffffff",
+   2.2
+  ]
+ }
+}

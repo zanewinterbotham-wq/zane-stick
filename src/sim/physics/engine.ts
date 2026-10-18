@@ -12,6 +12,7 @@ export interface PropDesc {
   quat?: Quat;
   friction?: number;
   soft?: boolean;          // padded (bags, dummies)
+  hidden?: boolean;        // collision only, never drawn (the stadium art shows the wall)
 }
 export interface SceneDesc { hz: number; iterations: number; athletes: AthleteDesc[]; props: PropDesc[]; /** Cleat–turf friction override (tuning panel). */ traction?: number }
 
