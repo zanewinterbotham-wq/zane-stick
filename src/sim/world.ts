@@ -32,6 +32,14 @@ const ASSIST_FADE_OUT = 0.15, ASSIST_STABLE_TIME = 0.3, ASSIST_FADE_IN = 0.3;
  *  (m·h² per s), and yaw relative to roll/pitch. */
 const SUP = { kv: 6, stable: 0.3, fadeIn: 0.3, window: 0.2, flight: 0.15, decay: 1, getup: 1, hKp: 36, hKd: 10, kUp: 1.5, cUp: 6, yaw: 0.3 };
 
+/** One body-part-on-body-part contact between two athletes this step (summed over its contact points). */
+export interface HitEvent {
+  a: number; segA: string; b: number; segB: string;
+  force: number;   // total normal force, N
+  pos: Vec3;       // force-weighted contact point
+  speed: number;   // closing speed of the two segments along the contact normal, m/s (≥ 0)
+}
+
 export interface ImpactStats { closingSpeed: number; peakForce: number; peakHeadG: number[]; firstContactTime: number }
 
 export class Athlete {
@@ -83,6 +91,8 @@ export class World {
   private forceWindow: number[] = [];
   /** Total inter-athlete contact normal force last step (N) — drives camera shake, rumble, sound. */
   lastHitForce = 0;
+  /** Athlete-on-athlete contacts this step, one per segment pair (sound, feel, replays). */
+  hits: HitEvent[] = [];
   ballCarrier = -1;
 
   private constructor(readonly scene: PhysicsScene, readonly setup: WorldSetup) {
@@ -275,6 +285,7 @@ export class World {
       a.hitForce = [0, 0, 0];
     }
     let hit = 0;
+    const pairs = new Map<string, HitEvent & { n: Vec3 }>();
     for (const c of this.scene.contacts()) {
       for (const [p, o] of [[c.a, c.b], [c.b, c.a]] as const) {
         if (p.athlete < 0) continue;
@@ -298,9 +309,20 @@ export class World {
         // the contact normal points from the first geom to the second: b is pushed along it, a against it
         const fa = this.athletes[c.a.athlete].hitForce, fb = this.athletes[c.b.athlete].hitForce;
         for (let j = 0; j < 3; j++) { fa[j] -= c.normal[j] * c.force; fb[j] += c.normal[j] * c.force; }
+        const key = `${c.a.athlete}:${c.a.seg}:${c.b.athlete}:${c.b.seg}`;
+        let e = pairs.get(key);
+        if (!e) {
+          e = { a: c.a.athlete, segA: this.athletes[c.a.athlete].plan.segments[c.a.seg].name, b: c.b.athlete, segB: this.athletes[c.b.athlete].plan.segments[c.b.seg].name, force: 0, pos: [0, 0, 0], speed: 0, n: c.normal };
+          const va = this.scene.athletes[c.a.athlete].state.segVel, vb = this.scene.athletes[c.b.athlete].state.segVel;
+          e.speed = Math.max(0, -((vb[3 * c.b.seg] - va[3 * c.a.seg]) * c.normal[0] + (vb[3 * c.b.seg + 1] - va[3 * c.a.seg + 1]) * c.normal[1] + (vb[3 * c.b.seg + 2] - va[3 * c.a.seg + 2]) * c.normal[2]));
+          pairs.set(key, e);
+        }
+        e.force += c.force;
+        for (let j = 0; j < 3; j++) e.pos[j] += c.pos[j] * c.force;
       }
     }
     this.lastHitForce = hit;
+    this.hits = [...pairs.values()].map(({ n: _n, ...e }) => ({ ...e, pos: e.force > 0 ? [e.pos[0] / e.force, e.pos[1] / e.force, e.pos[2] / e.force] : e.pos }));
     for (const a of this.athletes) {
       for (const f of a.feet) if (f.force > 0) f.cop = [f.cop[0] / f.force, f.cop[1] / f.force, f.cop[2] / f.force];
       a.playerContact = a.playerContactNow;
