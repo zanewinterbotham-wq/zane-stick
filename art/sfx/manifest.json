@@ -1,0 +1,2829 @@
+{
+  "version": 1,
+  "categories": [
+    {
+      "id": "hit_helmet_helmet",
+      "label": "Helmet on helmet",
+      "group": "Hits",
+      "event": "plays when two helmets collide; louder with harder hits",
+      "variants": [
+        {
+          "id": "hit_helmet_helmet_01",
+          "file": "hit_helmet_helmet/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.539,
+          "note": "crack 2575 Hz 5 ms, shell ring 700 Hz 0.11 s"
+        },
+        {
+          "id": "hit_helmet_helmet_02",
+          "file": "hit_helmet_helmet/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.599,
+          "note": "crack 3598 Hz 4 ms, shell ring 755 Hz 0.12 s"
+        },
+        {
+          "id": "hit_helmet_helmet_03",
+          "file": "hit_helmet_helmet/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.603,
+          "note": "crack 2561 Hz 2 ms, shell ring 814 Hz 0.12 s"
+        },
+        {
+          "id": "hit_helmet_helmet_04",
+          "file": "hit_helmet_helmet/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.507,
+          "note": "crack 3241 Hz 3 ms, shell ring 878 Hz 0.10 s"
+        },
+        {
+          "id": "hit_helmet_helmet_05",
+          "file": "hit_helmet_helmet/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.487,
+          "note": "crack 2314 Hz 2 ms, shell ring 947 Hz 0.10 s"
+        },
+        {
+          "id": "hit_helmet_helmet_06",
+          "file": "hit_helmet_helmet/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.84,
+          "note": "crack 2466 Hz 2 ms, shell ring 1022 Hz 0.17 s"
+        },
+        {
+          "id": "hit_helmet_helmet_07",
+          "file": "hit_helmet_helmet/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.563,
+          "note": "crack 3794 Hz 4 ms, shell ring 1102 Hz 0.11 s"
+        },
+        {
+          "id": "hit_helmet_helmet_08",
+          "file": "hit_helmet_helmet/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.527,
+          "note": "crack 2062 Hz 2 ms, shell ring 1188 Hz 0.10 s"
+        },
+        {
+          "id": "hit_helmet_helmet_09",
+          "file": "hit_helmet_helmet/09.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.563,
+          "note": "crack 2456 Hz 3 ms, shell ring 1282 Hz 0.11 s"
+        },
+        {
+          "id": "hit_helmet_helmet_10",
+          "file": "hit_helmet_helmet/10.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.444,
+          "note": "impact-sounds impactPlate_light_000 at x0.88 as the shell ring, with synth crack"
+        },
+        {
+          "id": "hit_helmet_helmet_11",
+          "file": "hit_helmet_helmet/11.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.626,
+          "note": "impact-sounds impactPlate_light_001 at x0.77 as the shell ring, with synth crack"
+        },
+        {
+          "id": "hit_helmet_helmet_12",
+          "file": "hit_helmet_helmet/12.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.4,
+          "note": "impact-sounds impactPlate_light_002 at x0.74 as the shell ring, with synth crack"
+        }
+      ]
+    },
+    {
+      "id": "hit_helmet_pads",
+      "label": "Helmet on shoulder pads",
+      "group": "Hits",
+      "event": "plays when a helmet hits shoulder pads or a chest plate",
+      "variants": [
+        {
+          "id": "hit_helmet_pads_01",
+          "file": "hit_helmet_pads/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.436,
+          "note": "duller crack 1681 Hz, short ring 430 Hz 0.09 s, foam thud"
+        },
+        {
+          "id": "hit_helmet_pads_02",
+          "file": "hit_helmet_pads/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.324,
+          "note": "duller crack 1649 Hz, short ring 472 Hz 0.06 s, foam thud"
+        },
+        {
+          "id": "hit_helmet_pads_03",
+          "file": "hit_helmet_pads/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.471,
+          "note": "duller crack 1362 Hz, short ring 514 Hz 0.09 s, foam thud"
+        },
+        {
+          "id": "hit_helmet_pads_04",
+          "file": "hit_helmet_pads/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.292,
+          "note": "duller crack 1375 Hz, short ring 557 Hz 0.06 s, foam thud"
+        },
+        {
+          "id": "hit_helmet_pads_05",
+          "file": "hit_helmet_pads/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.406,
+          "note": "duller crack 1255 Hz, short ring 599 Hz 0.08 s, foam thud"
+        },
+        {
+          "id": "hit_helmet_pads_06",
+          "file": "hit_helmet_pads/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.498,
+          "note": "duller crack 1017 Hz, short ring 641 Hz 0.10 s, foam thud"
+        },
+        {
+          "id": "hit_helmet_pads_07",
+          "file": "hit_helmet_pads/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.435,
+          "note": "duller crack 1629 Hz, short ring 683 Hz 0.09 s, foam thud"
+        },
+        {
+          "id": "hit_helmet_pads_08",
+          "file": "hit_helmet_pads/08.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.659,
+          "note": "impact-sounds impactPlate_medium_000 at x0.65, low-passed, with synth foam thud"
+        },
+        {
+          "id": "hit_helmet_pads_09",
+          "file": "hit_helmet_pads/09.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.796,
+          "note": "impact-sounds impactPlate_medium_001 at x0.69, low-passed, with synth foam thud"
+        },
+        {
+          "id": "hit_helmet_pads_10",
+          "file": "hit_helmet_pads/10.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.733,
+          "note": "impact-sounds impactPlate_medium_002 at x0.68, low-passed, with synth foam thud"
+        }
+      ]
+    },
+    {
+      "id": "hit_pads_pads",
+      "label": "Pads on pads",
+      "group": "Hits",
+      "event": "plays when shoulder pads or chest plates meet; heavy plastic thud",
+      "variants": [
+        {
+          "id": "hit_pads_pads_01",
+          "file": "hit_pads_pads/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.318,
+          "note": "plastic body 170 Hz 0.06 s, clack 1732 Hz"
+        },
+        {
+          "id": "hit_pads_pads_02",
+          "file": "hit_pads_pads/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.327,
+          "note": "plastic body 189 Hz 0.06 s, clack 1428 Hz"
+        },
+        {
+          "id": "hit_pads_pads_03",
+          "file": "hit_pads_pads/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.27,
+          "note": "plastic body 208 Hz 0.05 s, clack 1214 Hz"
+        },
+        {
+          "id": "hit_pads_pads_04",
+          "file": "hit_pads_pads/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.278,
+          "note": "plastic body 227 Hz 0.03 s, clack 1389 Hz"
+        },
+        {
+          "id": "hit_pads_pads_05",
+          "file": "hit_pads_pads/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.283,
+          "note": "plastic body 246 Hz 0.06 s, clack 1922 Hz"
+        },
+        {
+          "id": "hit_pads_pads_06",
+          "file": "hit_pads_pads/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.313,
+          "note": "plastic body 265 Hz 0.06 s, clack 1220 Hz"
+        },
+        {
+          "id": "hit_pads_pads_07",
+          "file": "hit_pads_pads/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.272,
+          "note": "plastic body 285 Hz 0.04 s, clack 1884 Hz"
+        },
+        {
+          "id": "hit_pads_pads_08",
+          "file": "hit_pads_pads/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.294,
+          "note": "plastic body 304 Hz 0.04 s, clack 1350 Hz"
+        },
+        {
+          "id": "hit_pads_pads_09",
+          "file": "hit_pads_pads/09.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.692,
+          "note": "impact-sounds impactPunch_heavy_000 at x0.82 layered with impactPlate_heavy_000 at x0.60 and a synth clack"
+        },
+        {
+          "id": "hit_pads_pads_10",
+          "file": "hit_pads_pads/10.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.634,
+          "note": "impact-sounds impactPunch_heavy_001 at x0.80 layered with impactPlate_heavy_001 at x0.60 and a synth clack"
+        },
+        {
+          "id": "hit_pads_pads_11",
+          "file": "hit_pads_pads/11.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.579,
+          "note": "impact-sounds impactPunch_heavy_002 at x0.79 layered with impactPlate_heavy_002 at x0.60 and a synth clack"
+        },
+        {
+          "id": "hit_pads_pads_12",
+          "file": "hit_pads_pads/12.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.503,
+          "note": "impact-sounds impactPunch_heavy_003 at x0.90 layered with impactPlate_heavy_003 at x0.60 and a synth clack"
+        }
+      ]
+    },
+    {
+      "id": "hit_body_body",
+      "label": "Body on body",
+      "group": "Hits",
+      "event": "plays when torsos, hips or legs collide without pads; dull thump",
+      "variants": [
+        {
+          "id": "hit_body_body_01",
+          "file": "hit_body_body/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.401,
+          "note": "thump 95 Hz falling, 0.16 s, cloth smack"
+        },
+        {
+          "id": "hit_body_body_02",
+          "file": "hit_body_body/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.38,
+          "note": "thump 98 Hz falling, 0.14 s, cloth smack"
+        },
+        {
+          "id": "hit_body_body_03",
+          "file": "hit_body_body/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.397,
+          "note": "thump 101 Hz falling, 0.13 s, cloth smack"
+        },
+        {
+          "id": "hit_body_body_04",
+          "file": "hit_body_body/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.401,
+          "note": "thump 105 Hz falling, 0.15 s, cloth smack"
+        },
+        {
+          "id": "hit_body_body_05",
+          "file": "hit_body_body/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.397,
+          "note": "thump 108 Hz falling, 0.12 s, cloth smack"
+        },
+        {
+          "id": "hit_body_body_06",
+          "file": "hit_body_body/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.392,
+          "note": "thump 111 Hz falling, 0.14 s, cloth smack"
+        },
+        {
+          "id": "hit_body_body_07",
+          "file": "hit_body_body/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.399,
+          "note": "thump 114 Hz falling, 0.15 s, cloth smack"
+        },
+        {
+          "id": "hit_body_body_08",
+          "file": "hit_body_body/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.385,
+          "note": "thump 117 Hz falling, 0.14 s, cloth smack"
+        },
+        {
+          "id": "hit_body_body_09",
+          "file": "hit_body_body/09.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.616,
+          "note": "impact-sounds impactSoft_heavy_000 at x0.85 with synth low thump"
+        },
+        {
+          "id": "hit_body_body_10",
+          "file": "hit_body_body/10.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.585,
+          "note": "impact-sounds impactSoft_heavy_001 at x0.91 with synth low thump"
+        },
+        {
+          "id": "hit_body_body_11",
+          "file": "hit_body_body/11.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.66,
+          "note": "impact-sounds impactSoft_heavy_002 at x0.85 with synth low thump"
+        },
+        {
+          "id": "hit_body_body_12",
+          "file": "hit_body_body/12.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.338,
+          "note": "impact-sounds impactPunch_medium_000 at x0.90 with synth low thump"
+        }
+      ]
+    },
+    {
+      "id": "hit_limb_slap",
+      "label": "Arm or limb slap",
+      "group": "Hits",
+      "event": "plays when a hand, forearm or shin strikes another body (swims, rips, stiff arms)",
+      "variants": [
+        {
+          "id": "hit_limb_slap_01",
+          "file": "hit_limb_slap/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.069,
+          "note": "skin slap centred 1200 Hz, 9 ms decay"
+        },
+        {
+          "id": "hit_limb_slap_02",
+          "file": "hit_limb_slap/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.082,
+          "note": "skin slap centred 1456 Hz, 12 ms decay"
+        },
+        {
+          "id": "hit_limb_slap_03",
+          "file": "hit_limb_slap/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.127,
+          "note": "skin slap centred 1711 Hz, 24 ms decay"
+        },
+        {
+          "id": "hit_limb_slap_04",
+          "file": "hit_limb_slap/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.115,
+          "note": "skin slap centred 1967 Hz, 18 ms decay"
+        },
+        {
+          "id": "hit_limb_slap_05",
+          "file": "hit_limb_slap/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.069,
+          "note": "skin slap centred 2222 Hz, 8 ms decay"
+        },
+        {
+          "id": "hit_limb_slap_06",
+          "file": "hit_limb_slap/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.092,
+          "note": "skin slap centred 2478 Hz, 14 ms decay"
+        },
+        {
+          "id": "hit_limb_slap_07",
+          "file": "hit_limb_slap/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.103,
+          "note": "skin slap centred 2733 Hz, 16 ms decay"
+        },
+        {
+          "id": "hit_limb_slap_08",
+          "file": "hit_limb_slap/08.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.237,
+          "note": "impact-sounds impactPunch_medium_001 at x1.17, high-passed, with synth skin snap"
+        },
+        {
+          "id": "hit_limb_slap_09",
+          "file": "hit_limb_slap/09.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.283,
+          "note": "impact-sounds impactPunch_medium_002 at x1.29, high-passed, with synth skin snap"
+        },
+        {
+          "id": "hit_limb_slap_10",
+          "file": "hit_limb_slap/10.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.267,
+          "note": "impact-sounds impactPunch_medium_003 at x1.16, high-passed, with synth skin snap"
+        }
+      ]
+    },
+    {
+      "id": "hit_grab_jersey",
+      "label": "Hand grab on jersey",
+      "group": "Hits",
+      "event": "plays when a hand closes on a jersey or pads (cloth snatch)",
+      "variants": [
+        {
+          "id": "hit_grab_jersey_01",
+          "file": "hit_grab_jersey/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.124,
+          "note": "cloth crackle 2760/s around 3638 Hz, 120 ms"
+        },
+        {
+          "id": "hit_grab_jersey_02",
+          "file": "hit_grab_jersey/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.143,
+          "note": "cloth crackle 3097/s around 3042 Hz, 140 ms"
+        },
+        {
+          "id": "hit_grab_jersey_03",
+          "file": "hit_grab_jersey/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.16,
+          "note": "cloth crackle 2632/s around 3992 Hz, 160 ms"
+        },
+        {
+          "id": "hit_grab_jersey_04",
+          "file": "hit_grab_jersey/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.178,
+          "note": "cloth crackle 3253/s around 3377 Hz, 180 ms"
+        },
+        {
+          "id": "hit_grab_jersey_05",
+          "file": "hit_grab_jersey/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.195,
+          "note": "cloth crackle 2235/s around 3036 Hz, 200 ms"
+        },
+        {
+          "id": "hit_grab_jersey_06",
+          "file": "hit_grab_jersey/06.ogg",
+          "source": "kenney/rpg-audio",
+          "license": "CC0",
+          "duration": 0.362,
+          "note": "rpg-audio cloth1 at x1.04, trimmed to the snatch"
+        },
+        {
+          "id": "hit_grab_jersey_07",
+          "file": "hit_grab_jersey/07.ogg",
+          "source": "kenney/rpg-audio",
+          "license": "CC0",
+          "duration": 0.33,
+          "note": "rpg-audio cloth2 at x1.01, trimmed to the snatch"
+        },
+        {
+          "id": "hit_grab_jersey_08",
+          "file": "hit_grab_jersey/08.ogg",
+          "source": "kenney/rpg-audio",
+          "license": "CC0",
+          "duration": 0.394,
+          "note": "rpg-audio cloth3 at x1.10, trimmed to the snatch"
+        },
+        {
+          "id": "hit_grab_jersey_09",
+          "file": "hit_grab_jersey/09.ogg",
+          "source": "kenney/rpg-audio",
+          "license": "CC0",
+          "duration": 0.4,
+          "note": "rpg-audio cloth4 at x0.95, trimmed to the snatch"
+        },
+        {
+          "id": "hit_grab_jersey_10",
+          "file": "hit_grab_jersey/10.ogg",
+          "source": "kenney/rpg-audio",
+          "license": "CC0",
+          "duration": 0.4,
+          "note": "rpg-audio clothBelt at x0.99, trimmed to the snatch"
+        }
+      ]
+    },
+    {
+      "id": "hit_big_layer",
+      "label": "Big hit boom layer",
+      "group": "Hits",
+      "event": "layered under the hardest hits only (deep boom); scale with impact energy",
+      "variants": [
+        {
+          "id": "hit_big_layer_01",
+          "file": "hit_big_layer/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1,
+          "note": "sub boom 65 to 30 Hz, 0.25 s"
+        },
+        {
+          "id": "hit_big_layer_02",
+          "file": "hit_big_layer/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1,
+          "note": "sub boom 81 to 30 Hz, 0.30 s, heavy rumble"
+        },
+        {
+          "id": "hit_big_layer_03",
+          "file": "hit_big_layer/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.06,
+          "note": "sub boom 77 to 29 Hz, 0.35 s, mid crunch and double hit"
+        },
+        {
+          "id": "hit_big_layer_04",
+          "file": "hit_big_layer/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1,
+          "note": "sub boom 80 to 31 Hz, 0.40 s"
+        },
+        {
+          "id": "hit_big_layer_05",
+          "file": "hit_big_layer/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1,
+          "note": "sub boom 80 to 32 Hz, 0.45 s, heavy rumble"
+        },
+        {
+          "id": "hit_big_layer_06",
+          "file": "hit_big_layer/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.06,
+          "note": "sub boom 75 to 34 Hz, 0.50 s, mid crunch and double hit"
+        },
+        {
+          "id": "hit_big_layer_07",
+          "file": "hit_big_layer/07.ogg",
+          "source": "opengameart/100-cc0-sfx-rubberduck",
+          "license": "CC0",
+          "duration": 0.532,
+          "note": "100-cc0-sfx-rubberduck explosion at x0.60 low-passed 300 Hz, with sub thump"
+        },
+        {
+          "id": "hit_big_layer_08",
+          "file": "hit_big_layer/08.ogg",
+          "source": "opengameart/100-cc0-sfx-rubberduck",
+          "license": "CC0",
+          "duration": 0.453,
+          "note": "100-cc0-sfx-rubberduck explosion at x0.75 low-passed 450 Hz, with sub thump"
+        }
+      ]
+    },
+    {
+      "id": "body_turf_tackle",
+      "label": "Tackle to turf",
+      "group": "Bodies and ground",
+      "event": "plays when a body slams onto the grass (tackle finish); louder with landing speed",
+      "variants": [
+        {
+          "id": "body_turf_tackle_01",
+          "file": "body_turf_tackle/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.508,
+          "note": "body thump 100 Hz 0.17 s, grass crunch 4707/s"
+        },
+        {
+          "id": "body_turf_tackle_02",
+          "file": "body_turf_tackle/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.506,
+          "note": "body thump 103 Hz 0.12 s, grass crunch 3148/s, second bounce"
+        },
+        {
+          "id": "body_turf_tackle_03",
+          "file": "body_turf_tackle/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.509,
+          "note": "body thump 105 Hz 0.19 s, grass crunch 3926/s"
+        },
+        {
+          "id": "body_turf_tackle_04",
+          "file": "body_turf_tackle/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.507,
+          "note": "body thump 108 Hz 0.17 s, grass crunch 3985/s, second bounce"
+        },
+        {
+          "id": "body_turf_tackle_05",
+          "file": "body_turf_tackle/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.509,
+          "note": "body thump 111 Hz 0.15 s, grass crunch 3875/s"
+        },
+        {
+          "id": "body_turf_tackle_06",
+          "file": "body_turf_tackle/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.507,
+          "note": "body thump 114 Hz 0.19 s, grass crunch 3486/s, second bounce"
+        },
+        {
+          "id": "body_turf_tackle_07",
+          "file": "body_turf_tackle/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.509,
+          "note": "body thump 116 Hz 0.18 s, grass crunch 2663/s"
+        },
+        {
+          "id": "body_turf_tackle_08",
+          "file": "body_turf_tackle/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.509,
+          "note": "body thump 119 Hz 0.14 s, grass crunch 4444/s, second bounce"
+        },
+        {
+          "id": "body_turf_tackle_09",
+          "file": "body_turf_tackle/09.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.66,
+          "note": "impact-sounds footstep_grass_000 at x0.59 over impactSoft_heavy_001 at x0.80, synth thump"
+        },
+        {
+          "id": "body_turf_tackle_10",
+          "file": "body_turf_tackle/10.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.693,
+          "note": "impact-sounds footstep_grass_001 at x0.61 over impactSoft_heavy_002 at x0.80, synth thump"
+        },
+        {
+          "id": "body_turf_tackle_11",
+          "file": "body_turf_tackle/11.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.612,
+          "note": "impact-sounds footstep_grass_002 at x0.63 over impactSoft_heavy_003 at x0.80, synth thump"
+        },
+        {
+          "id": "body_turf_tackle_12",
+          "file": "body_turf_tackle/12.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.589,
+          "note": "impact-sounds footstep_grass_003 at x0.61 over impactSoft_heavy_004 at x0.80, synth thump"
+        }
+      ]
+    },
+    {
+      "id": "body_turf_slide",
+      "label": "Roll or slide on turf",
+      "group": "Bodies and ground",
+      "event": "plays while a downed body rolls or slides on grass after a tackle",
+      "variants": [
+        {
+          "id": "body_turf_slide_01",
+          "file": "body_turf_slide/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.498,
+          "note": "slide 500 ms, 10.08 Hz roll bumps, band falling from 2093 Hz"
+        },
+        {
+          "id": "body_turf_slide_02",
+          "file": "body_turf_slide/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.542,
+          "note": "slide 544 ms, 8.57 Hz roll bumps, band falling from 2262 Hz"
+        },
+        {
+          "id": "body_turf_slide_03",
+          "file": "body_turf_slide/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.586,
+          "note": "slide 589 ms, 8.11 Hz roll bumps, band falling from 1560 Hz"
+        },
+        {
+          "id": "body_turf_slide_04",
+          "file": "body_turf_slide/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.631,
+          "note": "slide 633 ms, 10.99 Hz roll bumps, band falling from 2359 Hz"
+        },
+        {
+          "id": "body_turf_slide_05",
+          "file": "body_turf_slide/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.674,
+          "note": "slide 678 ms, 10.12 Hz roll bumps, band falling from 2086 Hz"
+        },
+        {
+          "id": "body_turf_slide_06",
+          "file": "body_turf_slide/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.719,
+          "note": "slide 722 ms, 10.61 Hz roll bumps, band falling from 1691 Hz"
+        },
+        {
+          "id": "body_turf_slide_07",
+          "file": "body_turf_slide/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.764,
+          "note": "slide 767 ms, 8.63 Hz roll bumps, band falling from 1825 Hz"
+        },
+        {
+          "id": "body_turf_slide_08",
+          "file": "body_turf_slide/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.808,
+          "note": "slide 811 ms, 7.38 Hz roll bumps, band falling from 1984 Hz"
+        },
+        {
+          "id": "body_turf_slide_09",
+          "file": "body_turf_slide/09.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.852,
+          "note": "slide 856 ms, 7.85 Hz roll bumps, band falling from 2002 Hz"
+        },
+        {
+          "id": "body_turf_slide_10",
+          "file": "body_turf_slide/10.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.897,
+          "note": "slide 900 ms, 7.32 Hz roll bumps, band falling from 2229 Hz"
+        }
+      ]
+    },
+    {
+      "id": "body_dive_land",
+      "label": "Dive landing",
+      "group": "Bodies and ground",
+      "event": "plays when a diving player lands chest-first and skids",
+      "variants": [
+        {
+          "id": "body_dive_land_01",
+          "file": "body_dive_land/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.409,
+          "note": "chest landing 110 Hz, skid tail 152 ms"
+        },
+        {
+          "id": "body_dive_land_02",
+          "file": "body_dive_land/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.408,
+          "note": "chest landing 113 Hz, skid tail 119 ms"
+        },
+        {
+          "id": "body_dive_land_03",
+          "file": "body_dive_land/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.409,
+          "note": "chest landing 116 Hz, skid tail 202 ms"
+        },
+        {
+          "id": "body_dive_land_04",
+          "file": "body_dive_land/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.409,
+          "note": "chest landing 118 Hz, skid tail 107 ms"
+        },
+        {
+          "id": "body_dive_land_05",
+          "file": "body_dive_land/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.408,
+          "note": "chest landing 121 Hz, skid tail 237 ms"
+        },
+        {
+          "id": "body_dive_land_06",
+          "file": "body_dive_land/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.409,
+          "note": "chest landing 124 Hz, skid tail 119 ms"
+        },
+        {
+          "id": "body_dive_land_07",
+          "file": "body_dive_land/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.409,
+          "note": "chest landing 127 Hz, skid tail 147 ms"
+        },
+        {
+          "id": "body_dive_land_08",
+          "file": "body_dive_land/08.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.313,
+          "note": "impact-sounds footstep_grass_002 at x0.50 with impactSoft_medium_000 at x0.90"
+        },
+        {
+          "id": "body_dive_land_09",
+          "file": "body_dive_land/09.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.3,
+          "note": "impact-sounds footstep_grass_003 at x0.46 with impactSoft_medium_001 at x0.90"
+        },
+        {
+          "id": "body_dive_land_10",
+          "file": "body_dive_land/10.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.241,
+          "note": "impact-sounds footstep_grass_004 at x0.51 with impactSoft_medium_002 at x0.90"
+        }
+      ]
+    },
+    {
+      "id": "body_getup",
+      "label": "Get-up rustle",
+      "group": "Bodies and ground",
+      "event": "plays when a downed player pushes up and stands (pads, cloth, grass)",
+      "variants": [
+        {
+          "id": "body_getup_01",
+          "file": "body_getup/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.466,
+          "note": "2 cloth and pad rustles over 600 ms"
+        },
+        {
+          "id": "body_getup_02",
+          "file": "body_getup/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.564,
+          "note": "3 cloth and pad rustles over 633 ms"
+        },
+        {
+          "id": "body_getup_03",
+          "file": "body_getup/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.568,
+          "note": "4 cloth and pad rustles over 667 ms"
+        },
+        {
+          "id": "body_getup_04",
+          "file": "body_getup/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.448,
+          "note": "2 cloth and pad rustles over 700 ms"
+        },
+        {
+          "id": "body_getup_05",
+          "file": "body_getup/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.453,
+          "note": "3 cloth and pad rustles over 733 ms"
+        },
+        {
+          "id": "body_getup_06",
+          "file": "body_getup/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.546,
+          "note": "4 cloth and pad rustles over 767 ms"
+        },
+        {
+          "id": "body_getup_07",
+          "file": "body_getup/07.ogg",
+          "source": "kenney/rpg-audio",
+          "license": "CC0",
+          "duration": 0.601,
+          "note": "rpg-audio cloth1 at x0.94 with handleSmallLeather (pads creak), synth grass push"
+        },
+        {
+          "id": "body_getup_08",
+          "file": "body_getup/08.ogg",
+          "source": "kenney/rpg-audio",
+          "license": "CC0",
+          "duration": 0.467,
+          "note": "rpg-audio cloth2 at x0.83 with handleSmallLeather (pads creak), synth grass push"
+        },
+        {
+          "id": "body_getup_09",
+          "file": "body_getup/09.ogg",
+          "source": "kenney/rpg-audio",
+          "license": "CC0",
+          "duration": 0.49,
+          "note": "rpg-audio cloth3 at x0.94 with handleSmallLeather (pads creak), synth grass push"
+        },
+        {
+          "id": "body_getup_10",
+          "file": "body_getup/10.ogg",
+          "source": "kenney/rpg-audio",
+          "license": "CC0",
+          "duration": 0.507,
+          "note": "rpg-audio cloth4 at x0.86 with handleSmallLeather (pads creak), synth grass push"
+        }
+      ]
+    },
+    {
+      "id": "foot_jog",
+      "label": "Cleat step (jog)",
+      "group": "Feet",
+      "event": "plays on each foot strike at jog speed (cleats on grass)",
+      "variants": [
+        {
+          "id": "foot_jog_01",
+          "file": "foot_jog/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.208,
+          "note": "jog step: thud 150 Hz, grass 4283 Hz 57 ms"
+        },
+        {
+          "id": "foot_jog_02",
+          "file": "foot_jog/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.154,
+          "note": "jog step: thud 153 Hz, grass 3724 Hz 30 ms"
+        },
+        {
+          "id": "foot_jog_03",
+          "file": "foot_jog/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.208,
+          "note": "jog step: thud 155 Hz, grass 3833 Hz 50 ms"
+        },
+        {
+          "id": "foot_jog_04",
+          "file": "foot_jog/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.207,
+          "note": "jog step: thud 158 Hz, grass 4784 Hz 42 ms"
+        },
+        {
+          "id": "foot_jog_05",
+          "file": "foot_jog/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.207,
+          "note": "jog step: thud 161 Hz, grass 2992 Hz 49 ms"
+        },
+        {
+          "id": "foot_jog_06",
+          "file": "foot_jog/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.207,
+          "note": "jog step: thud 163 Hz, grass 3864 Hz 59 ms"
+        },
+        {
+          "id": "foot_jog_07",
+          "file": "foot_jog/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.208,
+          "note": "jog step: thud 166 Hz, grass 2556 Hz 44 ms"
+        },
+        {
+          "id": "foot_jog_08",
+          "file": "foot_jog/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.206,
+          "note": "jog step: thud 169 Hz, grass 4118 Hz 42 ms"
+        },
+        {
+          "id": "foot_jog_09",
+          "file": "foot_jog/09.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.191,
+          "note": "impact-sounds footstep_grass_000 at x0.89 with synth stud click"
+        },
+        {
+          "id": "foot_jog_10",
+          "file": "foot_jog/10.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.154,
+          "note": "impact-sounds footstep_grass_001 at x1.02 with synth stud click"
+        },
+        {
+          "id": "foot_jog_11",
+          "file": "foot_jog/11.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.149,
+          "note": "impact-sounds footstep_grass_002 at x1.09 with synth stud click"
+        },
+        {
+          "id": "foot_jog_12",
+          "file": "foot_jog/12.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.143,
+          "note": "impact-sounds footstep_grass_003 at x1.04 with synth stud click"
+        },
+        {
+          "id": "foot_jog_13",
+          "file": "foot_jog/13.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.117,
+          "note": "impact-sounds footstep_grass_004 at x1.14 with synth stud click"
+        },
+        {
+          "id": "foot_jog_14",
+          "file": "foot_jog/14.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.199,
+          "note": "impact-sounds footstep_grass_000 at x0.85 with synth stud click"
+        },
+        {
+          "id": "foot_jog_15",
+          "file": "foot_jog/15.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.14,
+          "note": "impact-sounds footstep_grass_001 at x1.12 with synth stud click"
+        },
+        {
+          "id": "foot_jog_16",
+          "file": "foot_jog/16.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.161,
+          "note": "impact-sounds footstep_grass_002 at x1.01 with synth stud click"
+        }
+      ]
+    },
+    {
+      "id": "foot_sprint",
+      "label": "Cleat step (sprint)",
+      "group": "Feet",
+      "event": "plays on each foot strike at sprint speed (harder, sharper, studs tearing turf)",
+      "variants": [
+        {
+          "id": "foot_sprint_01",
+          "file": "foot_sprint/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.154,
+          "note": "sprint step: thud 180 Hz, tear 5228 Hz 26 ms"
+        },
+        {
+          "id": "foot_sprint_02",
+          "file": "foot_sprint/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.159,
+          "note": "sprint step: thud 183 Hz, tear 5654 Hz 39 ms"
+        },
+        {
+          "id": "foot_sprint_03",
+          "file": "foot_sprint/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.156,
+          "note": "sprint step: thud 187 Hz, tear 3625 Hz 28 ms"
+        },
+        {
+          "id": "foot_sprint_04",
+          "file": "foot_sprint/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.155,
+          "note": "sprint step: thud 190 Hz, tear 5419 Hz 28 ms"
+        },
+        {
+          "id": "foot_sprint_05",
+          "file": "foot_sprint/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.157,
+          "note": "sprint step: thud 193 Hz, tear 4551 Hz 26 ms"
+        },
+        {
+          "id": "foot_sprint_06",
+          "file": "foot_sprint/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.158,
+          "note": "sprint step: thud 197 Hz, tear 5543 Hz 38 ms"
+        },
+        {
+          "id": "foot_sprint_07",
+          "file": "foot_sprint/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.158,
+          "note": "sprint step: thud 200 Hz, tear 4040 Hz 34 ms"
+        },
+        {
+          "id": "foot_sprint_08",
+          "file": "foot_sprint/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.156,
+          "note": "sprint step: thud 203 Hz, tear 4876 Hz 31 ms"
+        },
+        {
+          "id": "foot_sprint_09",
+          "file": "foot_sprint/09.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.14,
+          "note": "impact-sounds footstep_grass_000 at x1.24, driven, with synth stud tear"
+        },
+        {
+          "id": "foot_sprint_10",
+          "file": "foot_sprint/10.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.125,
+          "note": "impact-sounds footstep_grass_001 at x1.28, driven, with synth stud tear"
+        },
+        {
+          "id": "foot_sprint_11",
+          "file": "foot_sprint/11.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.148,
+          "note": "impact-sounds footstep_grass_002 at x1.13, driven, with synth stud tear"
+        },
+        {
+          "id": "foot_sprint_12",
+          "file": "foot_sprint/12.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.133,
+          "note": "impact-sounds footstep_grass_003 at x1.14, driven, with synth stud tear"
+        },
+        {
+          "id": "foot_sprint_13",
+          "file": "foot_sprint/13.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.114,
+          "note": "impact-sounds footstep_grass_004 at x1.21, driven, with synth stud tear"
+        },
+        {
+          "id": "foot_sprint_14",
+          "file": "foot_sprint/14.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.145,
+          "note": "impact-sounds footstep_grass_000 at x1.19, driven, with synth stud tear"
+        },
+        {
+          "id": "foot_sprint_15",
+          "file": "foot_sprint/15.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.14,
+          "note": "impact-sounds footstep_grass_001 at x1.13, driven, with synth stud tear"
+        },
+        {
+          "id": "foot_sprint_16",
+          "file": "foot_sprint/16.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.149,
+          "note": "impact-sounds footstep_grass_002 at x1.12, driven, with synth stud tear"
+        }
+      ]
+    },
+    {
+      "id": "foot_plant_skid",
+      "label": "Plant and cut skid",
+      "group": "Feet",
+      "event": "plays when a foot plants hard to cut or stop (cleats skid and tear grass)",
+      "variants": [
+        {
+          "id": "foot_plant_skid_01",
+          "file": "foot_plant_skid/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.205,
+          "note": "plant thud then skid 200 ms, band falling from 3637 Hz"
+        },
+        {
+          "id": "foot_plant_skid_02",
+          "file": "foot_plant_skid/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.225,
+          "note": "plant thud then skid 222 ms, band falling from 3025 Hz"
+        },
+        {
+          "id": "foot_plant_skid_03",
+          "file": "foot_plant_skid/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.245,
+          "note": "plant thud then skid 244 ms, band falling from 3763 Hz"
+        },
+        {
+          "id": "foot_plant_skid_04",
+          "file": "foot_plant_skid/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.265,
+          "note": "plant thud then skid 267 ms, band falling from 3170 Hz"
+        },
+        {
+          "id": "foot_plant_skid_05",
+          "file": "foot_plant_skid/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.284,
+          "note": "plant thud then skid 289 ms, band falling from 3914 Hz"
+        },
+        {
+          "id": "foot_plant_skid_06",
+          "file": "foot_plant_skid/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.305,
+          "note": "plant thud then skid 311 ms, band falling from 3168 Hz"
+        },
+        {
+          "id": "foot_plant_skid_07",
+          "file": "foot_plant_skid/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.324,
+          "note": "plant thud then skid 333 ms, band falling from 3229 Hz"
+        },
+        {
+          "id": "foot_plant_skid_08",
+          "file": "foot_plant_skid/08.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.352,
+          "note": "impact-sounds footstep_grass_000 at x0.69 with synth skid 356 ms"
+        },
+        {
+          "id": "foot_plant_skid_09",
+          "file": "foot_plant_skid/09.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.371,
+          "note": "impact-sounds footstep_grass_001 at x0.74 with synth skid 378 ms"
+        },
+        {
+          "id": "foot_plant_skid_10",
+          "file": "foot_plant_skid/10.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.391,
+          "note": "impact-sounds footstep_grass_002 at x0.70 with synth skid 400 ms"
+        }
+      ]
+    },
+    {
+      "id": "ball_catch",
+      "label": "Catch and tuck",
+      "group": "Ball",
+      "event": "plays when hands secure the ball and tuck it to the body",
+      "variants": [
+        {
+          "id": "ball_catch_01",
+          "file": "ball_catch/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.191,
+          "note": "leather slap 832 Hz, ball 280 Hz, tuck at 68 ms"
+        },
+        {
+          "id": "ball_catch_02",
+          "file": "ball_catch/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.165,
+          "note": "leather slap 890 Hz, ball 300 Hz, tuck at 42 ms"
+        },
+        {
+          "id": "ball_catch_03",
+          "file": "ball_catch/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.176,
+          "note": "leather slap 1345 Hz, ball 320 Hz, tuck at 53 ms"
+        },
+        {
+          "id": "ball_catch_04",
+          "file": "ball_catch/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.212,
+          "note": "leather slap 1628 Hz, ball 340 Hz, tuck at 88 ms"
+        },
+        {
+          "id": "ball_catch_05",
+          "file": "ball_catch/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.194,
+          "note": "leather slap 1002 Hz, ball 360 Hz, tuck at 72 ms"
+        },
+        {
+          "id": "ball_catch_06",
+          "file": "ball_catch/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.212,
+          "note": "leather slap 1281 Hz, ball 380 Hz, tuck at 89 ms"
+        },
+        {
+          "id": "ball_catch_07",
+          "file": "ball_catch/07.ogg",
+          "source": "kenney/rpg-audio",
+          "license": "CC0",
+          "duration": 0.327,
+          "note": "rpg-audio dropLeather at x0.90 with synth ball pok 400 Hz"
+        },
+        {
+          "id": "ball_catch_08",
+          "file": "ball_catch/08.ogg",
+          "source": "kenney/rpg-audio",
+          "license": "CC0",
+          "duration": 0.207,
+          "note": "rpg-audio handleSmallLeather at x0.99 with synth ball pok 420 Hz"
+        },
+        {
+          "id": "ball_catch_09",
+          "file": "ball_catch/09.ogg",
+          "source": "kenney/rpg-audio",
+          "license": "CC0",
+          "duration": 0.255,
+          "note": "rpg-audio handleSmallLeather2 at x0.96 with synth ball pok 440 Hz"
+        },
+        {
+          "id": "ball_catch_10",
+          "file": "ball_catch/10.ogg",
+          "source": "kenney/rpg-audio",
+          "license": "CC0",
+          "duration": 0.24,
+          "note": "rpg-audio beltHandle1 at x1.02 with synth ball pok 460 Hz"
+        }
+      ]
+    },
+    {
+      "id": "ball_bounce",
+      "label": "Fumble bounce on turf",
+      "group": "Ball",
+      "event": "plays when a loose ball hits the grass; irregular bounces",
+      "variants": [
+        {
+          "id": "ball_bounce_01",
+          "file": "ball_bounce/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.152,
+          "note": "1 bounce, ball body 170 Hz"
+        },
+        {
+          "id": "ball_bounce_02",
+          "file": "ball_bounce/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.435,
+          "note": "2 bounces, ball body 178 Hz"
+        },
+        {
+          "id": "ball_bounce_03",
+          "file": "ball_bounce/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.611,
+          "note": "3 bounces, ball body 186 Hz"
+        },
+        {
+          "id": "ball_bounce_04",
+          "file": "ball_bounce/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.695,
+          "note": "4 bounces, ball body 195 Hz"
+        },
+        {
+          "id": "ball_bounce_05",
+          "file": "ball_bounce/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.154,
+          "note": "1 bounce, ball body 203 Hz"
+        },
+        {
+          "id": "ball_bounce_06",
+          "file": "ball_bounce/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.415,
+          "note": "2 bounces, ball body 211 Hz"
+        },
+        {
+          "id": "ball_bounce_07",
+          "file": "ball_bounce/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.513,
+          "note": "3 bounces, ball body 219 Hz"
+        },
+        {
+          "id": "ball_bounce_08",
+          "file": "ball_bounce/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.694,
+          "note": "4 bounces, ball body 227 Hz"
+        },
+        {
+          "id": "ball_bounce_09",
+          "file": "ball_bounce/09.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.158,
+          "note": "1 bounce, ball body 235 Hz"
+        },
+        {
+          "id": "ball_bounce_10",
+          "file": "ball_bounce/10.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.463,
+          "note": "2 bounces, ball body 244 Hz"
+        },
+        {
+          "id": "ball_bounce_11",
+          "file": "ball_bounce/11.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.568,
+          "note": "3 bounces, ball body 252 Hz"
+        },
+        {
+          "id": "ball_bounce_12",
+          "file": "ball_bounce/12.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.773,
+          "note": "4 bounces, ball body 260 Hz"
+        }
+      ]
+    },
+    {
+      "id": "ball_hit_body",
+      "label": "Ball hits a body",
+      "group": "Ball",
+      "event": "plays when the ball strikes a helmet, pads or body (batted pass, fumble)",
+      "variants": [
+        {
+          "id": "ball_hit_body_01",
+          "file": "ball_hit_body/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.154,
+          "note": "slap 1074 Hz, ball 220 Hz, off the body (soft)"
+        },
+        {
+          "id": "ball_hit_body_02",
+          "file": "ball_hit_body/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.149,
+          "note": "slap 825 Hz, ball 236 Hz, off the pads (plastic clack)"
+        },
+        {
+          "id": "ball_hit_body_03",
+          "file": "ball_hit_body/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.148,
+          "note": "slap 648 Hz, ball 251 Hz, off the body (soft)"
+        },
+        {
+          "id": "ball_hit_body_04",
+          "file": "ball_hit_body/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.15,
+          "note": "slap 993 Hz, ball 267 Hz, off the pads (plastic clack)"
+        },
+        {
+          "id": "ball_hit_body_05",
+          "file": "ball_hit_body/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.148,
+          "note": "slap 867 Hz, ball 282 Hz, off the body (soft)"
+        },
+        {
+          "id": "ball_hit_body_06",
+          "file": "ball_hit_body/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.149,
+          "note": "slap 997 Hz, ball 298 Hz, off the pads (plastic clack)"
+        },
+        {
+          "id": "ball_hit_body_07",
+          "file": "ball_hit_body/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.152,
+          "note": "slap 972 Hz, ball 313 Hz, off the body (soft)"
+        },
+        {
+          "id": "ball_hit_body_08",
+          "file": "ball_hit_body/08.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.233,
+          "note": "impact-sounds impactPunch_medium_000 at x1.28 low-passed, with synth ball pok"
+        },
+        {
+          "id": "ball_hit_body_09",
+          "file": "ball_hit_body/09.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.218,
+          "note": "impact-sounds impactPunch_medium_001 at x1.29 low-passed, with synth ball pok"
+        },
+        {
+          "id": "ball_hit_body_10",
+          "file": "ball_hit_body/10.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.268,
+          "note": "impact-sounds impactPunch_medium_002 at x1.38 low-passed, with synth ball pok"
+        }
+      ]
+    },
+    {
+      "id": "air_whoosh",
+      "label": "Whoosh (fast arm or body)",
+      "group": "Effort and air",
+      "event": "plays when an arm or body moves fast near the camera (swim move, missed tackle)",
+      "variants": [
+        {
+          "id": "air_whoosh_01",
+          "file": "air_whoosh/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.148,
+          "note": "swish 150 ms, sweep 484 to 1586 Hz"
+        },
+        {
+          "id": "air_whoosh_02",
+          "file": "air_whoosh/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.164,
+          "note": "swish 177 ms, sweep 455 to 1012 Hz"
+        },
+        {
+          "id": "air_whoosh_03",
+          "file": "air_whoosh/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.202,
+          "note": "swish 205 ms, sweep 350 to 1014 Hz"
+        },
+        {
+          "id": "air_whoosh_04",
+          "file": "air_whoosh/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.22,
+          "note": "swish 232 ms, sweep 463 to 1025 Hz"
+        },
+        {
+          "id": "air_whoosh_05",
+          "file": "air_whoosh/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.248,
+          "note": "swish 259 ms, sweep 363 to 981 Hz"
+        },
+        {
+          "id": "air_whoosh_06",
+          "file": "air_whoosh/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.279,
+          "note": "swish 286 ms, sweep 304 to 1396 Hz"
+        },
+        {
+          "id": "air_whoosh_07",
+          "file": "air_whoosh/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.298,
+          "note": "swish 314 ms, sweep 452 to 1540 Hz"
+        },
+        {
+          "id": "air_whoosh_08",
+          "file": "air_whoosh/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.326,
+          "note": "swish 341 ms, sweep 308 to 2476 Hz"
+        },
+        {
+          "id": "air_whoosh_09",
+          "file": "air_whoosh/09.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.36,
+          "note": "swish 368 ms, sweep 463 to 2373 Hz"
+        },
+        {
+          "id": "air_whoosh_10",
+          "file": "air_whoosh/10.ogg",
+          "source": "opengameart/100-cc0-sfx-2-rubberduck",
+          "license": "CC0",
+          "duration": 0.34,
+          "note": "100-cc0-sfx-2-rubberduck sfx100v2_air_01 at x1.57, a 350 ms slice band-passed and swelled"
+        },
+        {
+          "id": "air_whoosh_11",
+          "file": "air_whoosh/11.ogg",
+          "source": "opengameart/100-cc0-sfx-2-rubberduck",
+          "license": "CC0",
+          "duration": 0.314,
+          "note": "100-cc0-sfx-2-rubberduck sfx100v2_air_02 at x1.71, a 350 ms slice band-passed and swelled"
+        },
+        {
+          "id": "air_whoosh_12",
+          "file": "air_whoosh/12.ogg",
+          "source": "opengameart/100-cc0-sfx-2-rubberduck",
+          "license": "CC0",
+          "duration": 0.161,
+          "note": "100-cc0-sfx-2-rubberduck sfx100v2_air_03 at x1.60, a 350 ms slice band-passed and swelled"
+        }
+      ]
+    },
+    {
+      "id": "air_wind_loop",
+      "label": "Wind at top speed (loop)",
+      "group": "Effort and air",
+      "event": "loops while the controlled player runs fast; fade volume with speed",
+      "variants": [
+        {
+          "id": "air_wind_loop_01",
+          "file": "air_wind_loop/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 6,
+          "note": "wind band 400 Hz, ear flutter 23 Hz, 6 s seamless loop"
+        },
+        {
+          "id": "air_wind_loop_02",
+          "file": "air_wind_loop/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 6,
+          "note": "wind band 471 Hz, ear flutter 27 Hz, 6 s seamless loop"
+        },
+        {
+          "id": "air_wind_loop_03",
+          "file": "air_wind_loop/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 6,
+          "note": "wind band 543 Hz, ear flutter 26 Hz, 6 s seamless loop"
+        },
+        {
+          "id": "air_wind_loop_04",
+          "file": "air_wind_loop/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 6,
+          "note": "wind band 614 Hz, ear flutter 25 Hz, 6 s seamless loop"
+        },
+        {
+          "id": "air_wind_loop_05",
+          "file": "air_wind_loop/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 6,
+          "note": "wind band 686 Hz, ear flutter 19 Hz, 6 s seamless loop"
+        },
+        {
+          "id": "air_wind_loop_06",
+          "file": "air_wind_loop/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 6,
+          "note": "wind band 757 Hz, ear flutter 21 Hz, 6 s seamless loop"
+        },
+        {
+          "id": "air_wind_loop_07",
+          "file": "air_wind_loop/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 6,
+          "note": "wind band 829 Hz, ear flutter 26 Hz, 6 s seamless loop"
+        },
+        {
+          "id": "air_wind_loop_08",
+          "file": "air_wind_loop/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 6,
+          "note": "wind band 900 Hz, ear flutter 20 Hz, 6 s seamless loop"
+        }
+      ]
+    },
+    {
+      "id": "voice_grunt",
+      "label": "Effort grunt (non-verbal)",
+      "group": "Effort and air",
+      "event": "plays on big efforts: contact, shed, drive (synthesized voice, no words)",
+      "variants": [
+        {
+          "id": "voice_grunt_01",
+          "file": "voice_grunt/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.291,
+          "note": "grunt \"uh\" 95 Hz, 294 ms, strained"
+        },
+        {
+          "id": "voice_grunt_02",
+          "file": "voice_grunt/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.197,
+          "note": "grunt \"ah\" 100 Hz, 201 ms"
+        },
+        {
+          "id": "voice_grunt_03",
+          "file": "voice_grunt/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.238,
+          "note": "grunt \"hn\" 104 Hz, 243 ms"
+        },
+        {
+          "id": "voice_grunt_04",
+          "file": "voice_grunt/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.23,
+          "note": "grunt \"eh\" 109 Hz, 233 ms, strained"
+        },
+        {
+          "id": "voice_grunt_05",
+          "file": "voice_grunt/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.165,
+          "note": "grunt \"uh\" 113 Hz, 169 ms"
+        },
+        {
+          "id": "voice_grunt_06",
+          "file": "voice_grunt/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.255,
+          "note": "grunt \"ah\" 118 Hz, 259 ms"
+        },
+        {
+          "id": "voice_grunt_07",
+          "file": "voice_grunt/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.187,
+          "note": "grunt \"hn\" 122 Hz, 190 ms, strained"
+        },
+        {
+          "id": "voice_grunt_08",
+          "file": "voice_grunt/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.159,
+          "note": "grunt \"eh\" 127 Hz, 163 ms"
+        },
+        {
+          "id": "voice_grunt_09",
+          "file": "voice_grunt/09.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.311,
+          "note": "grunt \"uh\" 131 Hz, 314 ms"
+        },
+        {
+          "id": "voice_grunt_10",
+          "file": "voice_grunt/10.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.321,
+          "note": "grunt \"ah\" 136 Hz, 323 ms, strained"
+        },
+        {
+          "id": "voice_grunt_11",
+          "file": "voice_grunt/11.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.162,
+          "note": "grunt \"hn\" 140 Hz, 165 ms"
+        },
+        {
+          "id": "voice_grunt_12",
+          "file": "voice_grunt/12.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.269,
+          "note": "grunt \"eh\" 145 Hz, 273 ms"
+        }
+      ]
+    },
+    {
+      "id": "voice_exhale",
+      "label": "Exhale or huff (non-verbal)",
+      "group": "Effort and air",
+      "event": "plays after sprints and on light efforts (breath, no voice or words)",
+      "variants": [
+        {
+          "id": "voice_exhale_01",
+          "file": "voice_exhale/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.25,
+          "note": "breath 250 ms, formants 661/1131 Hz"
+        },
+        {
+          "id": "voice_exhale_02",
+          "file": "voice_exhale/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.288,
+          "note": "breath 289 ms, formants 697/1459 Hz, voiced huff onset"
+        },
+        {
+          "id": "voice_exhale_03",
+          "file": "voice_exhale/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.327,
+          "note": "breath 328 ms, formants 788/1410 Hz"
+        },
+        {
+          "id": "voice_exhale_04",
+          "file": "voice_exhale/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.366,
+          "note": "breath 367 ms, formants 683/1119 Hz, voiced huff onset"
+        },
+        {
+          "id": "voice_exhale_05",
+          "file": "voice_exhale/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.405,
+          "note": "breath 406 ms, formants 703/1531 Hz"
+        },
+        {
+          "id": "voice_exhale_06",
+          "file": "voice_exhale/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.444,
+          "note": "breath 444 ms, formants 680/1628 Hz, voiced huff onset"
+        },
+        {
+          "id": "voice_exhale_07",
+          "file": "voice_exhale/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.483,
+          "note": "breath 483 ms, formants 680/1383 Hz"
+        },
+        {
+          "id": "voice_exhale_08",
+          "file": "voice_exhale/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.522,
+          "note": "breath 522 ms, formants 767/1567 Hz, voiced huff onset"
+        },
+        {
+          "id": "voice_exhale_09",
+          "file": "voice_exhale/09.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.561,
+          "note": "breath 561 ms, formants 694/1354 Hz"
+        },
+        {
+          "id": "voice_exhale_10",
+          "file": "voice_exhale/10.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.6,
+          "note": "breath 600 ms, formants 704/1615 Hz, voiced huff onset"
+        }
+      ]
+    },
+    {
+      "id": "game_whistle_start",
+      "label": "Whistle (rep start)",
+      "group": "Game",
+      "event": "plays when a rep starts (snap)",
+      "variants": [
+        {
+          "id": "game_whistle_start_01",
+          "file": "game_whistle_start/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.664,
+          "note": "single blast 264 ms, 2800 Hz, pea trill 37 Hz"
+        },
+        {
+          "id": "game_whistle_start_02",
+          "file": "game_whistle_start/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.821,
+          "note": "single blast 422 ms, 2886 Hz, pea trill 27 Hz, chirped onset"
+        },
+        {
+          "id": "game_whistle_start_03",
+          "file": "game_whistle_start/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.71,
+          "note": "single blast 311 ms, 2971 Hz, pea trill 32 Hz"
+        },
+        {
+          "id": "game_whistle_start_04",
+          "file": "game_whistle_start/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.832,
+          "note": "single blast 433 ms, 3057 Hz, pea trill 27 Hz, chirped onset"
+        },
+        {
+          "id": "game_whistle_start_05",
+          "file": "game_whistle_start/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.782,
+          "note": "single blast 383 ms, 3143 Hz, pea trill 22 Hz"
+        },
+        {
+          "id": "game_whistle_start_06",
+          "file": "game_whistle_start/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.677,
+          "note": "single blast 278 ms, 3229 Hz, pea trill 28 Hz, chirped onset"
+        },
+        {
+          "id": "game_whistle_start_07",
+          "file": "game_whistle_start/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.789,
+          "note": "single blast 390 ms, 3314 Hz, pea trill 34 Hz"
+        },
+        {
+          "id": "game_whistle_start_08",
+          "file": "game_whistle_start/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.723,
+          "note": "single blast 324 ms, 3400 Hz, pea trill 28 Hz, chirped onset"
+        }
+      ]
+    },
+    {
+      "id": "game_whistle_end",
+      "label": "Whistle (rep end / tackle)",
+      "group": "Game",
+      "event": "plays when the rep ends (ball carrier down)",
+      "variants": [
+        {
+          "id": "game_whistle_end_01",
+          "file": "game_whistle_end/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.997,
+          "note": "long blast, 2800 Hz, trill 26 Hz"
+        },
+        {
+          "id": "game_whistle_end_02",
+          "file": "game_whistle_end/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.109,
+          "note": "double blast, 2886 Hz, trill 23 Hz"
+        },
+        {
+          "id": "game_whistle_end_03",
+          "file": "game_whistle_end/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.105,
+          "note": "triple blast, 2971 Hz, trill 29 Hz"
+        },
+        {
+          "id": "game_whistle_end_04",
+          "file": "game_whistle_end/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.041,
+          "note": "long blast, 3057 Hz, trill 31 Hz"
+        },
+        {
+          "id": "game_whistle_end_05",
+          "file": "game_whistle_end/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.1,
+          "note": "double blast, 3143 Hz, trill 37 Hz"
+        },
+        {
+          "id": "game_whistle_end_06",
+          "file": "game_whistle_end/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.087,
+          "note": "triple blast, 3229 Hz, trill 32 Hz"
+        },
+        {
+          "id": "game_whistle_end_07",
+          "file": "game_whistle_end/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.99,
+          "note": "long blast, 3314 Hz, trill 27 Hz"
+        },
+        {
+          "id": "game_whistle_end_08",
+          "file": "game_whistle_end/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.046,
+          "note": "double blast, 3400 Hz, trill 31 Hz"
+        }
+      ]
+    },
+    {
+      "id": "crowd_cheer",
+      "label": "Crowd cheer",
+      "group": "Game",
+      "event": "plays after a great play (big tackle, broken tackle, touchdown)",
+      "variants": [
+        {
+          "id": "crowd_cheer_01",
+          "file": "crowd_cheer/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 3.398,
+          "note": "80 synth voices, claps, roar, 2.89 s"
+        },
+        {
+          "id": "crowd_cheer_02",
+          "file": "crowd_cheer/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 3.084,
+          "note": "91 synth voices, claps, roar, 2.44 s"
+        },
+        {
+          "id": "crowd_cheer_03",
+          "file": "crowd_cheer/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 3.339,
+          "note": "103 synth voices, claps, roar, 2.75 s"
+        },
+        {
+          "id": "crowd_cheer_04",
+          "file": "crowd_cheer/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 3.326,
+          "note": "114 synth voices, claps, roar, 2.84 s"
+        },
+        {
+          "id": "crowd_cheer_05",
+          "file": "crowd_cheer/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 3.317,
+          "note": "126 synth voices, claps, roar, 2.89 s"
+        },
+        {
+          "id": "crowd_cheer_06",
+          "file": "crowd_cheer/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 3.501,
+          "note": "137 synth voices, claps, roar, 2.84 s"
+        },
+        {
+          "id": "crowd_cheer_07",
+          "file": "crowd_cheer/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 3.458,
+          "note": "149 synth voices, claps, roar, 2.84 s"
+        },
+        {
+          "id": "crowd_cheer_08",
+          "file": "crowd_cheer/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 3.19,
+          "note": "160 synth voices, claps, roar, 2.72 s"
+        }
+      ]
+    },
+    {
+      "id": "crowd_ooh",
+      "label": "Crowd \"ooh\" (big hit)",
+      "group": "Game",
+      "event": "plays after a very hard hit",
+      "variants": [
+        {
+          "id": "crowd_ooh_01",
+          "file": "crowd_ooh/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.683,
+          "note": "60 synth voices \"oo\" to \"oh\", peak at 423 ms"
+        },
+        {
+          "id": "crowd_ooh_02",
+          "file": "crowd_ooh/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.675,
+          "note": "69 synth voices \"oo\" to \"oh\", peak at 417 ms"
+        },
+        {
+          "id": "crowd_ooh_03",
+          "file": "crowd_ooh/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.776,
+          "note": "77 synth voices \"oo\" to \"oh\", peak at 468 ms"
+        },
+        {
+          "id": "crowd_ooh_04",
+          "file": "crowd_ooh/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.743,
+          "note": "86 synth voices \"oo\" to \"oh\", peak at 429 ms"
+        },
+        {
+          "id": "crowd_ooh_05",
+          "file": "crowd_ooh/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.627,
+          "note": "94 synth voices \"oo\" to \"oh\", peak at 443 ms"
+        },
+        {
+          "id": "crowd_ooh_06",
+          "file": "crowd_ooh/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.853,
+          "note": "103 synth voices \"oo\" to \"oh\", peak at 395 ms"
+        },
+        {
+          "id": "crowd_ooh_07",
+          "file": "crowd_ooh/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.558,
+          "note": "111 synth voices \"oo\" to \"oh\", peak at 448 ms"
+        },
+        {
+          "id": "crowd_ooh_08",
+          "file": "crowd_ooh/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.356,
+          "note": "120 synth voices \"oo\" to \"oh\", peak at 497 ms"
+        }
+      ]
+    },
+    {
+      "id": "crowd_ambience_loop",
+      "label": "Crowd ambience (loop)",
+      "group": "Game",
+      "event": "loops quietly under the whole drill",
+      "variants": [
+        {
+          "id": "crowd_ambience_loop_01",
+          "file": "crowd_ambience_loop/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 8,
+          "note": "50 murmuring synth voices, distant claps, 8 s seamless loop"
+        },
+        {
+          "id": "crowd_ambience_loop_02",
+          "file": "crowd_ambience_loop/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 8,
+          "note": "56 murmuring synth voices, distant claps, 8 s seamless loop"
+        },
+        {
+          "id": "crowd_ambience_loop_03",
+          "file": "crowd_ambience_loop/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 8,
+          "note": "61 murmuring synth voices, distant claps, 8 s seamless loop"
+        },
+        {
+          "id": "crowd_ambience_loop_04",
+          "file": "crowd_ambience_loop/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 8,
+          "note": "67 murmuring synth voices, distant claps, 8 s seamless loop"
+        },
+        {
+          "id": "crowd_ambience_loop_05",
+          "file": "crowd_ambience_loop/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 8,
+          "note": "73 murmuring synth voices, distant claps, 8 s seamless loop"
+        },
+        {
+          "id": "crowd_ambience_loop_06",
+          "file": "crowd_ambience_loop/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 8,
+          "note": "79 murmuring synth voices, distant claps, 8 s seamless loop"
+        },
+        {
+          "id": "crowd_ambience_loop_07",
+          "file": "crowd_ambience_loop/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 8,
+          "note": "84 murmuring synth voices, distant claps, 8 s seamless loop"
+        },
+        {
+          "id": "crowd_ambience_loop_08",
+          "file": "crowd_ambience_loop/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 8,
+          "note": "90 murmuring synth voices, distant claps, 8 s seamless loop"
+        }
+      ]
+    },
+    {
+      "id": "ui_move",
+      "label": "Menu move",
+      "group": "UI",
+      "event": "plays when the menu highlight moves",
+      "variants": [
+        {
+          "id": "ui_move_01",
+          "file": "ui_move/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.06,
+          "note": "soft blip 900 Hz"
+        },
+        {
+          "id": "ui_move_02",
+          "file": "ui_move/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.06,
+          "note": "soft blip 1000 Hz"
+        },
+        {
+          "id": "ui_move_03",
+          "file": "ui_move/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.06,
+          "note": "soft blip 1100 Hz"
+        },
+        {
+          "id": "ui_move_04",
+          "file": "ui_move/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.06,
+          "note": "soft blip 1200 Hz"
+        },
+        {
+          "id": "ui_move_05",
+          "file": "ui_move/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.06,
+          "note": "soft blip 1300 Hz"
+        },
+        {
+          "id": "ui_move_06",
+          "file": "ui_move/06.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.023,
+          "note": "interface-sounds tick_001 at x0.97"
+        },
+        {
+          "id": "ui_move_07",
+          "file": "ui_move/07.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.019,
+          "note": "interface-sounds tick_002 at x1.06"
+        },
+        {
+          "id": "ui_move_08",
+          "file": "ui_move/08.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.2,
+          "note": "interface-sounds scroll_003 at x1.01"
+        },
+        {
+          "id": "ui_move_09",
+          "file": "ui_move/09.ogg",
+          "source": "kenney/ui-audio",
+          "license": "CC0",
+          "duration": 0.052,
+          "note": "ui-audio rollover2 at x0.96"
+        },
+        {
+          "id": "ui_move_10",
+          "file": "ui_move/10.ogg",
+          "source": "kenney/ui-audio",
+          "license": "CC0",
+          "duration": 0.068,
+          "note": "ui-audio rollover4 at x1.03"
+        }
+      ]
+    },
+    {
+      "id": "ui_select",
+      "label": "Menu select",
+      "group": "UI",
+      "event": "plays when a menu item is chosen",
+      "variants": [
+        {
+          "id": "ui_select_01",
+          "file": "ui_select/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.212,
+          "note": "two notes up 4 semitones from 520 Hz"
+        },
+        {
+          "id": "ui_select_02",
+          "file": "ui_select/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.212,
+          "note": "two notes up 5 semitones from 560 Hz"
+        },
+        {
+          "id": "ui_select_03",
+          "file": "ui_select/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.212,
+          "note": "two notes up 7 semitones from 600 Hz"
+        },
+        {
+          "id": "ui_select_04",
+          "file": "ui_select/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.212,
+          "note": "two notes up 7 semitones from 640 Hz"
+        },
+        {
+          "id": "ui_select_05",
+          "file": "ui_select/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.212,
+          "note": "two notes up 12 semitones from 680 Hz"
+        },
+        {
+          "id": "ui_select_06",
+          "file": "ui_select/06.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.041,
+          "note": "interface-sounds select_001 at x0.97"
+        },
+        {
+          "id": "ui_select_07",
+          "file": "ui_select/07.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.037,
+          "note": "interface-sounds select_002 at x1.08"
+        },
+        {
+          "id": "ui_select_08",
+          "file": "ui_select/08.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.222,
+          "note": "interface-sounds select_004 at x1.02"
+        },
+        {
+          "id": "ui_select_09",
+          "file": "ui_select/09.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.218,
+          "note": "interface-sounds select_006 at x1.03"
+        },
+        {
+          "id": "ui_select_10",
+          "file": "ui_select/10.ogg",
+          "source": "kenney/ui-audio",
+          "license": "CC0",
+          "duration": 0.071,
+          "note": "ui-audio click3 at x0.99"
+        }
+      ]
+    },
+    {
+      "id": "ui_back",
+      "label": "Menu back",
+      "group": "UI",
+      "event": "plays when leaving a menu or cancelling",
+      "variants": [
+        {
+          "id": "ui_back_01",
+          "file": "ui_back/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.212,
+          "note": "two notes down from 700 Hz"
+        },
+        {
+          "id": "ui_back_02",
+          "file": "ui_back/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.12,
+          "note": "falling sweep from 733 Hz"
+        },
+        {
+          "id": "ui_back_03",
+          "file": "ui_back/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.212,
+          "note": "two notes down from 767 Hz"
+        },
+        {
+          "id": "ui_back_04",
+          "file": "ui_back/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.12,
+          "note": "falling sweep from 800 Hz"
+        },
+        {
+          "id": "ui_back_05",
+          "file": "ui_back/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.212,
+          "note": "two notes down from 833 Hz"
+        },
+        {
+          "id": "ui_back_06",
+          "file": "ui_back/06.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.056,
+          "note": "interface-sounds back_001 at x1.08"
+        },
+        {
+          "id": "ui_back_07",
+          "file": "ui_back/07.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.081,
+          "note": "interface-sounds back_002 at x1.04"
+        },
+        {
+          "id": "ui_back_08",
+          "file": "ui_back/08.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.067,
+          "note": "interface-sounds back_003 at x1.02"
+        },
+        {
+          "id": "ui_back_09",
+          "file": "ui_back/09.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.082,
+          "note": "interface-sounds back_004 at x1.05"
+        },
+        {
+          "id": "ui_back_10",
+          "file": "ui_back/10.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.3,
+          "note": "interface-sounds close_002 at x1.04"
+        }
+      ]
+    },
+    {
+      "id": "ui_slider_tick",
+      "label": "Slider tick",
+      "group": "UI",
+      "event": "plays on each step while dragging a slider",
+      "variants": [
+        {
+          "id": "ui_slider_tick_01",
+          "file": "ui_slider_tick/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.03,
+          "note": "click with 2000 Hz ping"
+        },
+        {
+          "id": "ui_slider_tick_02",
+          "file": "ui_slider_tick/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.03,
+          "note": "click with 2278 Hz ping"
+        },
+        {
+          "id": "ui_slider_tick_03",
+          "file": "ui_slider_tick/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.03,
+          "note": "click with 2556 Hz ping"
+        },
+        {
+          "id": "ui_slider_tick_04",
+          "file": "ui_slider_tick/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.03,
+          "note": "click with 2833 Hz ping"
+        },
+        {
+          "id": "ui_slider_tick_05",
+          "file": "ui_slider_tick/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.03,
+          "note": "click with 3111 Hz ping"
+        },
+        {
+          "id": "ui_slider_tick_06",
+          "file": "ui_slider_tick/06.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.049,
+          "note": "interface-sounds click_001 at x1.13, cut to 60 ms"
+        },
+        {
+          "id": "ui_slider_tick_07",
+          "file": "ui_slider_tick/07.ogg",
+          "source": "kenney/ui-audio",
+          "license": "CC0",
+          "duration": 0.06,
+          "note": "ui-audio click1 at x1.02, cut to 60 ms"
+        },
+        {
+          "id": "ui_slider_tick_08",
+          "file": "ui_slider_tick/08.ogg",
+          "source": "kenney/ui-audio",
+          "license": "CC0",
+          "duration": 0.037,
+          "note": "ui-audio click4 at x1.03, cut to 60 ms"
+        },
+        {
+          "id": "ui_slider_tick_09",
+          "file": "ui_slider_tick/09.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.056,
+          "note": "interface-sounds tick_004 at x0.97, cut to 60 ms"
+        },
+        {
+          "id": "ui_slider_tick_10",
+          "file": "ui_slider_tick/10.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.037,
+          "note": "interface-sounds switch_002 at x1.15, cut to 60 ms"
+        }
+      ]
+    },
+    {
+      "id": "ui_confirm",
+      "label": "Confirm",
+      "group": "UI",
+      "event": "plays when a setting is applied or a rep is confirmed",
+      "variants": [
+        {
+          "id": "ui_confirm_01",
+          "file": "ui_confirm/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.427,
+          "note": "arpeggio 0-4-7 from 520 Hz"
+        },
+        {
+          "id": "ui_confirm_02",
+          "file": "ui_confirm/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.477,
+          "note": "arpeggio 0-7-12 from 549 Hz"
+        },
+        {
+          "id": "ui_confirm_03",
+          "file": "ui_confirm/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.487,
+          "note": "arpeggio 0-4-7-12 from 578 Hz"
+        },
+        {
+          "id": "ui_confirm_04",
+          "file": "ui_confirm/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.477,
+          "note": "arpeggio 0-5-9 from 607 Hz"
+        },
+        {
+          "id": "ui_confirm_05",
+          "file": "ui_confirm/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.487,
+          "note": "arpeggio 0-3-7-10 from 636 Hz"
+        },
+        {
+          "id": "ui_confirm_06",
+          "file": "ui_confirm/06.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.305,
+          "note": "interface-sounds confirmation_001 at x0.95"
+        },
+        {
+          "id": "ui_confirm_07",
+          "file": "ui_confirm/07.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.515,
+          "note": "interface-sounds confirmation_002 at x1.04"
+        },
+        {
+          "id": "ui_confirm_08",
+          "file": "ui_confirm/08.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.331,
+          "note": "interface-sounds confirmation_003 at x0.97"
+        },
+        {
+          "id": "ui_confirm_09",
+          "file": "ui_confirm/09.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.472,
+          "note": "interface-sounds confirmation_004 at x1.04"
+        },
+        {
+          "id": "ui_confirm_10",
+          "file": "ui_confirm/10.ogg",
+          "source": "kenney/interface-sounds",
+          "license": "CC0",
+          "duration": 0.392,
+          "note": "interface-sounds maximize_006 at x0.96"
+        }
+      ]
+    }
+  ]
+}
