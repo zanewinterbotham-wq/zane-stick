@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { SampleChooser } from '../src/game/audio';
 import picks from '../src/game/sfx-picks.json';
@@ -37,7 +38,13 @@ describe('sample chooser', () => {
   });
 
   it('the shipped picks leave the owner\'s empty categories silent and keep their volumes', () => {
-    for (const cat of ['air_wind_loop', 'game_whistle_end', 'crowd_cheer']) expect(Object.keys(picks.categories)).not.toContain(cat);
-    expect(picks.categories.hit_helmet_helmet.volume).toBe(0.3);
+    // the shipped file must match art/picks.json (run npm run sfx:export after picking)
+    const owner = JSON.parse(readFileSync('art/picks.json', 'utf8')) as { sounds: Record<string, string[]>; volumes: Record<string, number> };
+    const shipped = picks.categories as Record<string, { volume: number; files: string[] }>;
+    for (const [cat, ids] of Object.entries(owner.sounds)) {
+      if (!ids.length) { expect(Object.keys(picks.categories)).not.toContain(cat); continue; }
+      expect(shipped[cat].files).toHaveLength(ids.length);
+      expect(shipped[cat].volume).toBe(owner.volumes[cat] ?? 1);
+    }
   });
 });
