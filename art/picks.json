@@ -1,0 +1,213 @@
+{
+  "version": 1,
+  "sounds": {
+    "hit_helmet_helmet": [
+      "hit_helmet_helmet_03",
+      "hit_helmet_helmet_01",
+      "hit_helmet_helmet_02"
+    ],
+    "hit_helmet_pads": [
+      "hit_helmet_pads_09",
+      "hit_helmet_pads_10",
+      "hit_helmet_pads_08"
+    ],
+    "hit_pads_pads": [
+      "hit_pads_pads_09",
+      "hit_pads_pads_10",
+      "hit_pads_pads_11",
+      "hit_pads_pads_12"
+    ],
+    "hit_body_body": [
+      "hit_body_body_01",
+      "hit_body_body_02",
+      "hit_body_body_04",
+      "hit_body_body_03",
+      "hit_body_body_05"
+    ],
+    "hit_limb_slap": [
+      "hit_limb_slap_01",
+      "hit_limb_slap_02"
+    ],
+    "hit_grab_jersey": [
+      "hit_grab_jersey_01",
+      "hit_grab_jersey_02",
+      "hit_grab_jersey_03"
+    ],
+    "hit_big_layer": [
+      "hit_big_layer_01",
+      "hit_big_layer_03",
+      "hit_big_layer_04"
+    ],
+    "foot_jog": [
+      "foot_jog_09",
+      "foot_jog_10",
+      "foot_jog_11",
+      "foot_jog_12",
+      "foot_jog_13",
+      "foot_jog_14",
+      "foot_jog_15",
+      "foot_jog_16"
+    ],
+    "foot_sprint": [
+      "foot_sprint_09",
+      "foot_sprint_10",
+      "foot_sprint_11",
+      "foot_sprint_12",
+      "foot_sprint_13",
+      "foot_sprint_14",
+      "foot_sprint_15",
+      "foot_sprint_16"
+    ],
+    "foot_plant_skid": [
+      "foot_plant_skid_08",
+      "foot_plant_skid_09",
+      "foot_plant_skid_10"
+    ],
+    "ball_catch": [
+      "ball_catch_08",
+      "ball_catch_09",
+      "ball_catch_07"
+    ],
+    "ball_bounce": [
+      "ball_bounce_01",
+      "ball_bounce_02",
+      "ball_bounce_03",
+      "ball_bounce_04",
+      "ball_bounce_05",
+      "ball_bounce_06",
+      "ball_bounce_07",
+      "ball_bounce_08",
+      "ball_bounce_09",
+      "ball_bounce_10",
+      "ball_bounce_11",
+      "ball_bounce_12"
+    ],
+    "ball_hit_body": [
+      "ball_hit_body_10",
+      "ball_hit_body_09",
+      "ball_hit_body_08"
+    ],
+    "game_whistle_start": [
+      "game_whistle_start_01"
+    ],
+    "crowd_ooh": [
+      "crowd_ooh_01",
+      "crowd_ooh_02"
+    ],
+    "crowd_ambience_loop": [
+      "crowd_ambience_loop_01"
+    ],
+    "ui_move": [
+      "ui_move_09"
+    ],
+    "ui_select": [
+      "ui_select_05"
+    ],
+    "ui_back": [
+      "ui_back_01"
+    ],
+    "ui_slider_tick": [
+      "ui_slider_tick_10"
+    ],
+    "ui_confirm": [
+      "ui_confirm_08"
+    ],
+    "body_turf_tackle": [
+      "body_turf_tackle_12",
+      "body_turf_tackle_11",
+      "body_turf_tackle_10",
+      "body_turf_tackle_09"
+    ],
+    "body_turf_slide": [
+      "body_turf_slide_01",
+      "body_turf_slide_02",
+      "body_turf_slide_03",
+      "body_turf_slide_04",
+      "body_turf_slide_05",
+      "body_turf_slide_06",
+      "body_turf_slide_07",
+      "body_turf_slide_08",
+      "body_turf_slide_09",
+      "body_turf_slide_10"
+    ],
+    "body_dive_land": [
+      "body_dive_land_08",
+      "body_dive_land_09",
+      "body_dive_land_10"
+    ],
+    "body_getup": [
+      "body_getup_07",
+      "body_getup_08",
+      "body_getup_10"
+    ],
+    "air_whoosh": [
+      "air_whoosh_01",
+      "air_whoosh_02",
+      "air_whoosh_03",
+      "air_whoosh_04",
+      "air_whoosh_05",
+      "air_whoosh_06",
+      "air_whoosh_09"
+    ],
+    "voice_grunt": [
+      "voice_grunt_12",
+      "voice_grunt_11",
+      "voice_grunt_10",
+      "voice_grunt_09",
+      "voice_grunt_08",
+      "voice_grunt_07",
+      "voice_grunt_06",
+      "voice_grunt_05",
+      "voice_grunt_04",
+      "voice_grunt_03",
+      "voice_grunt_02",
+      "voice_grunt_01"
+    ],
+    "voice_exhale": [
+      "voice_exhale_10",
+      "voice_exhale_09",
+      "voice_exhale_08",
+      "voice_exhale_07",
+      "voice_exhale_06",
+      "voice_exhale_05",
+      "voice_exhale_04",
+      "voice_exhale_03",
+      "voice_exhale_01",
+      "voice_exhale_02"
+    ]
+  },
+  "character": null,
+  "volumes": {
+    "hit_body_body": 0.85,
+    "hit_pads_pads": 0.45,
+    "hit_helmet_pads": 0.65,
+    "hit_helmet_helmet": 0.3,
+    "hit_limb_slap": 0.3,
+    "hit_grab_jersey": 0.1,
+    "hit_big_layer": 0.6,
+    "foot_jog": 0.55,
+    "foot_sprint": 0.55,
+    "foot_plant_skid": 0.4,
+    "ball_catch": 0.65,
+    "ball_bounce": 0.65,
+    "ball_hit_body": 0.4,
+    "game_whistle_start": 0.25,
+    "game_whistle_end": 0.3,
+    "crowd_ooh": 0.2,
+    "crowd_ambience_loop": 0.1,
+    "ui_move": 0.4,
+    "ui_select": 0.35,
+    "ui_back": 0.65,
+    "ui_slider_tick": 0.65,
+    "ui_confirm": 0.6,
+    "body_turf_tackle": 0.5,
+    "body_turf_slide": 0.05,
+    "body_dive_land": 0.75,
+    "body_getup": 0.25,
+    "air_whoosh": 0.15,
+    "air_wind_loop": 0.05,
+    "voice_grunt": 0.15,
+    "voice_exhale": 0.05
+  },
+  "notes": ""
+}
