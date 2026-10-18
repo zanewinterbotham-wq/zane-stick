@@ -291,8 +291,11 @@ export class HandController implements MotorController {
     const cpOut = this.outsideSupport(xi, ank, headingD);
 
     // ---- mode: quiet standing (capture-point balance) or stepping (SIMBICON-style cycle)
-    // chop feet: quick short steps in place (breaking down on approach); also keeps stepping while held
-    const wantMove = vdMag > 0.15 || speed > 0.45 || cpOut > 0.03 || cmd.chopFeet;
+    // chop feet: quick short steps in place (breaking down on approach); also keeps stepping while held.
+    // A foot left off the ground (e.g. after the last chop) is set back down with a step: standing balance
+    // only holds the hip of a leg it has no load on, and that leg drifts away while the body tips over the other.
+    const footUp = this.legs.some((L) => ank[L.k][1] > L.ankleH + 0.02);
+    const wantMove = vdMag > 0.15 || speed > 0.45 || cpOut > 0.03 || cmd.chopFeet || footUp;
     if (this.standing && wantMove) {
       this.standing = false;
       // first swing: the leg on the side the capture point is leaving through, else the less loaded one
@@ -378,7 +381,7 @@ export class HandController implements MotorController {
     } else {
       const st = this.legs[this.stanceIdx], sw = this.legs[1 - this.stanceIdx];
       st.phase = 'stance'; sw.phase = 'swing';
-      this.stepCycle(v, st, sw, out, c, cv, vd, headingD, fwdD, rightD, w0, stepT, running, pitchD, rollD, ank[st.k], footFwd[st.k], hd);
+      this.stepCycle(v, st, sw, out, c, cv, vd, headingD, fwdD, rightD, w0, stepT, running, cmd.chopFeet, pitchD, rollD, ank[st.k], footFwd[st.k], hd);
       this.dbg = { mode: 'step', stance: st.k, t: this.walkT, stepT, cpOut, speed, vd: vdMag };
     }
 
@@ -440,7 +443,7 @@ export class HandController implements MotorController {
   /** One SIMBICON-style step: the swing thigh is aimed by balance feedback (capture point), the stance
    *  hip holds the trunk upright and cancels the swing hip's reaction, the stance knee/ankle carry weight. */
   private stepCycle(v: BodyView, st: Leg, sw: Leg, out: MuscleTargets, c: Vec3, cv: Vec3, vd: Vec3, headingD: number, fwdD: Vec3, rightD: Vec3,
-    w0: number, T: number, running: boolean, pitchD: number, rollD: number, stAnkle: Vec3, stFwd: Vec3, hd: number) {
+    w0: number, T: number, running: boolean, chop: boolean, pitchD: number, rollD: number, stAnkle: Vec3, stFwd: Vec3, hd: number) {
     const s = v.state, g = this.gains, m = this.mass;
     const pq = this.segQuat(v, this.pelvisSeg), pw = this.segVec(s.segAngVel, this.pelvisSeg);
     const sPh = clamp(this.walkT / T, 0, 1);
@@ -469,7 +472,9 @@ export class HandController implements MotorController {
     // lag, and without the lead the foot arrives late, behind and still high.
     const wPh = clamp((this.walkT + 0.03) / T, 0, 1);
     const u = Math.min(1, wPh / 0.8), ease = u * u * (3 - 2 * u);
-    const clear = running ? g.clearance + 0.02 + 0.02 * Math.hypot(cv[0], cv[2]) : g.clearance;
+    // Steps quicker than a walking step (chopping the feet) lift the foot proportionally less: a high lift has
+    // no time to come back down, so the leg lands late on a bent knee and the swing whips the pelvis around.
+    const clear = running ? g.clearance + 0.02 + 0.02 * Math.hypot(cv[0], cv[2]) : g.clearance * Math.min(1, T / g.stepTMin);
     // height starts from where the ankle lifted off (heel up after push-off), else the IK would press the toes into the turf
     // Late in the swing the target sinks below the turf at the foothold: the IK then reaches out with a straight
     // leg and the foot lands when the leg arrives (a bent-knee landing has to straighten under full load, which
@@ -506,6 +511,7 @@ export class HandController implements MotorController {
     // Push-off: late in stance the heel rises and the ankle plantarflexes (toes stay down), which lengthens
     // the trailing leg and drives the body forward, as in human walking and running. Push-off work grows with
     // the speed the athlete wants (full from 1 m/s); stepping to stop after a shove it would drive the body on.
+    // (This also covers chopping the feet in place: the foot is under the body, and a push-off would shove it back.)
     const push = clamp((sPh - g.pushStart) / Math.max(0.05, 1 - g.pushStart), 0, 1) * clamp(vdS, 0, 1);
     this.stiff(out, st.ankle[0], -g.pushAnkle * push, g.stanceAnkle * (1 + 3 * push));
     this.stiff(out, st.ankle[1], this.levelSole(v, st), g.stanceAnkle); // flat on the turf under a leaning leg
