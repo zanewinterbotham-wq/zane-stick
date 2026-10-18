@@ -514,9 +514,11 @@ export class HandController implements MotorController {
     const h = Math.max(0.4, c[1]);
     // The knee pushes for the height-regulating vertical force (keeps the hips up so the next foot lands
     // on a nearly straight leg). The ankle is scaled by the load this foot actually carries: asking it for
-    // torque against weight that is not on the foot just rolls the foot onto its toes.
+    // torque against weight that is not on the foot just rolls the foot onto its toes. It never exceeds
+    // the planned force either: a landing or bounce spike (1.5–2 g) fed straight back into ankle torque
+    // pushed the heel up, which raised the load further and launched the body.
     const Fy = clamp(m * (G + g.heightKp * (hd - c[1]) - g.heightKd * cv[1]), 0, 2.5 * m * G);
-    const load = clamp(v.feet[st.k].force, 0, 1.5 * m * G);
+    const load = Math.min(Fy, clamp(v.feet[st.k].force, 0, 1.5 * m * G));
     // A stance foot that has been pushed off the ground cannot push back: every ground-force and trunk
     // torque through it is scaled by how loaded it actually is (otherwise it flings the leg).
     const grounded = clamp(v.feet[st.k].force / (0.3 * m * G), 0, 1);
