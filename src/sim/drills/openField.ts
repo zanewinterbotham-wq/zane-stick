@@ -1,40 +1,24 @@
-// Open-field 1-on-1: the human tackles a bot ball carrier. Rep rules: the rep ends only when whoever holds the
-// ball is down (any segment but hands/feet on the ground) or reaches the end zone he attacks. A ball knocked
-// loose stays live: any athlete recovers it by touching it with his trunk (diving on it) or with a raised hand
-// (picking it up), then attacks his own way.
+// The open-field drill as the tests and benchmarks have always driven it: the human tackles a bot ball carrier
+// ('tackle') or carries past a bot tackler ('carry'), one on one. A thin wrapper over the game-mode framework
+// (src/sim/modes): the rules are the shared ones, with the owner's earlier rule that only a tackle or a score ends
+// the rep (out of bounds does not).
 import { DEFAULT_ATHLETE, type AthleteParams } from '../anatomy/body';
-import { BALL } from '../anatomy/equipment';
-import { DEFAULT_SUPPORT, type SupportSettings } from '../anim/types';
-import { DIFFICULTY, type BotDifficulty } from '../brains/carrier';
+import { DEFAULT_SUPPORT } from '../anim/types';
+import { DIFFICULTY } from '../brains/carrier';
 import type { Brain } from '../brains/types';
-import type { Gains } from '../control/hand';
-import type { Gait } from '../control/types';
-import { qaxis, qmul, qrot, type Quat, type Vec3 } from '../math';
-import type { PhysicsEngine, PropDesc } from '../physics/engine';
-import { Rng } from '../rng';
-import { World, type AthleteSetup, type PhysicsSettings, type WorldSetup } from '../world';
-import { makeCarrier, makeTackler } from './brains';
-import { makeController } from './controllers';
+import { OPEN_FIELD_CARRY, OPEN_FIELD_TACKLE } from '../modes/openField';
+import { Play } from '../modes/play';
+import type { PlayConfig } from '../modes/types';
+import type { PhysicsEngine } from '../physics/engine';
 
-export type RepEnd = 'down' | 'touchdown' | 'time' | null;
-export interface OpenFieldConfig {
-  physics: PhysicsSettings;
-  assist: number;
-  seed: number;
-  human: AthleteParams;
+export { BARRIER, GOAL_LINE } from '../modes/rules';
+export type { RepEnd } from '../modes/play';
+
+export interface OpenFieldConfig extends Omit<PlayConfig, 'bot'> {
+  /** The bot's body (he carries in 'tackle', tackles in 'carry'). */
   carrier: AthleteParams;
-  difficulty: BotDifficulty;
-  carrierGait: Gait;
   /** Safety timeout (s): reps end on a tackle or a score; this only stops a rep nobody finishes. */
   timeLimit: number;
-  traction?: number;
-  gains?: Partial<Gains>;
-  /** Active-ragdoll support for both athletes; absent = old balance assist only. */
-  support?: SupportSettings;
-  /** The bot's support toughness (WorldSetup athletes' toughness; 1 = the player's). */
-  toughness?: number;
-  /** Arcade hit power (WorldSetup.hitPower; 1 = pure physics). */
-  hitPower?: number;
   /** 'tackle' (default): the bot carries, the human tackles. 'carry': the human starts with the ball and runs for
    *  the far end zone; the bot tackles. */
   mode?: 'tackle' | 'carry';
@@ -44,173 +28,12 @@ export const DEFAULT_OPEN_FIELD: Omit<OpenFieldConfig, 'physics'> = {
   difficulty: DIFFICULTY.normal, carrierGait: 'jog', timeLimit: 60, support: DEFAULT_SUPPORT,
 };
 
-/** Controller factory applying tuned gains (same for human and bot: bots get no special treatment). */
-const ctl = (cfg: OpenFieldConfig): AthleteSetup['controller'] => (p, m) => makeController(p, m, 'tracking', cfg.gains);
-
-const HALF_WIDTH = (160 / 3) * 0.9144 / 2; // 24.38 m
-/** Padded wall round the playing area (end zones included), `gap` m beyond the sidelines and end lines: static
- *  boxes of the physics scene, so athletes and the ball meet it like any other body. The stadium art draws it. */
-export const BARRIER = { gap: 5, halfWidth: HALF_WIDTH + 5, halfLength: 60 * 0.9144 + 5, height: 4, thickness: 1 };
-function barrierProps(): PropDesc[] {
-  const { halfWidth: hw, halfLength: hl, height: h, thickness: t } = BARRIER, hh = h / 2, ht = t / 2;
-  // each wall's inner face sits on the line; the end walls span the corners too
-  const wall = (name: string, pos: Vec3, size: number[]): PropDesc => ({ name, shape: 'box', size, mass: 0, pos, friction: 0.3, soft: true, hidden: true });
-  return [
-    wall('wall+x', [hw + ht, hh, 0], [ht, hh, hl + t]), wall('wall-x', [-hw - ht, hh, 0], [ht, hh, hl + t]),
-    wall('wall+z', [0, hh, hl + ht], [hw + t, hh, ht]), wall('wall-z', [0, hh, -hl - ht], [hw + t, hh, ht]),
-  ];
-}
-/** Goal lines at ±50 yd. The bot (team 1) attacks −Z, the human's goal line behind his start; the human, once
- *  he has the ball, attacks +Z. */
-export const GOAL_LINE = 50 * 0.9144;
-const attackDir = (team: 0 | 1): 1 | -1 => (team === 1 ? -1 : 1);
-/** Segments that recover a loose ball: the trunk ('trunk' is the minimum body's fused one). */
-const TORSO = /^(pelvis|lumbar|thorax|trunk)$/;
-/** A raised hand this close to the loose ball (m, hand surface to ball tip) picks it up: the fingers the hand model lacks
- *  close the last few cm (the rig stoops to about 0.35 m above the turf, a ball lying on it is ~0.3 m below that). */
-const HAND_NEAR = 0.1;
-/** Off the turf this long counts as up (s): a body lying on the turf flickers out of contact for a few steps. */
-const UP_TIME = 0.5;
-
-export class OpenFieldDrill {
-  rep = 0;
-  repStart = 0;
-  ended: RepEnd = null;
-  endTime = 0;
-  /** Index of the ball in the world's props, the bot's athlete index (he starts with the ball), and the human's. */
-  readonly ball = 0;
-  readonly carrier = 1;
-  readonly human = 0;
-  /** Fumbles this rep, and who recovered the last one (−1: none yet). */
-  fumbles = 0;
-  recoveredBy = -1;
-  /** The athlete who last lost the ball: he can recover it only once it has been clear of his body. */
-  private fumbler = -1;
-  private clear = false;
-  /** How long the holder has been off the turf since he got the ball (s). Recovered on the ground (a dive), he is
-   *  down only once an opponent touches him (down by contact) until he has been up UP_TIME, so he can get up and run. */
-  private upT = UP_TIME;
-  private readonly ballRef = { athlete: -1, seg: this.ball };
-
-  /** `brains`: what each athlete thinks with; the world's brains delegate here, so the drill can swap the bot's. */
-  private constructor(public world: World, readonly cfg: OpenFieldConfig, readonly brains: Brain[], private rng: Rng) {}
-
-  static async create(engine: PhysicsEngine, cfg: OpenFieldConfig, humanBrain: Brain, rep = 0): Promise<OpenFieldDrill> {
-    const rng = new Rng(cfg.seed * 7919 + rep * 104729);
-    const hx = rng.range(-2, 2), cx = hx + rng.range(-3, 3), gap = rng.range(10, 14);
-    const carry = cfg.mode === 'carry', botRng = new Rng(rng.next() * 1e9);
-    const brains: Brain[] = [humanBrain, carry ? makeTackler(botRng, cfg.difficulty) : makeCarrier(botRng, cfg.difficulty, cfg.carrierGait)];
-    // whoever holds the ball keeps it tucked in the right arm (a human's input has no carry button)
-    const possess = (i: number): Brain => ({ think: (p, dt) => { const c = brains[i].think(p, dt); if (p.athletes[i].hasBall) c.carry = 2; return c; } });
-    const setup: WorldSetup = {
-      physics: cfg.physics, seed: cfg.seed + rep, assist: cfg.assist, traction: cfg.traction, hitPower: cfg.hitPower,
-      field: { halfWidth: HALF_WIDTH, goalZ: attackDir(1) * GOAL_LINE, dirZ: attackDir(1) },
-      athletes: [
-        { params: cfg.human, pos: [hx, 0, 0], yaw: 0, team: 0, controller: ctl(cfg), brain: possess(0), hasBall: carry },
-        { params: cfg.carrier, pos: [cx, 0, gap], yaw: Math.PI, team: 1, controller: ctl(cfg), brain: possess(1), hasBall: !carry, toughness: cfg.toughness },
-      ],
-      // ball parked under the field until the carrier has tucked his arm (setup only)
-      props: [{ name: 'ball', shape: 'ellipsoid', size: [BALL.diameter / 2, BALL.diameter / 2, BALL.length / 2], mass: BALL.mass, pos: carry ? [hx, -5, 0] : [cx, -5, gap], friction: 0.8 }, ...barrierProps()],
-      support: cfg.support && { ...cfg.support },
-    };
-    const world = await World.create(engine, setup);
-    const d = new OpenFieldDrill(world, cfg, brains, new Rng(rng.next() * 1e9));
-    d.rep = rep;
-    d.setup();
-    return d;
-  }
-
-  /** Pre-roll: let both settle and the ball holder tuck his arm, then put the ball in his hand and grip it. */
-  private setup() {
-    const w = this.world, bot = this.brains[this.carrier];
-    // hold the bot still while the holder tucks (the human brain has no input yet during the pre-roll)
-    this.brains[this.carrier] = { think: (p, dt) => ({ ...bot.think({ ...p, time: -1 }, dt), move: { x: 0, z: 0 }, dive: false }) };
-    for (let i = 0; i < Math.round(0.5 / w.dt); i++) w.step();
-    this.brains[this.carrier] = bot;
-    this.tuck(this.cfg.mode === 'carry' ? this.human : this.carrier);
-    this.repStart = w.time;
-  }
-
-  /** Put the ball in athlete ai's right hand and grip it (rep start, and a fumble recovery). */
-  private tuck(ai: number) {
-    const w = this.world, a = w.athletes[ai], s = w.scene.athletes[ai].state;
-    if (a.grips[1].active) w.releaseGrip(ai, 1); // a recovering hand may be holding something else
-    const hi = a.handSegs[1], seg = a.plan.segments[hi];
-    const hq: Quat = [s.segQuat[4 * hi], s.segQuat[4 * hi + 1], s.segQuat[4 * hi + 2], s.segQuat[4 * hi + 3]];
-    // Ball against the palm (palm faces the body for the right hand: +X in hand frame), long axis along the hand,
-    // gripped at the palm surface. Placed overlapping the hand, the contact pushed it out against the grip with
-    // ~2 kN and broke the grip on the first steps of every rep. The gap clears the contact margin (5 mm), so the
-    // grip carries only the ball's own load, not a squeeze against the hand.
-    const g = seg.geoms.find((x) => x.role === 'hand' && x.type === 'box');
-    const centre: Vec3 = g ? [g.pos![0] - seg.origin[0], g.pos![1] - seg.origin[1], g.pos![2] - seg.origin[2]] : [0, -0.05, 0];
-    const half = g ? g.size[0] : 0.02;
-    const at = (x: number): Vec3 => { const p = qrot(hq, [centre[0] + x, centre[1], centre[2]]); return [s.segPos[3 * hi] + p[0], s.segPos[3 * hi + 1] + p[1], s.segPos[3 * hi + 2] + p[2]]; };
-    const ballQuat = qmul(hq, qaxis([1, 0, 0], Math.PI / 2));
-    // On a recovery this moves the ball from under the trunk to the palm: the possession rule standing in for a
-    // scoop the hands (no fingers) cannot do.
-    w.scene.placeProp(this.ball, at(half + BALL.diameter / 2 + 0.008), ballQuat);
-    w.attachGrip(ai, 1, this.ballRef, at(half));
-    w.ballCarrier = ai;
-    const dirZ = attackDir(a.setup.team);
-    w.setup.field = { halfWidth: HALF_WIDTH, goalZ: dirZ * GOAL_LINE, dirZ };
-  }
-
-  get repTime() { return this.world.time - this.repStart; }
-
-  step() {
-    this.world.step();
-    if (this.ended) return;
-    const w = this.world, hi = w.ballCarrier;
-    if (hi >= 0) {
-      const a = w.athletes[hi], s = w.scene.athletes[hi].state;
-      if (this.upT < UP_TIME) this.upT = a.downBy ? 0 : this.upT + w.dt;
-      // checked before the grip: a ball that comes out on the step he lands was still held when he went down
-      if (a.downBy && (this.upT >= UP_TIME || a.playerContact)) return this.end('down');
-      if (w.gripping(hi, this.ballRef) < 0) this.fumble(hi);
-      else if (s.com[2] * attackDir(a.setup.team) > GOAL_LINE) return this.end('touchdown');
-    }
-    if (w.ballCarrier < 0) this.loose();
-    if (this.repTime > this.cfg.timeLimit) this.end('time');
-  }
-
-  private fumble(ai: number) {
-    this.world.ballCarrier = -1;
-    this.fumbler = ai; this.clear = false; this.fumbles++;
-    if (ai === this.carrier) this.brains[this.carrier] = makeTackler(this.rng, this.cfg.difficulty);
-  }
-
-  /** Loose ball: the first athlete to get it recovers it, with a trunk touching it (diving on it) or a raised hand
-   *  that touches it or is within HAND_NEAR of it (picking it up). */
-  private loose() {
-    const w = this.world, bp = w.scene.propPose(this.ball).pos;
-    let by = -1, fumblerTouch = false;
-    const take = (i: number) => {
-      if (i === this.fumbler) fumblerTouch = true;
-      return i !== this.fumbler || this.clear;
-    };
-    w.athletes.forEach((a, i) => {
-      for (const h of [0, 1] as const) {
-        const hp = w.handPoint(a, h), near = Math.hypot(hp[0] - bp[0], hp[1] - bp[1], hp[2] - bp[2]) - a.handGeoms[h].half - BALL.length / 2 < HAND_NEAR;
-        // grips form after the physics step, so one formed on the ball this step has not pulled on it yet
-        const held = w.gripping(i, this.ballRef) === h;
-        if (held) w.releaseGrip(i, h);
-        if ((near || held) && take(i) && by < 0 && w.raised(a, h)) by = i;
-      }
-    });
-    for (const c of w.scene.contacts()) for (const [p, o] of [[c.a, c.b], [c.b, c.a]] as const) {
-      if (p.athlete >= 0 || p.seg !== this.ball || o.athlete < 0) continue;
-      const a = w.athletes[o.athlete];
-      if (TORSO.test(a.plan.segments[o.seg].name) && take(o.athlete) && by < 0) by = o.athlete;
-      else if (o.athlete === this.fumbler) fumblerTouch = true;
-    }
-    this.clear ||= !fumblerTouch;
-    if (by < 0) return;
-    this.tuck(by);
-    this.recoveredBy = by; this.upT = 0;
-    this.brains[this.carrier] = by === this.carrier ? makeCarrier(this.rng, this.cfg.difficulty, this.cfg.carrierGait) : makeTackler(this.rng, this.cfg.difficulty);
-  }
-
-  private end(reason: RepEnd) { this.ended = reason; this.endTime = this.world.time; }
-
-  destroy() { this.world.destroy(); }
-}
+/** A play with the drill's names: the bot is athlete `carrier` (1), whatever he does. */
+export type OpenFieldDrill = Play;
+export const OpenFieldDrill = {
+  async create(engine: PhysicsEngine, cfg: OpenFieldConfig, humanBrain: Brain, rep = 0): Promise<OpenFieldDrill> {
+    const { carrier, timeLimit, mode, ...rest } = cfg;
+    const def = mode === 'carry' ? OPEN_FIELD_CARRY : OPEN_FIELD_TACKLE;
+    return Play.create(engine, { ...rest, bot: carrier }, def, { outOfBounds: false, timeLimit, tacklers: 1, blockers: 0 }, humanBrain, rep);
+  },
+};

@@ -191,7 +191,7 @@ export class World {
         com: [...s.com] as Vec3, comVel: [...s.comVel] as Vec3,
         pelvis: [s.segPos[3 * pi], s.segPos[3 * pi + 1], s.segPos[3 * pi + 2]],
         head: [s.segPos[3 * hi], s.segPos[3 * hi + 1], s.segPos[3 * hi + 2]],
-        heading: headingOf(fwd), down: a.downBy !== null, hasBall: a.index === this.ballCarrier,
+        heading: headingOf(fwd), down: a.downBy !== null, hasBall: a.index === this.ballCarrier, team: a.setup.team,
       };
     });
     const bi = this.ballIndex;
@@ -457,7 +457,8 @@ export class World {
         } else {
           if (o.athlete >= 0 && o.athlete !== p.athlete) { a.playerContactNow = true; if (!a.touching.includes(o.athlete)) a.touching.push(o.athlete); }
           const hand = a.handSegs.indexOf(p.seg);
-          if (hand >= 0 && (o.athlete !== p.athlete)) a.handTouch[hand] = { athlete: o.athlete, seg: o.seg, pos: c.pos };
+          // a hand closes on props and opponents, never on a teammate (a blocker must not grab his own runner)
+          if (hand >= 0 && (o.athlete < 0 || this.athletes[o.athlete].setup.team !== a.setup.team)) a.handTouch[hand] = { athlete: o.athlete, seg: o.seg, pos: c.pos };
         }
       }
       if (c.a.athlete >= 0 && c.b.athlete >= 0 && c.a.athlete !== c.b.athlete) {

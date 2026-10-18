@@ -5,7 +5,10 @@ import type { SupportSettings } from '../sim/anim/types';
 import { HumanBrain } from '../sim/brains/human';
 import { carrierSkill } from '../sim/brains/carrier';
 import { DEFAULT_GAINS } from '../sim/control/hand';
-import { DEFAULT_OPEN_FIELD, OpenFieldDrill } from '../sim/drills/openField';
+import { DEFAULT_OPEN_FIELD } from '../sim/drills/openField';
+import { Play } from '../sim/modes/play';
+import { modeById } from '../sim/modes/registry';
+import type { ModeDef, ModeOptions } from '../sim/modes/types';
 import { headingOf, qrot } from '../sim/math';
 import { mujocoEngine } from '../sim/physics/mujoco';
 import { carrierVsTacklerScenario, pushScenario, runScenario, standScenario, type Scenario } from '../sim/scenarios';
@@ -22,6 +25,7 @@ import { GameRenderer, RENDER_PRESETS } from './render/renderer';
 import { DEFAULT_SETTINGS, DIFFICULTY_PRESETS, GAME_SUPPORT, PLAYER_BASE, difficultyOf, loadSettings, saveSettings, type Settings } from './settings';
 import { skinById, unlockedSkins } from './render/skin';
 import { CATEGORIES, equipItem } from './inventory';
+import { modeMenu, savedOptions } from './modes';
 import { el, Hud, inventoryPanel, Layer, menu, moveFocus } from './ui';
 
 /** Rebindable actions on the Controls screen: binding name, what it does, controller button. */
@@ -96,7 +100,7 @@ class App {
   layer = new Layer();
   renderer: GameRenderer | null = null;
   rendererPreset: PresetName | null = null;
-  drill: OpenFieldDrill | null = null;
+  drill: Play | null = null;
   human = new HumanBrain();
   cam = new ChaseCamera();
   paused = true;
@@ -114,8 +118,12 @@ class App {
   rep = 0;
   peakShown = false;
   endWhistled = false;
-  /** Open-field mode: tackle the bot carrier, or carry the ball past the bot tackler. */
-  drillMode: 'tackle' | 'carry' = 'tackle';
+  /** The game mode being played and its options; the session score (your team, the bots') and whether this rep's
+   *  points are counted yet. */
+  mode: ModeDef = modeById('tackle');
+  modeOpts: ModeOptions = {};
+  score: [number, number] = [0, 0];
+  scored = false;
   startHeld = 0;
   pausedAt = 0;
   /** Keyboard lock is active (fullscreen): Ctrl+W reaches the game instead of closing the tab. */
@@ -176,9 +184,10 @@ class App {
     this.input.capture = false;
     document.exitPointerLock?.();
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    const last = modeById(this.settings.mode ?? 'tackle');
     this.layer.show(menu('ZANE STICK', [
-      { label: 'Open field: tackle the carrier', hint: 'Enter / A', action: () => this.startDrill('tackle') },
-      { label: 'Open field: carry the ball (the bot tackles)', action: () => this.startDrill('carry') },
+      { label: `Quick play: ${last.title}`, hint: 'Enter / A', action: () => void this.startDrill(last, savedOptions(this.settings, last)) },
+      { label: 'Play', hint: 'choose a game mode', action: () => this.modes() },
       { label: `Difficulty: ${DIFF_LABEL[difficultyOf(this.settings)]}`, hint: 'next rep', action: () => this.difficulty() },
       { label: 'Controls', action: () => this.controls() },
       { label: 'Key test', action: () => this.keyTest() },
@@ -189,8 +198,16 @@ class App {
     ], 'Physics football. Every movement is muscles on a simulated body.'));
   }
 
-  async startDrill(mode: 'tackle' | 'carry' = 'tackle') {
-    this.drillMode = mode;
+  /** The Play screen: game modes, each with its setup. */
+  modes() {
+    const hooks = { show: (e: HTMLElement) => this.layer.show(e), start: (m: ModeDef, o: ModeOptions) => void this.startDrill(m, o), back: () => this.title(), save: () => this.save() };
+    this.layer.show(modeMenu(this.settings, hooks));
+  }
+
+  async startDrill(mode: ModeDef, options: ModeOptions) {
+    if (mode !== this.mode || JSON.stringify(options) !== JSON.stringify(this.modeOpts)) this.score = [0, 0];
+    this.mode = mode; this.modeOpts = options;
+    this.settings.mode = mode.id; this.save();
     this.layer.hide();
     this.enterPlay();
     this.audio.unlock();
@@ -206,6 +223,7 @@ class App {
     this.hud.showResult(null);
     this.peakShown = false;
     this.endWhistled = false;
+    this.scored = false;
     this.input.resetToggles();
     // The rep's pre-roll steps the human brain with the last input: a camera still turned from the previous rep
     // (e.g. running back after a fumble) and a held key would turn the athlete around before the rep starts.
@@ -215,11 +233,11 @@ class App {
     const p = this.preset;
     const s = this.settings;
     this.human.steerAssist = s.steerAssist;
-    this.drill = await OpenFieldDrill.create(mujocoEngine, {
-      ...DEFAULT_OPEN_FIELD, physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), toughness: s.toughness, hitPower: s.hitPower,
-      mode: this.drillMode, human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, traction: s.traction, gains: s.gains,
+    this.drill = await Play.create(mujocoEngine, {
+      physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), toughness: s.toughness, hitPower: s.hitPower, carrierGait: DEFAULT_OPEN_FIELD.carrierGait,
+      human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, bot: DEFAULT_OPEN_FIELD.carrier, traction: s.traction, gains: s.gains,
       support: { ...GAME_SUPPORT, ...s.support },
-    }, this.human, this.rep++);
+    }, this.mode, this.modeOpts, this.human, this.rep++);
     if (!this.renderer || this.rendererPreset !== p.name) {
       this.renderer?.renderer.dispose();
       this.renderer = new GameRenderer(canvas, p.render);
@@ -627,10 +645,12 @@ class App {
   updateHud() {
     const d = this.drill!, w = d.world, me = w.athletes[0];
     const sup = w.view(me).support; // present once the world runs the active-ragdoll support
-    const mode = this.human.contact ? 'CONTACT (auto)' : 'MOVEMENT';
+    const mode = this.human.contact ? 'CONTACT (auto)' : 'MOVEMENT', bc = w.ballCarrier, line = d.mode.status?.(d);
+    if (d.ended && !this.scored) { this.scored = true; if (d.scorer >= 0) this.score[d.scorer as 0 | 1] += d.points; }
     this.hud.setStatus([
-      `${this.drillMode === 'carry' ? 'BALL CARRIER' : 'OPEN FIELD'}  ·  Rep ${d.rep + 1}  ·  ${Math.min(d.repTime, d.cfg.timeLimit).toFixed(1)} s`,
-      `Ball: ${w.ballCarrier === d.human ? 'YOU HAVE IT — score at the far end zone' : w.ballCarrier < 0 ? 'LOOSE — dive on it' : 'carrier'}   ·   Mode: ${mode}${this.human.latest?.shiftLock ? '  ·  SIDE SHUFFLE' : ''}${this.timeScale < 1 ? '   SLOW MOTION' : ''}`,
+      `${this.mode.title.toUpperCase()}  ·  Rep ${d.rep + 1}  ·  ${Math.min(d.repTime, d.rules.timeLimit).toFixed(1)} s  ·  Score: you ${this.score[0]}, bots ${this.score[1]}`,
+      ...(line ? [line] : []),
+      `Ball: ${bc === d.human ? 'YOU HAVE IT — get it over the goal line' : bc < 0 ? 'LOOSE — dive on it' : d.team(bc) === 0 ? 'your teammate' : 'carrier'}   ·   Mode: ${mode}${this.human.latest?.shiftLock ? '  ·  SIDE SHUFFLE' : ''}${this.timeScale < 1 ? '   SLOW MOTION' : ''}`,
       sup ? `Support ${((d.cfg.support?.strength ?? 1) * 100).toFixed(0)}%  ·  posture ${(sup.posture * 100).toFixed(0)}%  ·  carry ${(sup.carry * 100).toFixed(0)}%${sup.down ? '  ·  DOWN' : ''}`
         : `Balance assist ${(this.settings.assist * 100).toFixed(0)}%${me.assistLevel < 1 ? ` (fading ${(me.assistLevel * 100).toFixed(0)}%)` : ''}`,
     ]);
@@ -648,10 +668,8 @@ class App {
     if (d.ended && !this.peakShown && w.time - d.endTime > 0.6) {
       this.peakShown = true;
       const imp = w.impact;
-      const mine = w.ballCarrier === d.human;
-      const result = d.ended === 'time' ? 'Time' : mine ? (d.ended === 'touchdown' ? 'Touchdown!' : 'Tackled')
-        : d.ended === 'touchdown' ? 'Missed — touchdown' : imp.firstContactTime < 0 ? 'Carrier fell (no contact)' : 'Tackle — carrier down';
-      const fumble = d.recoveredBy === d.human ? 'Fumble recovered by you' : d.recoveredBy >= 0 ? 'Fumble recovered by the carrier' : '';
+      const result = resultTitle(d);
+      const fumble = d.recoveredBy === d.human ? 'Fumble recovered by you' : d.recoveredBy >= 0 ? `Fumble recovered by ${d.team(d.recoveredBy) === 0 ? 'your teammate' : 'the bots'}` : '';
       const title = fumble ? `${fumble}  ·  ${result}` : result;
       const ms = (v: number) => `${v.toFixed(1)} m/s (${(v * MPH).toFixed(1)} mph)`;
       // impulse over 30 ms, and the mean force it implies; the per-step peak force is a stiff-contact spike
@@ -664,11 +682,26 @@ class App {
           ['Closing speed', ms(imp.closingSpeed)],
           ['Hardest hit', best ? J(best) : '—'],
           ['Peak head accel (you)', `${imp.peakHeadG[0].toFixed(0)} g`],
-          ['Peak head accel (carrier)', `${imp.peakHeadG[1].toFixed(0)} g`],
+          ['Peak head accel (athlete 2)', `${imp.peakHeadG[1].toFixed(0)} g`],
+          ...(d.points ? [['Points', `${d.points} to ${d.scorer === 0 ? 'you' : 'the bots'}  ·  score: you ${this.score[0]}, bots ${this.score[1]}`] as [string, string]] : []),
         ] : [['Contact', 'none']],
         foot: 'Enter / Start: next rep   ·   head acceleration is a 60 Hz-filtered estimate',
       });
     }
+  }
+}
+
+/** The result card's title, from the human's side (his team is team 0). */
+function resultTitle(d: Play): string {
+  if (d.verdict) return d.verdict;
+  const bc = d.world.ballCarrier, me = bc === d.human, ours = bc >= 0 && d.team(bc) === 0;
+  switch (d.ended) {
+    case 'time': return 'Time';
+    case 'touchdown': return d.scorer === 0 ? 'Touchdown!' : 'Missed — touchdown';
+    case 'safety': return d.scorer === 0 ? 'Safety! Two points' : 'Safety against you';
+    case 'touchback': return 'Touchback';
+    case 'out': return bc < 0 ? 'Ball out of bounds' : me ? 'You went out of bounds' : ours ? 'Your runner went out of bounds' : 'Carrier out of bounds';
+    default: return me ? 'Tackled' : ours ? 'Your runner was tackled' : d.world.impact.firstContactTime < 0 ? 'Carrier down (no contact)' : 'Tackle — carrier down';
   }
 }
 

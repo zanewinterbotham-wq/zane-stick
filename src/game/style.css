@@ -74,3 +74,19 @@ table.controls .bind:hover { background: #2c4431; }
 .inv-card.equipped .equip { color: var(--accent); border-color: var(--accent); }
 .inventory > .item { margin-top: 12px; }
 @media (max-width: 700px) { .inv-grid[data-cat=skins] { grid-template-columns: repeat(2, 1fr); } .inv-grid { grid-template-columns: 1fr; } }
+
+/* play: game modes and their setup */
+.mode-card { padding: 0; text-align: left; cursor: pointer; font: inherit; color: var(--ink); background: #142019; }
+.mode-card:focus-visible { border-color: var(--accent); }
+.mode-card .inv-info { padding-bottom: 12px; }
+.mode-setup .mode-head { display: grid; grid-template-columns: minmax(160px, 260px) 1fr; gap: 16px; align-items: center; margin: 8px 0 14px; }
+.mode-setup .mode-head .pic { aspect-ratio: 16 / 9; border-radius: 8px; overflow: hidden; background: #0c150e; }
+.mode-setup .mode-head .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mode-setup .mode-head .sub { margin: 0; }
+.mode-options { margin-bottom: 10px; }
+.mode-options .toggle { min-width: 64px; justify-self: start; cursor: pointer; }
+.mode-options .toggle[aria-pressed=true], .choices button[aria-pressed=true] { background: #2c4431; color: var(--accent); border-color: var(--accent); }
+.choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.choices button { cursor: pointer; }
+.mode-setup .start { margin-bottom: 8px; font-weight: 700; color: var(--accent); }
+@media (max-width: 700px) { .mode-setup .mode-head { grid-template-columns: 1fr; } }

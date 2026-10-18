@@ -87,7 +87,7 @@ export class CarrierBrain implements Brain {
     // nearest standing opponent as seen
     let opp: AthleteView | null = null, best = Infinity;
     seen.athletes.forEach((a, i) => {
-      if (i === p.self || a.down) return;
+      if (a.team === me.team || a.down) return;
       const d = Math.hypot(a.com[0] - me.com[0], a.com[2] - me.com[2]);
       if (d < best) { best = d; opp = predict(a, p.time - seen.time); }
     });

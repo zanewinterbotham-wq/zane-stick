@@ -80,7 +80,7 @@ export class HumanBrain implements Brain {
   private steer(p: Perception, mx: number, mz: number): [number, number] {
     const me = p.athletes[p.self], k = this.steerAssist;
     if (k <= 0 || me.hasBall) return [mx, mz];
-    const carrier = p.athletes.find((a, j) => j !== p.self && a.hasBall);
+    const carrier = p.athletes.find((a) => a.hasBall && a.team !== me.team);
     const t = carrier ? carrier.com : !p.athletes.some((a) => a.hasBall) ? p.ball?.pos : undefined;
     if (!t) return [mx, mz];
     const dx = t[0] - me.com[0], dz = t[2] - me.com[2], d = Math.hypot(dx, dz), m = Math.hypot(mx, mz);
@@ -108,10 +108,8 @@ export class HumanBrain implements Brain {
     const me = p.athletes[p.self];
     const hx = Math.sin(me.heading), hz = Math.cos(me.heading);
     let best = Infinity, bestCos = -1;
-    // shortcut: Perception has no team yet, so every other standing athlete counts as an opponent; add a team
-    // to AthleteView when a drill has teammates.
-    p.athletes.forEach((a, j) => {
-      if (j === p.self || a.down) return;
+    p.athletes.forEach((a) => {
+      if (a.team === me.team || a.down) return;
       const dx = a.com[0] - me.com[0], dz = a.com[2] - me.com[2], d = Math.hypot(dx, dz);
       if (d < best) { best = d; bestCos = d > 1e-6 ? (dx * hx + dz * hz) / d : 1; }
     });

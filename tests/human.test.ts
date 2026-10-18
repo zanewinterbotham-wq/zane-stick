@@ -6,8 +6,8 @@ import { DEFAULT_OPEN_FIELD, OpenFieldDrill } from '../src/sim/drills/openField'
 import { mujocoEngine } from '../src/sim/physics/mujoco';
 import { STD } from './helpers/scenario';
 
-const view = (x: number, z: number, heading = 0): AthleteView => ({ com: [x, 1, z], comVel: [0, 0, 0], pelvis: [x, 1, z], head: [x, 1.8, z], heading, down: false, hasBall: false });
-const perceive = (carrier: AthleteView): Perception => ({ time: 0, self: 0, athletes: [view(0, 0), { ...carrier, hasBall: true }], field: { halfWidth: 24, goalZ: 50, dirZ: 1 } });
+const view = (x: number, z: number, heading = 0): AthleteView => ({ com: [x, 1, z], comVel: [0, 0, 0], pelvis: [x, 1, z], head: [x, 1.8, z], heading, down: false, hasBall: false, team: 1 });
+const perceive = (carrier: AthleteView): Perception => ({ time: 0, self: 0, athletes: [{ ...view(0, 0), team: 0 }, { ...carrier, hasBall: true }],field: { halfWidth: 24, goalZ: 50, dirZ: 1 } });
 const input = (o: Partial<HumanInput> = {}): HumanInput => ({ move: { x: 0, y: 1 }, torso: 0, sprint: 0, sink: 0, armL: 0, armR: 0, held: new Set(), cameraYaw: 0, aimPitch: 0, ...o });
 
 describe('HumanBrain', () => {

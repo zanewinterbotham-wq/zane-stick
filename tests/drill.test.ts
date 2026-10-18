@@ -1,5 +1,5 @@
-// Open-field rep rules: the rep ends only on the ball carrier going down or scoring; a loose ball is live and is
-// recovered by the trunk (a dive) or by a raised hand (a pickup). Scripted, headless and deterministic.
+// Open-field rep rules: the rep ends only on the ball carrier going down (by contact) or scoring; a loose ball is
+// live and is recovered by the trunk (a dive) or by a raised hand (a pickup). Scripted, headless and deterministic.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BALL } from '../src/sim/anatomy/equipment';
 import { CarrierBrain } from '../src/sim/brains/carrier';
@@ -60,14 +60,15 @@ async function humanRecovers(after: Script = () => {}) {
 }
 
 describe('open-field rep end', () => {
-  it('ends when the carrier goes down with the ball', async () => {
-    let t0 = Infinity;
+  it('a carrier who dives untouched is not down (NFL): he gets up with the ball and the rep goes on', async () => {
+    let t0 = Infinity, turf = false;
     const d = await drill(still());
     d.brains[d.carrier] = script(diveAt(() => t0, -1));
     t0 = d.world.time + 0.3;
-    run(d, 4);
-    console.log('carrier dive: ended', d.ended, 'at', d.repTime.toFixed(2), 's, fumbles', d.fumbles);
-    expect(d.ended).toBe('down');
+    run(d, 4, () => { turf ||= d.world.athletes[d.carrier].downBy !== null; });
+    console.log('carrier dive: on the turf', turf, ', ended', d.ended, 'at', d.repTime.toFixed(2), 's, fumbles', d.fumbles);
+    expect(turf).toBe(true);
+    expect(d.ended).toBe(null);
     expect(d.world.ballCarrier).toBe(d.carrier);
     expect(d.world.scene.stats().instabilities).toBe(0);
     d.destroy();
@@ -147,10 +148,10 @@ describe('fumble recovery', () => {
     expect(d.world.ballCarrier).toBe(d.human);
     d.brains[d.carrier] = still();
     run(d, 14);
-    const z = d.world.scene.athletes[d.human].state.com[2];
-    console.log('human run: ended', d.ended, 'at', d.repTime.toFixed(1), 's, z', z.toFixed(1));
+    const z = d.ballPos()[2];
+    console.log('human run: ended', d.ended, 'at', d.repTime.toFixed(1), 's, ball z', z.toFixed(2), ', body z', d.world.scene.athletes[d.human].state.com[2].toFixed(2));
     expect(d.ended).toBe('touchdown');
-    expect(z).toBeGreaterThan(GOAL_LINE);
+    expect(z).toBeGreaterThan(GOAL_LINE); // the ball breaks the plane, not the body
     expect(d.world.ballCarrier).toBe(d.human);
     d.destroy();
   });

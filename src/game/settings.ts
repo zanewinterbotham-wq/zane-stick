@@ -30,6 +30,8 @@ export interface Settings {
   skin: string;                  // character skin id (src/game/skins.json, or 'classic')
   stadium: string;               // stadium id (src/game/stadiums.json, or 'field' for the Open Field)
   goreLevel: number;             // injury effects 0..4: none (stars) .. very high (render/effects.ts GORE_LEVELS)
+  mode?: string;                 // last game mode played (src/sim/modes/registry.ts id)
+  modeOptions?: Record<string, Record<string, unknown>>; // each mode's options as last set in the mode menu
 }
 
 /** Owner's tuned baseline for Normal (2026-10-18): the player's strength and speed at 1x, and the carry

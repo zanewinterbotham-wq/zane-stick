@@ -8,6 +8,7 @@ import { neutralCommands, type Commands } from '../control/types';
 import { clamp, wrapAngle, type Vec3 } from '../math';
 import type { Rng } from '../rng';
 import type { BotDifficulty } from './carrier';
+import { blockerInWay, shed, shedSide } from './shed';
 import type { AthleteView, Brain, Perception } from './types';
 
 /** Speed the intercept is planned at (m/s) and its longest lead (s); aim this far to the carrier's goal side
@@ -53,6 +54,7 @@ export class TacklerBrain implements Brain {
   private aimErr = 0; private aimUntil = 0;
   private dived = false; private wasDown = false;
   private plantSide: -1 | 1 = 1; private plantUntil = 0; private plantFree = 0;
+  private side: -1 | 1 = 1;
   phase: Phase = 'pursue';
   private phaseUntil = 0;
   private breakTtc: number;
@@ -68,13 +70,19 @@ export class TacklerBrain implements Brain {
     // a dive (or being knocked down) is over once back on the feet: another one may follow
     if (me.down) this.wasDown = true;
     else if (this.wasDown) { this.wasDown = false; this.dived = false; }
-    const ti = seen.athletes.findIndex((a, i) => i !== p.self && a.hasBall);
-    // shortcut: a tackler that recovers the ball just holds still; give it a carrier brain when a drill lets
-    // the defence run a recovery back.
-    if (me.down || me.hasBall) return c;
+    const ti = seen.athletes.findIndex((a) => a.hasBall && a.team !== me.team);
+    // shortcut: a tackler that recovers the ball, or whose teammate has it, just holds still; the play gives him a
+    // carrier or blocker brain on every change of possession.
+    if (me.down || me.hasBall || (ti < 0 && seen.athletes.some((a) => a.hasBall))) return c;
     if (ti >= 0) {
       const t = predict(seen.athletes[ti], p.time - seen.time);
-      if (t.down) this.touch(me, t, dt, c); else this.tackle(p, me, t, dt, c);
+      const b = t.down ? null : blockerInWay(seen, me, t);
+      if (b) {
+        // a blocker between us: get off him first (shed.ts)
+        this.side = shedSide(me, b, t, this.side); this.phase = 'pursue';
+        const [vx, vz] = shed(me, b, t, this.side, c);
+        this.run(me, vx, vz, dt, c);
+      } else if (t.down) this.touch(me, t, dt, c); else this.tackle(p, me, t, dt, c);
     }
     else if (seen.ball) this.recover(me, seen.ball, p.time - seen.time, dt, c);
     return c;

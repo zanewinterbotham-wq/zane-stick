@@ -11,7 +11,7 @@ import { Rng } from '../src/sim/rng';
 import type { PhysicsSettings } from '../src/sim/world';
 
 const DT = 1 / 240;
-const view = (com: Vec3, vel: Vec3, hasBall = false, heading = 0): AthleteView => ({ com, comVel: vel, pelvis: com, head: [com[0], 1.8, com[2]], heading, down: false, hasBall });
+const view = (com: Vec3, vel: Vec3, hasBall = false, heading = 0): AthleteView => ({ com, comVel: vel, pelvis: com, head: [com[0], 1.8, com[2]], heading, down: false, hasBall, team: hasBall ? 1 : 0 });
 const field = { halfWidth: 24.38, goalZ: -45.72, dirZ: -1 as const };
 
 /** Carrier at the origin running for −Z against a tackler coming straight at him; both move on their own

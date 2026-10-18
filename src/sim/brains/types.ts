@@ -8,6 +8,7 @@ export interface AthleteView {
   heading: number;          // rad, 0 = facing +Z
   down: boolean;
   hasBall: boolean;
+  team: 0 | 1;
 }
 export interface Perception {
   time: number;
