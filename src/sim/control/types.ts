@@ -3,6 +3,7 @@ import type { BodyPlan } from '../anatomy/body';
 import type { AthleteState } from '../physics/engine';
 import type { MuscleSet, MuscleTargets } from '../muscles';
 import type { Vec3 } from '../math';
+import type { RootTarget, SupportState } from '../anim/types';
 
 export type Gait = 'walk' | 'jog' | 'sprint';
 
@@ -52,6 +53,8 @@ export interface BodyView {
   feet: [FootContact, FootContact];     // [left, right]
   /** True while this athlete is in contact with another athlete. */
   playerContact: boolean;
+  /** Support levels the world applies (active ragdoll, design §6.5); absent when the world runs without it. */
+  support?: SupportState;
 }
 
 /** Body state + commands in, muscle targets out, every physics step. A learned policy implements the same. */
@@ -59,4 +62,6 @@ export interface MotorController {
   compute(view: BodyView, cmd: Commands, out: MuscleTargets): void;
   /** Read-outs for overlays and tests (e.g. gait phase). */
   debug?(): Record<string, number | string>;
+  /** Where the world's support should carry the body this step (active ragdoll); null = no support. */
+  root?(): RootTarget | null;
 }

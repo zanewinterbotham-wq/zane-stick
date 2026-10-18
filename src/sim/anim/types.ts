@@ -42,3 +42,17 @@ export const newFrame = (n: number): AnimFrame => ({
   root: { vel: [0, 0, 0], height: 1, heading: 0, pitch: 0, roll: 0 },
   planted: [true, true], phase: 0, clip: 'idle',
 });
+
+/** World support tuning (tuning panel). WorldSetup.support absent = old balance assist only (realism suite). */
+export interface SupportSettings {
+  strength: number;     // 0..1 overall multiplier
+  carryAccel: number;   // largest horizontal acceleration the carry may give, m/s²
+  weightShare: number;  // fraction of body weight the posture support carries when fully upright
+  tiltStart: number;    // trunk tilt (rad) where posture support starts to fade
+  tiltEnd: number;      // trunk tilt (rad) where it reaches zero
+  bigHit: number;       // impulse received within 0.2 s (N·s) that removes posture support entirely
+  tracking: number;     // muscle tracking stiffness multiplier
+}
+export const DEFAULT_SUPPORT: SupportSettings = {
+  strength: 1, carryAccel: 8, weightShare: 0.6, tiltStart: 0.45, tiltEnd: 0.8, bigHit: 150, tracking: 1,
+};
