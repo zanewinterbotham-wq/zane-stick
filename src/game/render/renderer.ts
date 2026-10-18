@@ -18,6 +18,7 @@ export class GameRenderer {
   athletes: AthleteMesh[] = [];
   overlay: AnatomyOverlay | null = null;
   xray = false;
+  /** Tint muscles by effort; only in the anatomy view, where it reads as data rather than as damage. */
   effortShading = true;
   private sun: THREE.DirectionalLight;
   private props: THREE.Object3D[] = [];
@@ -83,7 +84,7 @@ export class GameRenderer {
     w.athletes.forEach((a, i) => {
       const s = w.scene.athletes[i].state, mesh = this.athletes[i];
       mesh.pose(s.segPos, s.segQuat);
-      mesh.shade(this.effortShading ? segmentEffort(a) : null);
+      mesh.shade(this.xray && this.effortShading ? segmentEffort(a) : null);
     });
     (w.setup.props ?? []).forEach((p, i) => {
       if (p.mass <= 0) return;
