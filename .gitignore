@@ -7,3 +7,4 @@ bench/out/
 .DS_Store
 .claude/settings.local.json
 scratch/
+.claude/worktrees/

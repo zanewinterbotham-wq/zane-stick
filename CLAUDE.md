@@ -39,6 +39,8 @@ Engine comparison: `docs/physics-benchmark.md`.
   at 1x/4x/6x CPU throttling (needs a build)
 - `npx tsx bench/tune/run.ts <generations> <workers> <population>` — CMA-ES controller gain tuning;
   best result in `bench/out/gains-best.json`
+- `npx tsx bench/tune/score.ts '<gains json>' --avg` — score one gain set; the objective is chaotic, so
+  compare controller changes with `--avg` (mean over small gain perturbations), never single runs
 - `npm run typecheck`
 
 ## How to verify a change
@@ -56,4 +58,5 @@ Engine comparison: `docs/physics-benchmark.md`.
 ## Current phase
 Phase 1 (foundation and first playable). Do not start Phase 2.
 Status: engine chosen (MuJoCo), anatomy, muscles, game shell, drill, presets, deployment done;
-standing balance passes; walking/running and push recovery still being tuned.
+standing balance, push recovery (realism suite) and chop steps pass; walking falls after a few
+seconds and running does not work yet.
