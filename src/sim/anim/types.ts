@@ -39,6 +39,7 @@ export interface SupportState {
   posture: number;      // 0..1 upright/weight support level
   carry: number;        // 0..1 horizontal carry level (0 while in contact with another player)
   down: boolean;        // a non-hand, non-foot segment is on the turf
+  out?: boolean;        // injured or knocked out: stays down for the rest of the rep (design §6.6)
 }
 
 export interface Animator {

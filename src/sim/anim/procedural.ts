@@ -265,8 +265,11 @@ export class ProceduralAnimator implements Animator {
     const comSpeed = Math.hypot(s.comVel[0], s.comVel[1], s.comVel[2]);
     // ---- whole-body mode
     if (support.down && (this.mode === 'loco' || this.mode === 'dive')) this.enter('down', 0.15);
+    // injured or knocked out (design §6.6): he goes down where he stands and never gets up this rep
+    if (support.out && this.mode !== 'down') this.enter('down', 0.15);
     if (this.mode === 'down') {
-      this.settleT = comSpeed < 1 ? this.settleT + dt : 0;
+      if (support.out) this.settleT = 0;
+      else this.settleT = comSpeed < 1 ? this.settleT + dt : 0;
       if (this.settleT > 0.25) this.startGetup(view);
     } else if (this.mode === 'getup') {
       if (comSpeed > 3) this.enter('down', 0.15);

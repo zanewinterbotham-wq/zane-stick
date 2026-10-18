@@ -44,6 +44,9 @@ class MujocoScene implements PhysicsScene {
   private propBody: number[] = [];
   private gripEq: number[][] = [];        // athlete → hand → equality id
   private cache: ContactReport[] | null = null;
+  private limits: Float64Array[] | null = null;
+  /** MuJoCo joint id → [athlete, dof]. */
+  private jointDof = new Map<number, [number, number]>();
   private forceBuf: Any;
   private xfrc!: Float64Array; private qfrc!: Float64Array;
 
@@ -97,6 +100,7 @@ class MujocoScene implements PhysicsScene {
       this.segBody.push(Int32Array.from(P.segments.map((s) => id('mjOBJ_BODY', `a${ai}_${s.name}`))));
       const jids = P.joints.flatMap((j) => j.dofs.map((dof) => id('mjOBJ_JOINT', `a${ai}_${j.name}_${dof.name}`)));
       this.dofJ.push(Int32Array.from(jids));
+      jids.forEach((j, k) => this.jointDof.set(j, [ai, k]));
       this.dofQ.push(Int32Array.from(jids.map((j) => m.jnt_qposadr[j])));
       this.dofV.push(Int32Array.from(jids.map((j) => m.jnt_dofadr[j])));
       this.passiveDamp.push(Float64Array.from(jids.map((j) => m.dof_damping[m.jnt_dofadr[j]])));
@@ -133,7 +137,7 @@ class MujocoScene implements PhysicsScene {
     this.views(); // WASM memory can grow, which detaches old typed-array views
     this.xfrc.fill(0);
     this.qfrc.fill(0);
-    this.cache = null;
+    this.cache = null; this.limits = null;
     this.read();
   }
 
@@ -237,6 +241,22 @@ class MujocoScene implements PhysicsScene {
     return segs.findIndex((s) => s.name === want[0]) >= 0 ? segs.findIndex((s) => s.name === want[0]) : segs.findIndex((s) => s.name === want[1]);
   }
 
+  limitTorques(ai: number) {
+    if (!this.limits) {
+      const d = this.d, LIM = mj.mjtConstraint.mjCNSTR_LIMIT_JOINT.value, type = d.efc_type, id = d.efc_id, force = d.efc_force;
+      this.limits = this.athletes.map((a) => new Float64Array(a.nDof));
+      for (let i = 0, n = d.nefc; i < n; i++) {
+        if (type[i] !== LIM) continue;
+        const k = this.jointDof.get(id[i]);
+        if (k) this.limits[k[0]][k[1]] += Math.abs(force[i]);
+      }
+    }
+    return this.limits[ai];
+  }
+  setJointRange(ai: number, dof: number, lo: number, hi: number) {
+    const r = this.m.jnt_range, j = this.dofJ[ai][dof];
+    r[2 * j] = lo; r[2 * j + 1] = hi;
+  }
   propPose(pi: number) {
     const b = this.propBody[pi], d = this.d;
     return { pos: [d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]] as Vec3, quat: [d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3], d.xquat[4 * b]] as Quat };

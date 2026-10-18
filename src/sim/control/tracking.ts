@@ -117,6 +117,8 @@ export class TrackingController implements MotorController {
     // A hip thrust has priority: the muscles drive the thrust pose, in contact too, while the athlete still
     // has his posture. Dive flight has nothing to balance: the muscles hold the dive pose until the landing.
     want = r.dive === 'flight' ? 0 : Math.min(want, 1 - sup.posture * r.thrust);
+    // injured or knocked out: no balance reaction, only the animation's loose hold on where the body lies
+    if (sup.out) want = 0;
     // in quickly (a hit; at once on the jolt of a big one, so the body reacts the step it lands, not to a shove's
     // slowly growing stun), out slowly (the animation takes over again once the support is back), except a thrust
     const jolt = this.stun - this.prevStun > JOLT;
@@ -178,7 +180,9 @@ export class TrackingController implements MotorController {
       // hand controller: inertia-scaled gains leave them limp, and a landing folds the ankle into its limit.
       const kp = Math.min(clamp(f.gain[i], 0, 1) * tracking * Math.max(I * this.wn[i] * this.wn[i], this.kMin[i]), kpMax);
       out.q[i] = clamp(f.q[i], ms.lo[i], ms.hi[i]);
-      out.qd[i] = f.qd[i];
+      // A limp body's frame follows its own measured pose: tracking that pose's velocity too would cancel the
+      // implicit damping a step late, which light segments (the clavicle) do not survive at 240 Hz.
+      out.qd[i] = v.support?.out ? 0 : f.qd[i];
       out.kp[i] = kp;
       out.kd[i] = Math.max(2 * Math.sqrt(kp * I), 0.03 * kp);
       out.tff[i] = 0;
@@ -187,7 +191,8 @@ export class TrackingController implements MotorController {
     this.grounded += ((stance.length > 0 ? 1 : 0) - this.grounded) * Math.min(1, v.dt / 0.4);
     const stanceDofs = new Set(stance.flatMap((k) => this.chains[k]));
     // in free fall no joint carries the weight of what hangs from it
-    if (f.root.dive !== 'flight') for (let i = 0; i < ms.n; i++) if (!stanceDofs.has(i)) this.gravityComp(v, i, out);
+    // (nor does a limp, injured body hold its limbs up)
+    if (f.root.dive !== 'flight' && !v.support?.out) for (let i = 0; i < ms.n; i++) if (!stanceDofs.has(i)) this.gravityComp(v, i, out);
     const th = f.root.thrust;
     this.thrustT = th > 0.05 ? this.thrustT + v.dt : 0;
     if (stance.length === 0) return;

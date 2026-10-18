@@ -8,6 +8,7 @@ import { clamp, headingOf, lerp, qaxis, qconj, qlog, qmul, qrot, type Quat, type
 import { MuscleSet, newTargets, type MuscleTargets } from './muscles';
 import type { AthleteState, LinkRef, PhysicsEngine, PhysicsScene, PropDesc } from './physics/engine';
 import { Rng } from './rng';
+import { InjuryState, type InjuryEvent } from './injury';
 import { weightSupport, type SupportSettings, type SupportState } from './anim/types';
 
 export interface PhysicsSettings { hz: number; iterations: number; detail: Detail }
@@ -107,6 +108,8 @@ export class Athlete {
   hitWindow: Vec3[] = []; hitImpulse: Vec3 = [0, 0, 0];
   /** Carry force applied this step (N, world): tests check it is zero during player contact. */
   carryForce: Vec3 = [0, 0, 0];
+  /** Broken joints and knockout (design §6.6); set by World.create. */
+  injury!: InjuryState;
 
   constructor(readonly index: number, readonly setup: AthleteSetup, readonly plan: BodyPlan, readonly controller: MotorController, readonly brain: Brain) {
     this.muscles = new MuscleSet(plan);
@@ -136,6 +139,8 @@ export class World {
   lastHitForce = 0;
   /** Athlete-on-athlete contacts this step, one per segment pair (sound, feel, replays). */
   hits: HitEvent[] = [];
+  /** Every break and knockout this rep, in order (sound, effects, HUD). */
+  readonly injuries: InjuryEvent[] = [];
   ballCarrier = -1;
   /** Index of the ball among the props (a prop named 'ball'), or −1. */
   readonly ballIndex: number;
@@ -158,6 +163,7 @@ export class World {
     setup.athletes.forEach((a, i) => {
       const muscles = new MuscleSet(plans[i]);
       const ath = new Athlete(i, a, plans[i], a.controller(plans[i], muscles), a.brain);
+      ath.injury = new InjuryState(ath.muscles, scene.dt);
       w.athletes.push(ath);
       if (a.hasBall) w.ballCarrier = i;
     });
@@ -196,11 +202,13 @@ export class World {
   step() {
     const dt = this.dt;
     for (const a of this.athletes) {
-      a.cmd = a.brain.think(this.perception(a.index), dt);
+      // an athlete out of play thinks no more: his hands let go of all but a ball held by a sound arm
+      a.cmd = a.injury.out ? this.outCommands(a) : a.brain.think(this.perception(a.index), dt);
       for (const h of [0, 1] as const) a.reachTo[h] = this.raised(a, h) ? this.reachPoint(a, h) : null;
       a.controller.compute(this.view(a), a.cmd, a.targets);
       const s = this.scene.athletes[a.index].state;
       a.muscles.compute(a.targets, s.q, s.qd);
+      if (a.injury.out) this.limp(a);
       this.scene.setTorques(a.index, a.muscles.torque);
       this.scene.setDamping(a.index, a.muscles.damping);
       if (this.supported(a)) this.applySupport(a); else this.applyAssist(a);
@@ -382,12 +390,13 @@ export class World {
     }
     const flight = clamp(1 - (a.airT - SUP.flight) / 0.1, 0, 1);
     a.support = { posture: down && clip !== 'getup' ? 0 : 1 - a.knock, carry: a.playerContact ? 0 : a.carryLevel * flight * (1 - a.knock), down };
+    if (a.injury.out) { a.knock = 1; a.support = { posture: 0, carry: 0, down, out: true }; }
     if ('stun' in a.controller) a.controller.stun = a.stun;
   }
 
   /** Invisible posture/weight support. Vertical force and roll/pitch torque only — never horizontal force. */
   private applyAssist(a: Athlete) {
-    const level = this.assist * a.assistLevel;
+    const level = a.injury.out ? 0 : this.assist * a.assistLevel;
     if (level <= 0) return;
     const s = this.scene.athletes[a.index].state, m = a.mass, g = 9.81;
     if (!a.feet[0].touching && !a.feet[1].touching) return;
@@ -413,6 +422,7 @@ export class World {
   private afterStep() {
     this.sense();
     for (const a of this.athletes) {
+      this.updateInjury(a, this.dt);
       this.updateAssistFade(a, this.dt);
       if (this.supported(a)) this.updateSupport(a, this.dt);
       this.updateGrips(a, this.dt);
@@ -473,6 +483,41 @@ export class World {
       for (const f of a.feet) if (f.force > 0) f.cop = [f.cop[0] / f.force, f.cop[1] / f.force, f.cop[2] / f.force];
       a.playerContact = a.playerContactNow;
     }
+  }
+
+  // ---------------------------------------------------------------- injuries (design §6.6)
+  /** Breaks and knockout from this step's loads. A broken joint goes limp and its range gives way at the end that
+   *  broke (the limb dangles past where it should stop); either puts the athlete out of play for the rep. */
+  private updateInjury(a: Athlete, dt: number) {
+    const s = this.scene.athletes[a.index].state, inj = a.injury, at = (k: number): Vec3 => [s.dofAnchor[3 * k], s.dofAnchor[3 * k + 1], s.dofAnchor[3 * k + 2]];
+    if (inj.out) inj.outFor += dt;
+    for (const b of inj.checkBreaks(this.scene.limitTorques(a.index), s, a.playerContact, dt)) {
+      inj.breakJoint(b.joint);
+      const lo = a.muscles.lo[b.dof], hi = a.muscles.hi[b.dof];
+      this.scene.setJointRange(a.index, b.dof, b.end < 0 ? lo - b.relax : lo, b.end > 0 ? hi + b.relax : hi);
+      const j = a.plan.joints.find((x) => x.name === b.joint)!;
+      this.injuries.push({ athlete: a.index, kind: 'break', joint: b.joint, what: b.what, seg: j.child, parentSeg: j.parent, pos: at(b.dof), load: b.load, time: this.time });
+    }
+    const hi = a.segIndex.get('head')!;
+    if (inj.checkKo([s.segVel[3 * hi], s.segVel[3 * hi + 1], s.segVel[3 * hi + 2]], dt))
+      this.injuries.push({ athlete: a.index, kind: 'ko', joint: 'head', what: 'ko', seg: 'head', parentSeg: a.plan.joints.find((x) => x.child === 'head')!.parent, pos: [s.segPos[3 * hi], s.segPos[3 * hi + 1], s.segPos[3 * hi + 2]], load: inj.peakDv, time: this.time });
+  }
+
+  /** Muscle output of an athlete out of play: a broken joint's muscles give nothing at once, the rest lose tone over
+   *  INJURY.fade (the hit's own load is still met by muscles that were braced for it). */
+  private limp(a: Athlete) {
+    const m = a.muscles, f = Math.min(1, a.injury.outFor / INJURY.fade), tone = 1 + ((a.injury.ko ? INJURY.koTone : INJURY.hurtTone) - 1) * f;
+    for (let i = 0; i < m.n; i++) {
+      // a broken joint keeps its damping: the torn tissue still resists motion (and light limbs need it at 240 Hz)
+      m.torque[i] *= a.injury.limp.has(i) ? 0 : tone; m.damping[i] *= tone;
+    }
+  }
+
+  /** Commands for an athlete out of play: none, except the ball stays tucked in an arm that is not broken. */
+  private outCommands(a: Athlete): Commands {
+    const c = neutralCommands(), arm = (sx: string) => [...a.injury.broken].some((j) => /^(sc|shoulder|elbow|wrist)/.test(j) && j.endsWith(sx));
+    c.carry = a.cmd.carry === 1 && !arm('L') ? 1 : a.cmd.carry === 2 && !arm('R') ? 2 : 0;
+    return c;
   }
 
   private updateAssistFade(a: Athlete, dt: number) {
@@ -637,6 +682,9 @@ const GRIP_ECC = 1.5;
 /** Hit power: combined speed along the push (m/s) above which the athlete pushed counts as driven back (a lean on a
  *  standing opponent does not), and the lift added per unit of horizontal boost. */
 const HIT = { minV: 0.3, lift: 0.5 };
+/** Muscle tone left to an athlete out of play (× all muscle output): knocked out (unconscious, assumption), or hurt
+ *  and conscious (curled up on the turf, assumption), and how long the tone takes to go (s, assumption). */
+const INJURY = { koTone: 0.2, hurtTone: 0.5, fade: 0.3 };
 /** Orientation from heading, forward pitch and left roll (same convention as the hand controller). */
 const orient = (heading: number, pitchFwd: number, rollLeft: number): Quat =>
   qmul(qaxis([0, 1, 0], heading), qmul(qaxis([1, 0, 0], pitchFwd), qaxis([0, 0, -1], rollLeft)));
