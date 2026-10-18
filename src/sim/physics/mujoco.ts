@@ -77,7 +77,7 @@ class MujocoScene implements PhysicsScene {
       };
       xml += body(kids(null)[0]);
       for (const [s1, s2] of selfCollisionExcludes(P)) excludes.push(`<exclude body1="a${ai}_${s1}" body2="a${ai}_${s2}"/>`);
-      for (const h of ['L', 'R'].map((sx) => (P.segments.some((x) => x.name === 'hand' + sx) ? 'hand' : 'forearm') + sx)) equalities.push(`<connect name="a${ai}_grip_${h}" body1="a${ai}_${h}" body2="world" anchor="0 0 0" active="false" solref="${4 * dt} 1"/>`);
+      for (const h of ['L', 'R'].map((sx) => (P.segments.some((x) => x.name === 'hand' + sx) ? 'hand' : 'forearm') + sx)) equalities.push(`<connect name="a${ai}_grip_${h}" body1="a${ai}_${h}" body2="world" anchor="0 0 0" active="false" solref="0.025 1"/>`);
     });
     desc.props.forEach((p, pi) => {
       const quat = p.quat ? ` quat="${f([p.quat[3], p.quat[0], p.quat[1], p.quat[2]])}"` : '';
@@ -186,7 +186,7 @@ class MujocoScene implements PhysicsScene {
     return (this.cache = out);
   }
 
-  gripOn(ai: number, hand: 0 | 1, target: LinkRef, pointWorld: Vec3, compliance: number) {
+  gripOn(ai: number, hand: 0 | 1, target: LinkRef, pointWorld: Vec3, timeconst: number) {
     const e = this.gripEq[ai][hand], m = this.m, d = this.d;
     const hb = this.segBody[ai][this.handSeg(ai, hand)];
     const tb = target.athlete >= 0 ? this.segBody[target.athlete][target.seg] : target.seg >= 0 ? Math.max(0, this.propBody[target.seg]) : 0; // static props live on the world body
@@ -197,7 +197,7 @@ class MujocoScene implements PhysicsScene {
     };
     const a1 = local(hb), a2 = local(tb), ed = m.eq_data, o = e * mj.mjNEQDATA;
     for (let k = 0; k < 3; k++) { ed[o + k] = a1[k]; ed[o + 3 + k] = a2[k]; }
-    m.eq_solref[2 * e] = Math.max(2, compliance) * this.dt;
+    m.eq_solref[2 * e] = Math.max(timeconst, 2 * this.dt);
     d.eq_active[e] = 1;
   }
   gripOff(ai: number, hand: 0 | 1) { this.d.eq_active[this.gripEq[ai][hand]] = 0; }
@@ -223,6 +223,9 @@ class MujocoScene implements PhysicsScene {
     const px = d.xipos[3 * b] - sc[3 * b], py = d.xipos[3 * b + 1] - sc[3 * b + 1], pz = d.xipos[3 * b + 2] - sc[3 * b + 2];
     return [cv[6 * b + 3] + cv[6 * b + 1] * pz - cv[6 * b + 2] * py, cv[6 * b + 4] + cv[6 * b + 2] * px - cv[6 * b] * pz, cv[6 * b + 5] + cv[6 * b] * py - cv[6 * b + 1] * px];
   }
-  stats() { return { contacts: this.d.ncon, bodies: this.m.nbody - 1 }; }
+  stats() {
+    const w = this.d.warning, k = mj.mjtWarning.mjWARN_BADQACC.value;
+    return { contacts: this.d.ncon, bodies: this.m.nbody - 1, instabilities: (w.get ? w.get(k) : w[k])?.number ?? 0 };
+  }
   destroy() { this.forceBuf.delete(); this.d.delete(); this.m.delete(); }
 }

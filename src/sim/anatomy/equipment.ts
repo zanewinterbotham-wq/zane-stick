@@ -14,6 +14,9 @@ export const CONTACT = {
   helmet: { timeSteps: 5, dampRatio: 1 },   // helmet liner compresses
 };
 
+/** Grip constraint compliance (s): hand grip and jersey grab (fabric stretch) [S5, assumption]. */
+export const GRIP_TIMECONST = { hand: 0.025, jersey: 0.06 };
+
 /** Cleat-on-turf traction [S5]. */
 export const TURF = { mu: 1.2, torsional: 0.03, rolling: 0.0001 };
 

@@ -41,16 +41,17 @@ export interface PhysicsScene {
   /** External force and torque at a segment's COM for the next step (world frame). */
   applyWrench(athlete: number, seg: number, force: Vec3, torque: Vec3): void;
   contacts(): ContactReport[];
-  /** Weld point `pointWorld` on hand segment to whatever link `target` is, as a ball-and-socket constraint. */
-  gripOn(athlete: number, hand: 0 | 1, target: LinkRef, pointWorld: Vec3, compliance: number): void;
+  /** Join point `pointWorld` on the hand to link `target` (ball-and-socket). `timeconst` (s) sets its
+   *  compliance: a hand grip is soft tissue, not a weld; near-rigid grips also destabilise the wrist. */
+  gripOn(athlete: number, hand: 0 | 1, target: LinkRef, pointWorld: Vec3, timeconst: number): void;
   gripOff(athlete: number, hand: 0 | 1): void;
   gripActive(athlete: number, hand: 0 | 1): boolean;
   /** Magnitude of the constraint force holding the grip last step (N). */
   gripForce(athlete: number, hand: 0 | 1): number;
   propPose(prop: number): { pos: Vec3; quat: Quat };
   propVel(prop: number): Vec3;
-  /** Total momentum and energy, for tests. */
-  stats(): { contacts: number; bodies: number };
+  /** Counts for the overlay and tests. `instabilities` = times the solver diverged and auto-reset (must stay 0). */
+  stats(): { contacts: number; bodies: number; instabilities: number };
   destroy(): void;
 }
 

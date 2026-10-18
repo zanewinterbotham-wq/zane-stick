@@ -35,6 +35,7 @@ describe.each(['standard', 'minimum'] as const)('MuJoCo scene, %s detail', (deta
     }
     expect(peak).toBeGreaterThan(1000);
     for (const a of sc.athletes) expect(Number.isFinite(a.state.com[0])).toBe(true);
+    expect(sc.stats().instabilities).toBe(0);
     sc.destroy();
   });
 });
@@ -47,13 +48,15 @@ describe('grip constraint', () => {
       props: [{ name: 'bar', shape: 'box', size: [0.5, 0.02, 0.02], mass: 0, pos: [0, 3.6, 0] }] });
     const hand = plan.segments.findIndex((s) => s.name === 'handL');
     const p = sc.athletes[0].state.segCom;
-    sc.gripOn(0, 0, { athlete: -1, seg: 0 }, [p[3 * hand], p[3 * hand + 1], p[3 * hand + 2]], 2);
-    for (let i = 0; i < 480; i++) sc.step();
+    sc.gripOn(0, 0, { athlete: -1, seg: 0 }, [p[3 * hand], p[3 * hand + 1], p[3 * hand + 2]], 0.025);
+    // Hanging by one hand from a fixed point: averaged over the swing, the grip carries about the body weight.
+    let sum = 0, n = 0;
+    for (let i = 0; i < 240 * 4; i++) { sc.step(); if (i >= 240 * 2) { sum += sc.gripForce(0, 0); n++; } }
     expect(sc.gripActive(0, 0)).toBe(true);
-    // Hanging by one hand from a fixed point: the grip carries roughly the body weight once it settles.
+    expect(sc.stats().instabilities).toBe(0);
     const w = totalMass(plan) * 9.81;
-    expect(sc.gripForce(0, 0)).toBeGreaterThan(0.7 * w);
-    expect(sc.gripForce(0, 0)).toBeLessThan(1.5 * w);
+    expect(sum / n).toBeGreaterThan(0.8 * w);
+    expect(sum / n).toBeLessThan(1.4 * w);
     sc.destroy();
   });
 });
