@@ -94,7 +94,7 @@ describe('muscles', () => {
     expect(forceVelocity(1)).toBe(0);
     expect(forceVelocity(0.5)).toBeLessThan(forceVelocity(0.2));
     expect(forceVelocity(-0.5)).toBeGreaterThan(1);
-    expect(forceVelocity(-5)).toBeLessThanOrEqual(1.4 + 1e-9);
+    expect(forceVelocity(-5)).toBeLessThanOrEqual(1.3 + 1e-9);
   });
   it('clamps controller requests to the available torque', () => {
     const ms = new MuscleSet(buildBody(DEFAULT_ATHLETE));

@@ -2,7 +2,7 @@
 // Everything is expressed in the rest pose: standing at the origin, facing +Z, arms hanging, +X = left.
 
 import { add, deg, scale, sub, type Vec3 } from '../math';
-import { DE_LEVA, FUSE_RANGE_TRANSFER, GRIP_STRENGTH, JOINTS, PROPORTIONS as P, STRENGTH_REF_MASS } from './data';
+import { ANSUR_REF, DE_LEVA, FUSE_RANGE_TRANSFER, GRIP_STRENGTH, JOINTS, PROPORTIONS as P, STRENGTH_REF_MASS } from './data';
 import { boxInertia, cylinderInertia, diag, madd, msub, parallel, type Mat3 } from './inertia';
 import { EQUIPMENT } from './equipment';
 
@@ -65,8 +65,8 @@ export function buildBody(params: AthleteParams, detail: Detail = 'standard'): B
 function buildStandard(params: AthleteParams): BodyPlan {
   const H = params.height, M = params.mass, D = DE_LEVA;
   const c = EQUIPMENT.cleats.soleHeight; // body stands on cleats
-  // Widths scale with sqrt(BMI / reference BMI): heavier athletes are thicker, not taller.
-  const g = Math.sqrt((M / (H * H)) / (D.refMass / (D.refStature / 1000) ** 2));
+  // Widths scale with sqrt(BMI / ANSUR reference BMI): heavier athletes are thicker, not taller [S2].
+  const g = Math.sqrt((M / (H * H)) / (ANSUR_REF.mass / ANSUR_REF.stature ** 2));
   // Vertical chain ankle→knee→hip→C7→vertex scaled so the vertex lands exactly at stature [S2].
   const chainMm = D.shank.len + D.thigh.len + D.trunk.len + D.head.len;
   const fv = (H * (1 - P.ankleHeight)) / chainMm; // m per de Leva mm, vertical chain
@@ -131,9 +131,8 @@ function buildStandard(params: AthleteParams): BodyPlan {
   const hnM = pct(D.head.mass) * M;
   const hnCom: Vec3 = [0, yVert - pct(D.head.com) * (yVert - yCerv), 0];
   const hnI = rgI(hnM, D.head.len * fv, D.head.rg);
-  const headComY = c + P.headComHeight * H, neckComY = (yCerv + yAO) / 2;
-  const neckFrac = (headComY - hnCom[1]) / (headComY - neckComY);
-  const neckM = neckFrac * hnM, headM = hnM - neckM;
+  const neckM = P.neckShareOfHead * hnM, headM = hnM - neckM; // [S2]
+  const neckComY = (yCerv + yAO) / 2;
   const neckR = P.r.neck * H * g;
   const neckCom: Vec3 = [0, neckComY, back / 2];
   const neckI = diag(cylinderInertia(neckM, neckR, yAO - yCerv, 1));
@@ -150,14 +149,14 @@ function buildStandard(params: AthleteParams): BodyPlan {
     const sh = gd.gh;
     const el: Vec3 = [sh[0], sh[1] - D.upperArm.len * fl, 0];
     const wr: Vec3 = [sh[0], el[1] - D.forearm.len * fl, 0];
-    const met: Vec3 = [sh[0], wr[1] - D.hand.len * fl, 0];
+    const tip: Vec3 = [sh[0], wr[1] - D.hand.len * fl, 0]; // fingertip (DAC3)
     const limb = (name: string, parent: string, a: Vec3, b: Vec3, d: (typeof D)['upperArm' | 'forearm' | 'hand' | 'thigh' | 'shank'], r: number, len: number) => {
       const m = pct(d.mass) * M;
       seg(name + sx, parent + sx, s, a, m, add(a, scale(sub(b, a), pct(d.com))), rgI(m, len, d.rg), r > 0 ? [cap(name + sx, a, b, r)] : []);
     };
     limb('upperArm', 'clavicle', sh, el, D.upperArm, P.r.upperArm * H * g, D.upperArm.len * fl);
     limb('forearm', 'upperArm', el, wr, D.forearm, P.r.forearm * H * g, D.forearm.len * fl);
-    limb('hand', 'forearm', wr, met, D.hand, 0, D.hand.len * fl);
+    limb('hand', 'forearm', wr, tip, D.hand, 0, D.hand.len * fl);
     const hand = segs[segs.length - 1];
     hand.geoms.push(box('hand' + sx, [wr[0], wr[1] - P.hand[1] * H, 0], [P.hand[0] * H * g, P.hand[1] * H, P.hand[2] * H], 'hand'));
   }

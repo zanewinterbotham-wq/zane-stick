@@ -3,12 +3,10 @@
 // Controllers (hand-built or learned) send MuscleTargets; nothing can exceed these limits.
 
 import type { BodyPlan } from './anatomy/body';
+import { HILL } from './anatomy/data';
 import { cross, dot, sub, type Vec3 } from './math';
 
-/** Hill curvature a/F0 [S4]. */
-const HILL_K = 0.25;
-/** Eccentric plateau (× isometric) [S4]. */
-const ECC_MAX = 1.4;
+const HILL_K = HILL.k, ECC_MAX = HILL.eccMax;
 
 /** f_v(x), x = shortening velocity / max velocity. 1 at rest, 0 at x = 1, up to ECC_MAX when lengthening. */
 export function forceVelocity(x: number): number {
@@ -30,8 +28,11 @@ export class MuscleSet {
   readonly n: number;
   readonly tPos: Float64Array; readonly tNeg: Float64Array; readonly wMax: Float64Array;
   readonly lo: Float64Array; readonly hi: Float64Array;
-  /** Rest-pose inertia of everything distal to each dof about its axis (kg·m²), used to keep gains stable. */
+  /** Rest-pose inertia of everything distal to each dof about its axis (kg·m²): sets swing-limb gains. */
   readonly ieff: Float64Array;
+  /** Inertia of the child segment alone about each dof axis (kg·m²): the lightest thing a joint can
+   *  spin, which bounds the explicit stiffness that stays numerically stable. */
+  readonly ilocal: Float64Array;
   readonly names: string[];
   /** Output of the last compute(): explicit torque (N·m), implicit damping gain (N·m·s/rad), and
    *  effort (|total muscle torque| / peak, 0..1). Total muscle torque = torque − damping·qd. */
@@ -48,6 +49,7 @@ export class MuscleSet {
     this.lo = Float64Array.from(dofs.map((x) => x.d.range[0]));
     this.hi = Float64Array.from(dofs.map((x) => x.d.range[1]));
     this.ieff = Float64Array.from(dofs.map(({ j, d }) => distalInertia(plan, j.child, j.pos, d.axis)));
+    this.ilocal = Float64Array.from(dofs.map(({ j, d }) => distalInertia(plan, j.child, j.pos, d.axis, false)));
     this.torque = new Float64Array(this.n); this.damping = new Float64Array(this.n); this.effort = new Float64Array(this.n);
   }
 
@@ -83,7 +85,7 @@ export class MuscleSet {
 }
 
 /** Σ over the subtree distal to `seg`: segment inertia about the axis through `pivot` (rest pose). */
-function distalInertia(plan: BodyPlan, seg: string, pivot: Vec3, axis: Vec3): number {
+function distalInertia(plan: BodyPlan, seg: string, pivot: Vec3, axis: Vec3, subtree = true): number {
   let total = 0;
   const visit = (name: string) => {
     const s = plan.segments.find((x) => x.name === name)!;
@@ -92,7 +94,7 @@ function distalInertia(plan: BodyPlan, seg: string, pivot: Vec3, axis: Vec3): nu
     const r = sub(s.com, pivot);
     const perp = cross(axis, r);
     total += Ia + s.mass * dot(perp, perp);
-    for (const k of plan.segments) if (k.parent === name) visit(k.name);
+    if (subtree) for (const k of plan.segments) if (k.parent === name) visit(k.name);
   };
   visit(seg);
   return total;

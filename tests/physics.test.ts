@@ -43,9 +43,9 @@ describe.each(['standard', 'minimum'] as const)('MuJoCo scene, %s detail', (deta
 describe('grip constraint', () => {
   it('holds a load and reports the force', () => {
     const plan = buildBody(DEFAULT_ATHLETE);
-    // Athlete placed 1 m off the ground so the grip must carry the whole body.
-    const sc = mujocoEngine.createScene({ hz: 240, iterations: 50, athletes: [{ plan, pos: [0, 1, 0], yaw: 0 }],
-      props: [{ name: 'bar', shape: 'box', size: [0.5, 0.02, 0.02], mass: 0, pos: [0, 3.6, 0] }] });
+    // Athlete placed 2.5 m up so it hangs clear of the ground and the grip carries the whole body.
+    const sc = mujocoEngine.createScene({ hz: 240, iterations: 50, athletes: [{ plan, pos: [0, 2.5, 0], yaw: 0 }],
+      props: [{ name: 'bar', shape: 'box', size: [0.5, 0.02, 0.02], mass: 0, pos: [0, 5.1, 0] }] });
     const hand = plan.segments.findIndex((s) => s.name === 'handL');
     const p = sc.athletes[0].state.segCom;
     sc.gripOn(0, 0, { athlete: -1, seg: 0 }, [p[3 * hand], p[3 * hand + 1], p[3 * hand + 2]], 0.025);

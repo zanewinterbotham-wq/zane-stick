@@ -25,9 +25,9 @@ export const mujocoEngine: PhysicsEngine = {
 };
 
 function geomXml(g: GeomPlan, origin: Vec3, dt: number, name: string) {
-  const c = g.role === 'pad' ? CONTACT.pad : g.role === 'helmet' || g.role === 'facemask' ? CONTACT.helmet : CONTACT.body;
+  const c = g.role === 'pad' ? CONTACT.pad : CONTACT.body;
   const fr = g.role === 'foot' ? `${TURF.mu} ${TURF.torsional} ${TURF.rolling}` : g.role === 'hand' ? `${FRICTION.hand} 0.005 0.0001` : `${FRICTION.body} 0.005 0.0001`;
-  const common = `name="${name}" friction="${fr}" condim="${g.role === 'foot' ? 4 : 3}" solref="${c.timeSteps * dt} ${c.dampRatio}" solimp="0.95 0.99 0.001" margin="0.005"`;
+  const common = `name="${name}" friction="${fr}" condim="${g.role === 'foot' ? 4 : 3}" solref="${Math.max(c.timeconst, 2 * dt)} ${c.dampRatio}" solimp="0.95 0.99 0.001" margin="0.005"`;
   if (g.type === 'capsule') return `<geom type="capsule" size="${g.size[0]}" fromto="${f(sub(g.fromto![0], origin))} ${f(sub(g.fromto![1], origin))}" ${common}/>`;
   return `<geom type="${g.type}" size="${f(g.size)}" pos="${f(sub(g.pos!, origin))}" ${common}/>`;
 }
@@ -84,7 +84,7 @@ class MujocoScene implements PhysicsScene {
       const quat = p.quat ? ` quat="${f([p.quat[3], p.quat[0], p.quat[1], p.quat[2]])}"` : '';
       const size = p.shape === 'capsule' ? `${p.size[0]} ${p.size[1]}` : f(p.size);
       const soft = p.soft ? CONTACT.pad : CONTACT.body;
-      const geom = `<geom name="prop${pi}" type="${p.shape}" size="${size}"${p.shape === 'capsule' ? ' zaxis="0 1 0"' : ''} friction="${p.friction ?? 0.7} 0.005 0.0001" solref="${soft.timeSteps * dt} 1" solimp="0.95 0.99 0.001" margin="0.005"${p.mass > 0 ? ` mass="${p.mass}"` : ''}/>`;
+      const geom = `<geom name="prop${pi}" type="${p.shape}" size="${size}"${p.shape === 'capsule' ? ' zaxis="0 1 0"' : ''} friction="${p.friction ?? 0.7} 0.005 0.0001" solref="${Math.max(soft.timeconst, 2 * dt)} 1" solimp="0.95 0.99 0.001" margin="0.005"${p.mass > 0 ? ` mass="${p.mass}"` : ''}/>`;
       xml += p.mass > 0 ? `<body name="prop${pi}" pos="${f(p.pos)}"${quat}><freejoint/>${geom}</body>` : geom.replace('/>', ` pos="${f(p.pos)}"${quat}/>`);
     });
     xml += `</worldbody><contact>${excludes.join('')}</contact><equality>${equalities.join('')}</equality></mujoco>`;
