@@ -687,12 +687,13 @@ export class HandController implements MotorController {
     this.dbg = { mode: 'run', stance: this.stanceIdx, t: this.walkT, Tc, Ts, speed, vd: Math.hypot(vd[0], vd[2]), legL: this.legs[0].phase, legR: this.legs[1].phase };
   }
 
-  /** Clamp into one foot with a custom toe limit; keeps the lateral range so push-off does not drop side balance. */
+  /** Clamp into one foot with a custom toe limit, on the foot's centreline. (Keeping the lateral range here
+   *  measured worse: jog falls more often.) */
   private clampToFootRange(p: Vec3, ankle: Vec3, fwd: Vec3, toe: number): Vec3 {
-    const r: Vec3 = [fwd[2], 0, -fwd[0]], d: Vec3 = [p[0] - ankle[0], 0, p[2] - ankle[2]];
-    const fw = clamp(dot(d, fwd), -HandController.HEEL, toe), rt = clamp(dot(d, r), -HandController.HALF_W, HandController.HALF_W);
-    return [ankle[0] + fw * fwd[0] + rt * r[0], 0, ankle[2] + fw * fwd[2] + rt * r[2]];
+    const fw = clamp(dot([p[0] - ankle[0], 0, p[2] - ankle[2]], fwd), -HandController.HEEL, toe);
+    return [ankle[0] + fw * fwd[0], 0, ankle[2] + fw * fwd[2]];
   }
+
 
   /** Distance the point lies outside the support region (feet ± foot size), 0 if inside. */
   private outsideSupport(p: Vec3, feet: Vec3[], heading: number) {
