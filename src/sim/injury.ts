@@ -8,7 +8,7 @@ import type { Vec3 } from './math';
 /** Breakable dofs (joint name without its side, dof): which end of the range breaks (−1 lower, +1 upper, 0 either),
  *  the tolerance of the limit torque averaged over LOAD_TAU (N·m), how far the broken end of the range gives way
  *  (rad), and what breaks. Tolerances sit above the most the model's limits carried in ordinary tackles and sprints
- *  (docs/realism-sources.md [S12]: the soft limits also carry load real muscles share, so they are calibrated, not
+ *  (docs/realism-sources.md [S6]: the soft limits also carry load real muscles share, so they are calibrated, not
  *  cadaver values). Hip, spine, neck and wrist are not breakable: the hip and spine take loads in ordinary play beyond any break, the
  *  hands driven into a chest load the wrist limits ~340 N·m in a 5 m/s punch, and the head is covered by the knockout. */
 export const BREAK: Record<string, { side: -1 | 0 | 1; torque: number; relax: number; what: string }> = {
@@ -27,8 +27,8 @@ const LOAD_TAU = 0.01;
  *  Away from contact the model's limits carry cuts and landings that real muscles would mostly take, so a hard cut
  *  rolled ankles (347 N·m measured) that a real athlete's peroneals and ligaments hold (assumption, design §6.6). */
 const CONTACT_WINDOW = 1;
-/** Knockout: the head's velocity change over KO.window (s, about the duration of a helmet impact [S12]), gravity
- *  removed, beyond KO.dv (m/s). Concussed NFL players' heads changed velocity by 7.2 ± 1.8 m/s [S12]; a knockout
+/** Knockout: the head's velocity change over KO.window (s, about the duration of a helmet impact [S6]), gravity
+ *  removed, beyond KO.dv (m/s). Concussed NFL players' heads changed velocity by 7.2 ± 1.8 m/s [S6]; a knockout
  *  (loss of consciousness) is the severe end of that. */
 export const KO = { window: 0.015, dv: 10 };
 

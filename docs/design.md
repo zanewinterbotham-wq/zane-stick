@@ -38,7 +38,11 @@ Priority order when they conflict: anatomy and physical realism → controls and
 - The simulation core (`src/sim`) imports nothing from rendering, DOM or input. Fixed timestep.
   Same start state + same inputs → same result on the same machine.
 - SI units everywhere (m, kg, s, N, N·m, rad).
-- No penalties, no injury modeling.
+- No penalties. **Changed 2026-10-18 (owner decision):** injuries are modeled (§6.6): joints break and heads are
+  knocked out by physics loads, the same rule for every athlete; gore effects are stylised game effects with a
+  Gore setting (default on).
+- **Owner decisions 2026-10-18:** a fumbled ball may be picked up by hand; the human's movement may get a tunable
+  steer assist toward the ball carrier, applied through Commands (the brain's intent), never as a force on the body.
 
 ## 3. Architecture
 
@@ -339,6 +343,37 @@ player thinks about hitting, not balancing; hits and tackles still come out of t
     hit as above (12 seeds): the jogger travels 1.5 / 2.4 / 3.7 m in the 0.6 s after contact, peaks at
     3.2 / 4.4 / 6.6 m/s backward and is downed 3 / 9 / 8 times at 1 / 1.5 / 2.5.
 - Settings (tuning panel): support strength, carry/posture fade thresholds, tracking stiffness.
+
+### 6.6 Injuries: breaks and knockouts (`src/sim/injury.ts`, `World.updateInjury`)
+
+Owner decision 2026-10-18: injuries are modeled, replacing "no injury modeling". Physics decides them; the same
+rule applies to every athlete (bots and the human), and toughness / hit power change only what reaches the body.
+
+- **Break:** each breakable dof's range-of-motion limit torque (`PhysicsScene.limitTorques`, the load the
+  joint's passive structures carry), averaged over 10 ms, beyond its tolerance ([S6]; knee and elbow at the
+  hyper-extension end, ankle inversion/eversion, shoulder, sternoclavicular "collarbone"), within 1 s of touching
+  another athlete (traumatic injuries only). The joint's muscles give no torque from then on (damping kept), and
+  the end of its range that broke gives way by 0.6–1.0 rad (`PhysicsScene.setJointRange`, a runtime change that
+  lasts the rep: each rep is a new world), so the limb dangles past where it used to stop. A broken arm lets go
+  of the ball (fumble); a broken leg keeps it and goes down.
+- **Knockout:** the head's velocity change over 15 ms (the impact duration of [S6]), gravity removed, beyond
+  10 m/s. Not gated on contact (a head driven into the turf counts).
+- **Out of play** (either): the brain is no longer asked (Commands are neutral except a ball tucked in a sound
+  arm), the support goes off for the rest of the rep (`SupportState.out`), the animator stays in its down pose
+  (no get-up) and the tracking controller holds that loose pose instead of balancing; muscle tone fades over
+  0.3 s to 0.2 (knocked out) or 0.5 (hurt). He is down by physics, so a carrier's rep ends.
+- **Events:** `World.injuries` (athlete, break or KO, joint, segment, point, load, time) drive sound
+  (`cues.ts`: bone crack and scream; knockout thud and ringing; a moan every 2.5–5 s while he lies there) and
+  effects (`render/effects.ts`): stylised blood bursts, turf splats, a bone at the broken joint, comic stars,
+  five looks the owner picks in the dev picker's Effects tab; the Gore setting (default on) turns them off.
+- **Measured rates** (8 runs each, both athletes counted; headless, standard detail): sprints, cuts and dives
+  alone, drill tackles, a low drive at 8 m/s into a 4 m/s jogger and a 6 m/s wrap of a 6 m/s carrier: no breaks
+  and no knockouts at any hit power 1–3. A brutal head-on hit (110 kg at 9.5 m/s driving low into a 95 kg carrier
+  sprinting at 9 m/s): knockouts 2 / 8 / 8 / 8 / 8 of 16 athletes at hit power 1 / 1.5 / 2 / 2.5 / 3 (the carrier
+  every run from 1.5), athletes with a break 0 / 2 / 3 / 1 / 3 (collarbones, elbows, a knee, shoulders). A knee
+  driven backward with 200 N·s at the joint while engaged breaks (`tests/injury.test.ts`).
+- Known limit: at hit power 3 one head-on seed diverges (MuJoCo reset) with or without injuries; hit power 3 was
+  already past what the solver keeps stable in that collision.
 
 
 ## 7. Controls

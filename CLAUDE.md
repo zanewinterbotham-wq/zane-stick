@@ -17,6 +17,10 @@ Engine comparison: `docs/physics-benchmark.md`.
   tilt) may be scaled, never its body, muscles or Commands.
 - Hit power (owner decision 2026-10-18) is an arcade knob: 1.0 = pure physics (must stay bit-identical);
   above 1 the athlete a hit drives back gets an extra push along it, the same rule for humans and bots.
+- Injuries (owner decision 2026-10-18, design §6.6): joints break past a limit-torque tolerance and big head
+  blows knock out, by physics, the same for every athlete; an injured athlete stays down for the rep. Gore is a
+  stylised game effect with a Gore setting (default on). A fumbled ball may be picked up by hand. The human may
+  get a tunable steer assist toward the ball carrier through Commands only, never a force on the body.
 - `src/sim/**` never imports DOM, Three.js, input or `src/game`. Fixed timestep. Seeded RNG only
   (`sim/rng.ts`); no `Math.random` / `Date.now` / `performance.now` inside the sim.
 - SI units everywhere.

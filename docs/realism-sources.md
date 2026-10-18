@@ -182,6 +182,24 @@ Impact read-outs are validated against: player-to-player head accelerations (HIT
 simulated head's rigid-body acceleration. It is not a helmet sensor reading, and the 240 Hz physics
 cannot resolve the 100–175 Hz content padded impacts contain (Gellner 2024).
 
+## S6 — Injury tolerances (design §6.6)
+
+| Item | Value used | Source |
+|---|---|---|
+| Knockout: head velocity change over 15 ms, gravity removed | > 10 m/s | Pellman et al. 2003 (Neurosurgery 53:799, 31 NFL impacts reconstructed with Hybrid III dummies): concussed struck players' heads changed velocity by 7.2 ± 1.8 m/s, peak 98 ± 28 g, ~15 ms half-sine. A knockout (loss of consciousness) is taken as the severe end, ~1.5 SD above the concussion mean (assumption). The 15 ms window is that impact duration. |
+| Knee hyper-extension break (limit torque, 10 ms average, extension end) | 160 N·m | assumption, calibrated: ordinary tackles and sprints load it < 40 N·m in the model; the ACL (failure ~2.2 kN in young cadaver knees, Woo et al. 1991, recalled) is the main restraint to hyper-extension (Furman, Marshall & Girgis 1976) |
+| Elbow hyper-extension break | 110 N·m | assumption, calibrated: tackles < 35 N·m, a dive landing on straight arms ~70–80 N·m |
+| Ankle (inversion/eversion) break | 320 N·m | assumption, calibrated: the model's soft ankle limit carries up to ~200 N·m in tackles and ~350 N·m in a hard cut (real ligaments fail far lower; the model's limit stands in for muscle that real peroneals provide) |
+| Shoulder dislocation (any dof) | 170 N·m | assumption, calibrated: tackles < 80 N·m |
+| Collarbone (sternoclavicular dof) | 360 N·m | assumption, calibrated: tackles and head-on sprints at hit power 1 < 200 N·m |
+| Not breakable | hip, spine, neck, wrist | the hip limit carries ~800 N·m in ordinary low drives and the wrist ~340 N·m when the hands punch into a chest: no tolerance separates normal play from a break in this model |
+| Breaks only within 1 s of player contact | — | assumption: traumatic injuries only (see the ankle row) |
+| Tone left when out of play | knocked out 0.2, hurt 0.5, fading over 0.3 s | assumption |
+
+The model's joint limits are soft (MuJoCo solimp, design §5.3) and carry loads that in a real joint are shared
+with muscle, so these are calibrated tolerances on the model's limit torque, set above the most measured in
+ordinary play (`tests/injury.test.ts`, design §6.6 rates), not cadaver failure values.
+
 ---
 
 ## Research record (fact-checked)
