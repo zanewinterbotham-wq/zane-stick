@@ -81,15 +81,19 @@ export class OpenFieldDrill {
     for (let i = 0; i < Math.round(0.5 / w.dt); i++) w.step();
     (w.athletes[this.carrier] as { brain: Brain }).brain = carrierBrain;
     const a = w.athletes[this.carrier], s = w.scene.athletes[this.carrier].state;
-    const hi = a.handSegs[1];
-    const hp: Vec3 = [s.segCom[3 * hi], s.segCom[3 * hi + 1], s.segCom[3 * hi + 2]];
+    const hi = a.handSegs[1], seg = a.plan.segments[hi];
     const hq: Quat = [s.segQuat[4 * hi], s.segQuat[4 * hi + 1], s.segQuat[4 * hi + 2], s.segQuat[4 * hi + 3]];
-    // ball sits in the palm (palm faces the body for the right hand: +X in hand frame), long axis along the forearm
-    const palm = qrot(hq, [0.06, 0.02, 0]);
-    const ballPos: Vec3 = [hp[0] + palm[0], hp[1] + palm[1], hp[2] + palm[2]];
+    // Ball against the palm (palm faces the body for the right hand: +X in hand frame), long axis along the hand,
+    // gripped at the palm surface. Placed overlapping the hand, the contact pushed it out against the grip with
+    // ~2 kN and broke the grip on the first steps of every rep. The gap clears the contact margin (5 mm), so the
+    // grip carries only the ball's own load, not a squeeze against the hand.
+    const g = seg.geoms.find((x) => x.role === 'hand' && x.type === 'box');
+    const centre: Vec3 = g ? [g.pos![0] - seg.origin[0], g.pos![1] - seg.origin[1], g.pos![2] - seg.origin[2]] : [0, -0.05, 0];
+    const half = g ? g.size[0] : 0.02;
+    const at = (x: number): Vec3 => { const p = qrot(hq, [centre[0] + x, centre[1], centre[2]]); return [s.segPos[3 * hi] + p[0], s.segPos[3 * hi + 1] + p[1], s.segPos[3 * hi + 2] + p[2]]; };
     const ballQuat = qmul(hq, qaxis([1, 0, 0], Math.PI / 2));
-    w.scene.placeProp(this.ball, ballPos, ballQuat);
-    w.attachGrip(this.carrier, 1, { athlete: -1, seg: this.ball }, hp);
+    w.scene.placeProp(this.ball, at(half + BALL.diameter / 2 + 0.008), ballQuat);
+    w.attachGrip(this.carrier, 1, { athlete: -1, seg: this.ball }, at(half));
     this.repStart = w.time;
   }
 
