@@ -6,7 +6,7 @@ import type { Brain, Perception, AthleteView } from './brains/types';
 import { neutralCommands, type BodyView, type Commands, type FootContact, type MotorController } from './control/types';
 import { clamp, headingOf, qaxis, qconj, qlog, qmul, qrot, type Quat, type Vec3 } from './math';
 import { MuscleSet, newTargets, type MuscleTargets } from './muscles';
-import type { AthleteState, PhysicsEngine, PhysicsScene, PropDesc } from './physics/engine';
+import type { AthleteState, LinkRef, PhysicsEngine, PhysicsScene, PropDesc } from './physics/engine';
 import { Rng } from './rng';
 import { weightSupport, type SupportSettings, type SupportState } from './anim/types';
 
@@ -59,8 +59,7 @@ export class Athlete {
   assistLevel = 1;          // 0..1 multiplier on the world assist setting (fade state)
   stableTimer = 0;
   playerContactNow = false;
-  /** Per hand; `athlete` is the athlete held (-1: a prop, e.g. the ball). */
-  grips: { active: boolean; force: number; cooldown: number; jersey: boolean; limit: number; athlete: number }[] = [0, 1].map(() => ({ active: false, force: 0, cooldown: 0, jersey: false, limit: 0, athlete: -1 }));
+  grips: { active: boolean; force: number; cooldown: number; jersey: boolean; limit: number; target: LinkRef | null }[] = [0, 1].map(() => ({ active: false, force: 0, cooldown: 0, jersey: false, limit: 0, target: null }));
   /** Last contact per hand: target link and point, for grip forming. */
   handTouch: ({ athlete: number; seg: number; pos: Vec3 } | null)[] = [null, null];
   /** Per hand: the hand geom's segment, its centre in that segment's frame and its half thickness (m). */
@@ -149,7 +148,7 @@ export class World {
 
   view(a: Athlete): BodyView {
     return { plan: a.plan, muscles: a.muscles, state: this.scene.athletes[a.index].state, dt: this.dt, time: this.time, feet: a.feet, playerContact: a.playerContact, support: this.supported(a) ? a.support : undefined,
-      grips: [a.grips[0].active && a.grips[0].athlete >= 0, a.grips[1].active && a.grips[1].athlete >= 0], reachTo: a.reachTo };
+      grips: [a.grips[0].active && (a.grips[0].target?.athlete ?? -1) >= 0, a.grips[1].active && (a.grips[1].target?.athlete ?? -1) >= 0], reachTo: a.reachTo };
   }
 
   perception(self: number): Perception {
@@ -418,16 +417,16 @@ export class World {
         g.jersey = /thorax|lumbar|trunk|pelvis/.test(segName);
         g.limit = g.jersey ? Math.min(GRIP_ECC * a.plan.gripStrength, EQUIPMENT.jersey.tearStrength) : GRIP_ECC * a.plan.gripStrength;
         this.scene.gripOn(a.index, h, { athlete: t.athlete, seg: t.seg }, t.pos, g.jersey ? GRIP_TIMECONST.jersey : GRIP_TIMECONST.hand);
-        g.active = true; g.force = 0; g.athlete = t.athlete;
+        g.active = true; g.force = 0; g.target = { athlete: t.athlete, seg: t.seg };
       }
     }
   }
 
-  /** Setup only: start a rep with a hand already gripping something (e.g. the carrier holding the ball). */
+  /** Drill rules only: a hand gripping something without a touch (the ball at rep start, or on a recovery). */
   attachGrip(ai: number, hand: 0 | 1, target: { athlete: number; seg: number }, point: Vec3) {
     const a = this.athletes[ai], g = a.grips[hand];
     this.scene.gripOn(ai, hand, target, point, GRIP_TIMECONST.hand);
-    g.active = true; g.force = 0; g.jersey = false; g.limit = GRIP_ECC * a.plan.gripStrength; g.athlete = target.athlete;
+    g.active = true; g.force = 0; g.jersey = false; g.limit = GRIP_ECC * a.plan.gripStrength; g.target = target;
   }
 
   /** The arm is raised to grab (reach button or wrap), so the hand may close on what it nearly touches. */
@@ -482,6 +481,17 @@ export class World {
       });
     }
     return out;
+  }
+
+  /** The hand of athlete `ai` gripping `target` (an athlete segment or a prop), or −1. */
+  gripping(ai: number, target: LinkRef): number {
+    return this.athletes[ai].grips.findIndex((g) => g.active && g.target?.athlete === target.athlete && g.target.seg === target.seg);
+  }
+
+  /** Open a hand (drill rules, e.g. a loose ball cannot be picked up by hand). */
+  releaseGrip(ai: number, hand: 0 | 1) {
+    this.scene.gripOff(ai, hand);
+    this.athletes[ai].grips[hand].active = false;
   }
 
   private updateHeadAccel(a: Athlete, dt: number) {

@@ -35,8 +35,8 @@ export class SoundCues {
   private ballVel: ArrayLike<number> = [0, 0, 0];
   private rng = new Rng(0xb1ea7);
 
-  /** `ball`: the ball's prop index; `carrier`: the athlete who starts with it. */
-  constructor(private ball: number, private carrier: number) {}
+  /** `ball`: the ball's prop index. */
+  constructor(private ball: number) {}
 
   step(w: World): Cue[] {
     const out: Cue[] = [], dt = w.dt, t = w.time;
@@ -89,8 +89,8 @@ export class SoundCues {
       Object.assign(tr, { clip, dive, thrust: a.cmd.thrustHips });
     });
 
-    // the ball: held while the carrier's hand grips it (pre-attached at rep start)
-    const held = w.athletes[this.carrier]?.grips.some((g) => g.active && !g.jersey) ?? false;
+    // the ball: held while the ball carrier's hand grips it (attached at rep start and on a recovery)
+    const held = w.ballCarrier >= 0 && w.gripping(w.ballCarrier, { athlete: -1, seg: this.ball }) >= 0;
     // impact speed: the ball's velocity the step before the touch
     const bp = w.scene.propPose(this.ball).pos, bv = this.ballVel, bs = Math.hypot(bv[0], bv[1], bv[2]);
     if (held && !this.ballHeld) out.push({ cat: 'ball_catch', loud: 0.8, pos: bp });

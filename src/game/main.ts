@@ -73,7 +73,7 @@ class App {
   nextStop = 0;      // one hit-stop per hit, not one per contact step
   meter = new HitMeter();
   meterWorld: World | null = null;
-  cues = new SoundCues(0, 1);
+  cues = new SoundCues(0);
   speed = 0;         // smoothed human ground speed for the speedometer and FOV kick, m/s
   acc = 0;
   last = performance.now();
@@ -444,7 +444,7 @@ class App {
    *  returns true when a hit-stop starts. */
   feedback(now: number): boolean {
     const d = this.drill!, w = d.world;
-    if (this.meterWorld !== w) { this.meter = new HitMeter(); this.cues = new SoundCues(d.ball, d.carrier); this.meterWorld = w; }
+    if (this.meterWorld !== w) { this.meter = new HitMeter(); this.cues = new SoundCues(d.ball); this.meterWorld = w; }
     const { sounds, bigNow } = this.meter.step(w);
     for (const s of sounds) this.audio.hit(s);
     for (const c of this.cues.step(w)) this.audio.play(c.cat, c.loud, c.pos);
@@ -480,7 +480,7 @@ class App {
     const mode = this.human.contact ? 'CONTACT (auto)' : 'MOVEMENT';
     this.hud.setStatus([
       `OPEN FIELD  ·  Rep ${d.rep + 1}  ·  ${Math.min(d.repTime, d.cfg.timeLimit).toFixed(1)} s`,
-      `Mode: ${mode}${this.timeScale < 1 ? '   SLOW MOTION' : ''}`,
+      `Ball: ${w.ballCarrier === d.human ? 'YOU HAVE IT — score at the far end zone' : w.ballCarrier < 0 ? 'LOOSE — dive on it' : 'carrier'}   ·   Mode: ${mode}${this.timeScale < 1 ? '   SLOW MOTION' : ''}`,
       sup ? `Support ${((d.cfg.support?.strength ?? 1) * 100).toFixed(0)}%  ·  posture ${(sup.posture * 100).toFixed(0)}%  ·  carry ${(sup.carry * 100).toFixed(0)}%${sup.down ? '  ·  DOWN' : ''}`
         : `Balance assist ${(this.settings.assist * 100).toFixed(0)}%${me.assistLevel < 1 ? ` (fading ${(me.assistLevel * 100).toFixed(0)}%)` : ''}`,
     ]);
@@ -498,7 +498,11 @@ class App {
     if (d.ended && !this.peakShown && w.time - d.endTime > 0.6) {
       this.peakShown = true;
       const imp = w.impact;
-      const title = d.ended === 'down' && imp.firstContactTime < 0 ? 'Carrier fell (no contact)' : d.ended === 'down' ? 'Tackle — carrier down' : d.ended === 'touchdown' ? 'Missed — touchdown' : d.ended === 'out of bounds' ? 'Pushed out of bounds' : 'Time';
+      const mine = w.ballCarrier === d.human;
+      const result = d.ended === 'time' ? 'Time' : mine ? (d.ended === 'touchdown' ? 'Touchdown!' : 'Tackled')
+        : d.ended === 'touchdown' ? 'Missed — touchdown' : imp.firstContactTime < 0 ? 'Carrier fell (no contact)' : 'Tackle — carrier down';
+      const fumble = d.recoveredBy === d.human ? 'Fumble recovered by you' : d.recoveredBy >= 0 ? 'Fumble recovered by the carrier' : '';
+      const title = fumble ? `${fumble}  ·  ${result}` : result;
       const ms = (v: number) => `${v.toFixed(1)} m/s (${(v * MPH).toFixed(1)} mph)`;
       // impulse over 30 ms, and the mean force it implies; the per-step peak force is a stiff-contact spike
       const J = (h: { impulse: number }) => `${h.impulse.toFixed(0)} N·s in 30 ms (${(h.impulse / 30).toFixed(1)} kN avg)`;
