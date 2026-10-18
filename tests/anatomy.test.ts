@@ -86,3 +86,30 @@ describe('scaling', () => {
     for (const j of JOINTS) expect(p.joints.some((x) => x.name.replace(/[LR]$/, '') === j.name), j.name).toBe(true);
   });
 });
+
+import { forceVelocity, MuscleSet } from '../src/sim/muscles';
+describe('muscles', () => {
+  it('torque–velocity: 1 isometric, 0 at max speed, decreasing when shortening, > 1 when lengthening', () => {
+    expect(forceVelocity(0)).toBeCloseTo(1, 9);
+    expect(forceVelocity(1)).toBe(0);
+    expect(forceVelocity(0.5)).toBeLessThan(forceVelocity(0.2));
+    expect(forceVelocity(-0.5)).toBeGreaterThan(1);
+    expect(forceVelocity(-5)).toBeLessThanOrEqual(1.4 + 1e-9);
+  });
+  it('clamps controller requests to the available torque', () => {
+    const ms = new MuscleSet(buildBody(DEFAULT_ATHLETE));
+    const i = ms.index('kneeL.flex');
+    const t = { q: new Float64Array(ms.n), kp: new Float64Array(ms.n), kd: new Float64Array(ms.n), tff: new Float64Array(ms.n).fill(1e6) };
+    const q = new Float64Array(ms.n), qd = new Float64Array(ms.n);
+    ms.compute(t, q, qd, 1 / 240);
+    expect(ms.torque[i]).toBeCloseTo(ms.tPos[i], 6);
+    expect(ms.effort[i]).toBeCloseTo(1, 6);
+    qd[i] = ms.wMax[i] * 0.5; // moving fast in the pushing direction
+    ms.compute(t, q, qd, 1 / 240);
+    expect(ms.torque[i]).toBeLessThan(0.25 * ms.tPos[i]);
+  });
+  it('effective inertia is larger at the hip than the ankle', () => {
+    const ms = new MuscleSet(buildBody(DEFAULT_ATHLETE));
+    expect(ms.ieff[ms.index('hipL.flex')]).toBeGreaterThan(5 * ms.ieff[ms.index('ankleL.dorsi')]);
+  });
+});

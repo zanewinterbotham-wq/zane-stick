@@ -10,8 +10,11 @@ import type { AthleteState, ContactReport, LinkRef, PhysicsEngine, PhysicsScene,
 type Any = any;
 let mj: Any = null;
 
-/** Bony hard stop beyond the anatomical range; the soft end-range is passive tissue torque in muscles.ts [S3]. */
-const HARD_STOP_EXTRA = (8 * Math.PI) / 180;
+/** Soft end of range [S3]: the limit engages at the active-range norm with low impedance (tissue
+ *  stiffening) and becomes nearly rigid ~10° past it (end of passive range). A margin that engages
+ *  earlier was unstable at 240 Hz, see git history. */
+const LIMIT_SOLIMP = '0.3 0.99 0.17';
+const LIMIT_TIMECONST = 0.03;
 const FRICTION = { ground: 0.6, body: 0.6, hand: 1.0 }; // [S5]
 
 const f = (v: readonly number[]) => v.map((x) => +x.toFixed(7)).join(' ');
@@ -66,7 +69,7 @@ class MujocoScene implements PhysicsScene {
         x += `<inertial pos="${f(c)}" mass="${s.mass}" fullinertia="${f([I[0], I[4], I[8], I[1], I[2], I[5]])}"/>`;
         const j = P.joints.find((jj) => jj.child === s.name);
         if (j) for (const dof of j.dofs) {
-          x += `<joint name="a${ai}_${j.name}_${dof.name}" type="hinge" axis="${f(dof.axis)}" range="${dof.range[0] - HARD_STOP_EXTRA} ${dof.range[1] + HARD_STOP_EXTRA}" damping="${j.damping}"/>`;
+          x += `<joint name="a${ai}_${j.name}_${dof.name}" type="hinge" axis="${f(dof.axis)}" range="${dof.range[0]} ${dof.range[1]}" solreflimit="${Math.max(LIMIT_TIMECONST, 2 * dt)} 1" solimplimit="${LIMIT_SOLIMP}" damping="${j.damping}"/>`;
         }
         s.geoms.forEach((g, gi) => (x += geomXml(g, s.origin, dt, `a${ai}_${s.name}_${gi}`)));
         for (const k of kids(s.name)) x += body(k);
