@@ -96,7 +96,7 @@ export class ProceduralAnimator implements Animator {
   private lv = { gait: 0, stance: 0, sink: 0, chop: 0, drive: 0, thrust: 0, tuck: 0, leanF: 0, leanS: 0, reachL: 0, reachR: 0,
     wrap: 0, shoot: 0, carryL: 0, carryR: 0, contact: 0, cut: 0, aimL: 0, aimR: 0, bp: 0, shuffle: 0, pullL: 0, pullR: 0 };
   private aimAng = [[0, 0], [0, 0]];
-  private cutT = 0; private cutSide = 0; private cutDir: [number, number] = [0, 1]; private prevCut = 0;
+  private cutT = 0; private cutSide = 0; private cutDir: [number, number] = [0, 1]; private cutSpeed = 0; private prevCut = 0;
   private turn = 0;
   private lungeT = 0; private prevThrust = false;
 
@@ -338,6 +338,7 @@ export class ProceduralAnimator implements Animator {
       const vh = Math.atan2(this.vel[0], this.vel[2]), mh = Math.atan2(dir[0], dir[1]);
       const nh = mag > 0.2 && Math.abs(wrapAngle(mh - vh)) > 0.5 ? mh : vh + cmd.plantCut * 1.2;
       this.cutDir = [Math.sin(nh), Math.cos(nh)]; this.cutSide = cmd.plantCut; this.cutT = 0.45;
+      this.cutSpeed = Math.min(Math.hypot(this.vel[0], this.vel[2]), gaitV) * 0.75;
     }
     this.prevCut = cmd.plantCut;
     this.cutT = Math.max(0, this.cutT - dt);
@@ -374,8 +375,9 @@ export class ProceduralAnimator implements Animator {
     let [tl, tf] = toH(dir[0] * mag * gaitV, dir[1] * mag * gaitV);
     tf = Math.max(tf, -BACK_MAX * P.speed); tl = clamp(tl, -SIDE_MAX * P.speed, SIDE_MAX * P.speed);
     let [tx, tz] = toW(tl, tf);
-    // a plant-and-cut trades some speed for the new direction
-    if (cutting) { const cs = Math.min(Math.hypot(this.vel[0], this.vel[2]), gaitV) * 0.75; tx = this.cutDir[0] * cs; tz = this.cutDir[1] * cs; }
+    // a plant-and-cut trades some speed for the new direction, once (taken at the plant: re-taken every step it
+    // bled the run to a near stop over the cut)
+    if (cutting) { tx = this.cutDir[0] * this.cutSpeed; tz = this.cutDir[1] * this.cutSpeed; }
     // a hip-thrust press lunges forward along the heading (one press, one lunge); against an opponent the legs
     // stay planted and drive instead (stepping would leave no leg to push with)
     const thrusting = cmd.thrustHips && !hold;
