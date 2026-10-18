@@ -60,5 +60,5 @@ Engine comparison: `docs/physics-benchmark.md`.
 ## Current phase
 Phase 1 (foundation and first playable). Do not start Phase 2.
 Status: engine chosen (MuJoCo), anatomy, muscles, game shell, drill, presets, deployment done;
-standing balance, push recovery (realism suite) and chop steps pass with the hand-built controller.
-Now building the active ragdoll (animator + tracking controller + support) so locomotion never falls.
+active ragdoll in the drill (ProceduralAnimator + TrackingController + World support): sprint ~10 m/s, no
+falls before contact; the hand-built controller is the balance layer in contact (realism suite passes).
