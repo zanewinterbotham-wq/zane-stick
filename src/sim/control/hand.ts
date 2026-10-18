@@ -64,7 +64,7 @@ export const DEFAULT_GAINS: Gains = {
   pushStart: 0.55, pushAnkle: 0.35, pushKnee: 0.7,
   yawGain: 0.6, reachStart: 0.7, standTorso: 1.3,
   chopClear: 0.025,
-  runPush: 1.02, runHeightK: 0.31, runAccel: 0.95, runFootK: 0.023, runHeel: 2.43,
+  runPush: 1.090, runHeightK: 0.4591, runAccel: 0.9547, runFootK: 0, runHeel: 2.888,
 };
 
 /** Target speeds (m/s) for the reference athlete; the body's own limits decide what is reached. */
@@ -75,23 +75,24 @@ export const GAIT_ACCEL = { walk: 1.5, jog: 3, sprint: 6 };
 const G = 9.81;
 /** Running cycle shape, tuned on the headless run scenario (scratch CMA-ES over these values). */
 const RUN = {
-  X: 0.36, Xb: 0.56,         // COM travel behind / past the ball of the foot during contact (m)
-  cop: 0.13,                 // stance centre of pressure ahead of the ankle: the ball of the foot (m)
-  flight: 0.02,              // minimum flight time per step (s): short flights, the hips are slow to swing
-  force: 3.4,                // stance push through Jᵀ relative to the planned ground force (muscles saturate it)
-  kv: 12,                    // stance vertical-velocity feedback (1/s)
-  kl: 37,                    // whole-body angular momentum feedback in stance (1/s)
-  kneeBend: 0.15, kneeStiff: 3.6, // stance knee spring set point (rad) and stiffness (× stanceKnee)
-  torsoKp: 1.8, torsoKd: 0.66,    // trunk balance through the stance hip (m·g·h per rad, per rad/s)
-  swingWn: 40,               // swing-leg natural frequency (rad/s)
-  tdFrac: 0.53,              // a contact counts as touchdown after this fraction of the predicted swing
-  reachAt: 0.27, foldEnd: 0.72, // swing fraction by which the thigh reaches forward / the heel fold ends
-  reachBelow: 0.057,         // touchdown IK target below the turf, so the leg arrives extended (m)
-  retract: 0.74, retractT: 0.04, // retraction rate (× foot ground speed) and its duration (s)
-  nearH: 0.18, nearK: 0.16,  // ankle height that triggers ground-speed matching (m), and its gain (s)
-  clear: 0.006,              // ankle clearance kept until the thigh is forward (m)
-  width: 0.17,               // foot placement out from the COM (m)
-  lean: 2.0, back: 0.38,     // trunk lean back per unit forward angular momentum (rad·kg/(kg·m²/s)), and constant (rad)
+  X: 0.4306, Xb: 0.5885,     // COM travel behind / past the ball of the foot during contact (m)
+  cop: 0.1459,               // stance centre of pressure ahead of the ankle: the ball of the foot (m)
+  flight: 0,                 // minimum flight time per step (s): short flights, the hips are slow to swing
+  cad0: 2.813, cadK: 0.22,   // step frequency (steps/s) = cad0 + cadK · speed
+  force: 4.094,              // stance push through Jᵀ relative to the planned ground force (muscles saturate it)
+  kv: 20.92,                 // stance vertical-velocity feedback (1/s)
+  kl: 29.60,                 // whole-body angular momentum feedback in stance (1/s)
+  kneeBend: 0.3292, kneeStiff: 4.098, // stance knee spring set point (rad) and stiffness (× stanceKnee)
+  torsoKp: 1.900, torsoKd: 0.9671,    // trunk balance through the stance hip (m·g·h per rad, per rad/s)
+  swingWn: 38.41, swingZ: 1.2, // swing-leg natural frequency (rad/s) and damping ratio
+  tdFrac: 0.6287,            // a contact counts as touchdown after this fraction of the predicted swing
+  reachAt: 0.2516, foldEnd: 0.5237, // swing fraction by which the thigh reaches forward / the heel fold ends
+  reachBelow: 0.08672,       // touchdown IK target below the turf, so the leg arrives extended (m)
+  retract: 0.8180, retractT: 0.04511, // retraction rate (× foot ground speed) and its duration (s)
+  nearH: 0.2530, nearK: 0.1547, // ankle height that triggers ground-speed matching (m), and its gain (s)
+  clear: 0,                  // ankle clearance kept until the thigh is forward (m)
+  width: 0.1264,             // foot placement out from the COM (m)
+  lean: 2.576, back: 0.3895, // trunk lean back per unit forward angular momentum (rad·kg/(kg·m²/s)), and constant (rad)
 };
 /** Gains are capped for stability at the slowest supported physics rate (240 Hz) and NOT re-scaled at
  *  faster rates, so the same athlete behaves the same on every preset. */
@@ -200,13 +201,13 @@ export class HandController implements MotorController {
     this.tracking[i] = 0;
   }
   /** Natural-frequency PD with the distal inertia (free limbs). */
-  private freq(out: MuscleTargets, i: number, q: number, wn: number) {
+  private freq(out: MuscleTargets, i: number, q: number, wn: number, zeta = 1) {
     if (i < 0) return;
     const ms = this.muscles, I = ms.ieff[i], kpMax = 0.5 * ms.ilocal[i] / (DT_REF * DT_REF);
     const kp = Math.min(I * wn * wn, kpMax);
     out.q[i] = clamp(q, ms.lo[i], ms.hi[i]);
     out.kp[i] = kp;
-    out.kd[i] = 2 * Math.sqrt(kp * I);
+    out.kd[i] = 2 * zeta * Math.sqrt(kp * I);
     this.tracking[i] = 1;
   }
   /** Gravity compensation: feed-forward torque that holds up the weight each dof carries, so joint
@@ -707,7 +708,7 @@ export class HandController implements MotorController {
     const vAlong = dot(cv, travel);
     // contact: the COM travels from X behind the ball of the foot to Xb past it
     const Tc = clamp((RUN.X + RUN.Xb) / Math.max(vAlong, 1), 0.12, 0.4);
-    const Ts = Math.max(Tc + RUN.flight, 1 / clamp(2.6 + 0.22 * vRef, 2.6, 4.8));
+    const Ts = Math.max(Tc + RUN.flight, 1 / clamp(RUN.cad0 + RUN.cadK * vRef, 2.6, 4.8));
     this.walkT += v.dt;
     const ball = (k: number): Vec3 => [ank[k][0] + RUN.cop * footFwd[k][0], 0, ank[k][2] + RUN.cop * footFwd[k][2]];
     // stance phase 0..1 from the COM's position over the foot (0.5 = COM above the ball of the foot)
@@ -803,10 +804,10 @@ export class HandController implements MotorController {
         // enough to keep the ankle above the turf (a foot that lands behind the body while swinging trips it).
         const th = s.q[L.hip[0]] - pelvisPitch, hipY = this.anchor(v, L.hip[0])[1];
         if (th < hipTD - pelvisPitch - 0.3) knee = Math.max(knee, th + Math.acos(clamp((hipY - L.L1 * Math.cos(th) - L.ankleH - RUN.clear) / L.L2, -1, 1)));
-        this.freq(out, L.hip[0], hipFlex, RUN.swingWn);
+        this.freq(out, L.hip[0], hipFlex, RUN.swingWn, RUN.swingZ);
         this.freq(out, L.hip[1], hipAbd, RUN.swingWn);
         this.freq(out, L.hip[2], 0, RUN.swingWn * 0.6);
-        this.freq(out, L.knee[0], knee, RUN.swingWn);
+        this.freq(out, L.knee[0], knee, RUN.swingWn, RUN.swingZ);
         this.freq(out, L.knee[1], 0, RUN.swingWn * 0.5);
         this.freq(out, L.ankle[0], pelvisPitch - hipFlex + knee + 0.15, RUN.swingWn * 2);
         this.freq(out, L.ankle[1], 0, RUN.swingWn * 0.5);
