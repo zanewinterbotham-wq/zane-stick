@@ -4,8 +4,15 @@ import { PACKS, type Kind } from './library';
 
 export interface Variant { id: string; file: string; source: string; license: string; duration: number; note: string }
 export interface Manifest { version: number; categories: { id: string; label: string; group: string; event: string; variants: Variant[] }[] }
-/** Measured on the decoded .ogg (round trip), keyed by variant id. */
-export type Analysis = Record<string, Stats & { kind: Kind }>;
+/** Measured on the decoded .ogg (round trip), keyed by variant id; voices also get their pitch (dsp pitch()). */
+export type Analysis = Record<string, Stats & { kind: Kind; f0?: number; voiced?: number }>;
+
+/** Synthetic voices must sound human: median fundamental (Hz) in a human range for the sound (a pain scream sits
+ *  around 150-600 Hz; a groan at a speaking pitch), mostly voiced, and most energy in the voice band (`band`: BAND_EDGES
+ *  indices; 250 Hz-4 kHz holds a scream's harmonics and formants, 100 Hz-4 kHz a groan's) rather than a low rumble. */
+export const VOICE: Record<string, { f0: [number, number]; band: [number, number] }> = {
+  pain_scream: { f0: [150, 600], band: [2, 6] }, pain_moan: { f0: [85, 300], band: [1, 6] },
+};
 
 /** Channels, sample rate and exact length in samples (last page granule position) from Ogg/Vorbis bytes. */
 export function oggInfo(b: Uint8Array) {
@@ -47,6 +54,13 @@ export function checkLibrary(m: Manifest, a: Analysis): string[] {
       if (s.onset > lim.onset) err.push(`${v.id}: starts late (${(s.onset * 1000).toFixed(0)} ms of leading silence)`);
       if (s.kind === 'loop' && s.loopJump > 8) err.push(`${v.id}: loop seam jump ${s.loopJump.toFixed(1)}x the typical sample step`);
       if (s.bands.length !== BAND_EDGES.length - 1 || s.segments.length !== 8) err.push(`${v.id}: bad band/segment count`);
+      const voice = VOICE[c.id];
+      if (voice) {
+        const f0 = s.f0 ?? 0, speech = s.bands.slice(...voice.band).reduce((x, y) => x + y, 0);
+        if (f0 < voice.f0[0] || f0 > voice.f0[1]) err.push(`${v.id}: voice pitch ${f0.toFixed(0)} Hz outside ${voice.f0[0]}-${voice.f0[1]} Hz`);
+        if ((s.voiced ?? 0) < 0.4) err.push(`${v.id}: only ${((s.voiced ?? 0) * 100).toFixed(0)} % voiced`);
+        if (speech < 0.6) err.push(`${v.id}: only ${(speech * 100).toFixed(0)} % of the energy in ${BAND_EDGES[voice.band[0]]}-${BAND_EDGES[voice.band[1]]} Hz`);
+      }
     });
     for (let i = 0; i < c.variants.length; i++) for (let j = i + 1; j < c.variants.length; j++) {
       const p = a[c.variants[i].id], q = a[c.variants[j].id];

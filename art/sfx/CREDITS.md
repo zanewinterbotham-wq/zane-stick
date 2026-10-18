@@ -1,14 +1,15 @@
 # Sound library credits
 
 Dev-only library for choosing the game's sounds (`npm run picker`). It is not part of the production
-build and is never deployed. Every file is CC0. Regenerate everything with `npm run sfx:build`
+build and is never deployed. Every file is CC0. Regenerate everything with `npm run sfx:build` (or only some categories: `npm run sfx:build -- <id> …`)
 (recipes in `tools/sfx/library.ts`).
 
 ## Synthesized (source "synth")
 
 Made from scratch by the offline synthesizer in `tools/sfx/` (noise, oscillators, struck-object modes,
 glottal pulses with vowel formants, filters, envelopes, distortion, reverb, seeded variation).
-Voices (grunts, exhales, crowds) are synthesized and non-verbal. Released as CC0 with this repository.
+Voices (grunts, exhales, pain screams and moans, crowds) are synthesized and non-verbal: glottal pulses or
+additive harmonics under vowel formants, at human pitch (checked: screams 150-600 Hz, moans 85-300 Hz). Released as CC0 with this repository.
 
 ## CC0 packs (source = pack name in `manifest.json`)
 
@@ -23,6 +24,7 @@ into football-specific variants. Each variant's `note` names the original file.
 | kenney/ui-audio | Kenney (kenney.nl) | CC0 1.0 | https://kenney.nl/assets/ui-audio |
 | opengameart/100-cc0-sfx-rubberduck | rubberduck | CC0 1.0 | https://opengameart.org/content/100-cc0-sfx |
 | opengameart/100-cc0-sfx-2-rubberduck | rubberduck | CC0 1.0 | https://opengameart.org/content/100-cc0-sfx-2 |
+| opengameart/512-retro-sfx-juhani-junkala | Juhani Junkala (SubspaceAudio) | CC0 1.0 | https://opengameart.org/content/512-sound-effects-8-bit-style |
 
 Credit is not required by CC0; it is given here as thanks.
 

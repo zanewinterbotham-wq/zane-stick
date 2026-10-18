@@ -11,7 +11,9 @@ export interface Category { id: string; label: string; group: string; event: str
 
 const IMPACT = 'kenney/impact-sounds', RPG = 'kenney/rpg-audio', IFACE = 'kenney/interface-sounds', UIA = 'kenney/ui-audio';
 const OGA1 = 'opengameart/100-cc0-sfx-rubberduck', OGA2 = 'opengameart/100-cc0-sfx-2-rubberduck';
-export const PACKS = [IMPACT, RPG, IFACE, UIA, OGA1, OGA2];
+const RETRO = 'opengameart/512-retro-sfx-juhani-junkala';
+const RETRO_HUMAN = 'The Essential Retro Video Game Sound Effects Collection [512 sounds] By Juhani Junkala/Death Screams/Human/';
+export const PACKS = [IMPACT, RPG, IFACE, UIA, OGA1, OGA2, RETRO];
 
 const f0 = (x: number) => x.toFixed(0), f2 = (x: number) => x.toFixed(2);
 const ms = (s: number) => `${(s * 1000).toFixed(0)} ms`;
@@ -53,18 +55,6 @@ const VOWELS: Record<string, [number, number, number]> = {
 const vowel = (x: Sig, v: [number, number, number], s = 1) =>
   formants(x, [{ f: v[0] * s, bw: 90 * s, g: 1 }, { f: v[1] * s, bw: 110 * s, g: 0.55 }, { f: v[2] * s, bw: 160 * s, g: 0.3 }]);
 
-/** Crowd of synthetic voices: each voice is a glottal source, voices are pooled per vowel/sex and filtered once. */
-function crowd(r: Rng, len: number, voices: number, vowels: string[], voice: (r: Rng) => { at: number; dur: number; f: (t: number) => number; env: (t: number) => number; g: number }): Sig {
-  const pools = new Map<string, Sig>();
-  for (let k = 0; k < voices; k++) {
-    const fem = r() < 0.4, key = `${pick(r, vowels)}|${fem ? 'f' : 'm'}`, vo = voice(r), base = fem ? rnd(r, 185, 290) : rnd(r, 95, 165);
-    const g = shape(glottal(vo.dur, (t) => base * vo.f(t), r, 0.02, rnd(r, 0.5, 0.7)), vo.env);
-    pools.set(key, mix(pools.get(key) ?? buf(len), g, vo.g, vo.at));
-  }
-  let out = buf(len);
-  for (const [key, x] of pools) { const [vw, sex] = key.split('|'); out = mix(out, vowel(x, VOWELS[vw], sex === 'f' ? 1.17 : 1)); }
-  return out.slice(0, buf(len).length);
-}
 function claps(r: Rng, len: number, count: number, env: (t: number) => number): Sig {
   let x = buf(len);
   for (let k = 0; k < count; k++) {
@@ -80,6 +70,40 @@ function blast(r: Rng, len: number, f: number, rate: number, fm: number, am: num
   const tone = layer(len, [[osc(len, freq), 1], [osc(len, (t) => 2 * freq(t)), 0.18], [bp(white(len, r), f, 3), 0.35]]);
   return shape(tone, (t) => trill(t) * ahr(0.012, len - 0.05, 0.038)(t));
 }
+/** Additive voice: the harmonics of f0(t), each weighted by a three-formant resonance envelope at its own frequency
+ *  over a −6 dB/octave source tilt, with jitter and shimmer. Thin and clean where a filtered pulse train buzzes; the
+ *  formants follow `vow(t)` (F1..F3 Hz, already scaled for the speaker); `tilt` < 1 is a pressed, shouting voice. */
+function additive(r: Rng, len: number, f0: (t: number) => number, vow: (t: number) => [number, number, number], o: { jitter?: number; shimmer?: number; bw?: number; top?: number; tilt?: number } = {}): Sig {
+  const x = buf(len), jit = o.jitter ?? 0.01, shim = o.shimmer ?? 0.1, bw = o.bw ?? 1, top = o.top ?? 5000, tilt = o.tilt ?? 1;
+  let ph = 0, amps: number[] = [], j = 0, jt = 0, s = 1, st = 1;
+  for (let i = 0; i < x.length; i++) {
+    const t = i / SR;
+    if ((i & 255) === 0) { jt = (r() * 2 - 1) * jit; st = 1 + (r() * 2 - 1) * shim; } // slow random wobble of pitch and level
+    j += (jt - j) * 0.002; s += (st - s) * 0.002;
+    const f = f0(t) * (1 + j);
+    ph += f / SR; ph -= Math.floor(ph);
+    if ((i & 31) === 0) {
+      const v = vow(t);
+      amps = [];
+      for (let k = 1; k * f < top; k++) {
+        const fk = k * f;
+        amps.push((1 / (1 + ((fk - v[0]) / (70 * bw)) ** 2) + 0.5 / (1 + ((fk - v[1]) / (90 * bw)) ** 2) + 0.25 / (1 + ((fk - v[2]) / (130 * bw)) ** 2)) / k ** tilt);
+      }
+    }
+    let y = 0;
+    for (let k = 0; k < amps.length; k++) y += amps[k] * Math.sin(2 * Math.PI * (k + 1) * ph);
+    x[i] = y * s;
+  }
+  return x;
+}
+/** Vowel formants glided from a to b (fraction u(t) 0..1), scaled for vocal tract length / a raised larynx. */
+const glide = (a: string, b: string, u: (t: number) => number, sc = 1) => (t: number): [number, number, number] => {
+  const k = Math.min(1, Math.max(0, u(t)));
+  return [0, 1, 2].map((n) => sc * (VOWELS[a][n] + (VOWELS[b][n] - VOWELS[a][n]) * k)) as [number, number, number];
+};
+/** Breath noise through a vowel's formants (aspiration over a voice, or a gasp alone). */
+const breath = (r: Rng, len: number, v: [number, number, number], env: (t: number) => number) =>
+  formants(shape(white(len, r), env), [{ f: v[0], bw: 200, g: 1 }, { f: v[1], bw: 250, g: 0.7 }, { f: v[2], bw: 350, g: 0.4 }]);
 const notes = (len: number, freqs: number[], step: number, d: number, wave: 'sine' | 'tri' = 'tri') => {
   let x = buf(len);
   freqs.forEach((f, k) => { x = mix(x, shape(layer(d * 5, [[osc(d * 5, f, wave), 1], [osc(d * 5, f * 2), 0.25]]), ad(0.002, d)), 1, k * step); });
@@ -398,6 +422,116 @@ export const CATEGORIES: Category[] = [
       return { x, note: `breath ${ms(len)}, formants ${f0(f1)}/${f0(f2_)} Hz${i % 2 ? ', voiced huff onset' : ''}` };
     },
   },
+  // ================= Injuries (design §6.6). Voices are non-verbal and synthesized at human pitch and formants.
+  {
+    id: 'bone_crack', label: 'Bone crack or snap', group: 'Injuries', kind: 'oneshot', count: 10,
+    event: 'plays when a joint breaks (knee, elbow, ankle, shoulder, collarbone); louder with the load that broke it',
+    gen: (c) => {
+      const { r, i, v } = c;
+      if (i >= 7) {
+        const [pack, name] = ([[IMPACT, 'impactWood_light_002'], [IMPACT, 'impactWood_medium_001'], [OGA2, 'sfx100v2_wood_hit_02']] as const)[i - 7], k = rnd(r, 1.35, 1.7);
+        const x = layer(0.4, [[packed(c, pack, name, k, 600, 0, 0.25), 1], [crack(r, 3000, 0.002), 0.7], [thump(0.12, 140, 70, 0.03), 0.2]]);
+        return { x: drive(x, 1.6), source: pack, note: `${src(pack, name, k)}, cut to 250 ms, with synth crack and flesh thud` };
+      }
+      // A green branch snapping: a sharp click, a burst of fibres giving way, the bone's short ring, a wet crunch.
+      const fib = rnd(r, 0.012, 0.05), rate = rnd(r, 4000, 9000), ringF = rnd(r, 900, 2400), split = i % 3 === 1;
+      let x = layer(0.35, [[crack(r, rnd(r, 2000, 3500), rnd(r, 0.0015, 0.004)), 1],
+        [crunch(r, fib + 0.01, rate, rnd(r, 2500, 4500), 0.8, ad(0.0005, fib * 0.5)), 1.3],
+        [modal(0.08, [{ f: ringF, a: 1, d: rnd(r, 0.006, 0.015) }, { f: ringF * 2.7, a: 0.4, d: 0.005 }], r), 0.35],
+        [burst(r, 0.12, rnd(r, 300, 600), 0.8, 0.001, rnd(r, 0.02, 0.05), 'lp', brown), 0.25 + 0.3 * v],
+        [thump(0.15, 150, 70, 0.04), 0.25]]);
+      if (split) x = mix(x, crack(r, 2800, 0.002), 0.7, rnd(r, 0.02, 0.05)); // a second fracture right behind
+      return { x: drive(x, 1.5), note: `snap: fibres ${ms(fib)} at ${f0(rate)}/s, bone ring ${f0(ringF)} Hz${split ? ', double break' : ''}` };
+    },
+  },
+  {
+    id: 'pain_scream', label: 'Pain scream (non-verbal)', group: 'Injuries', kind: 'oneshot', count: 10,
+    event: 'plays when a joint breaks: the hurt athlete screams (no words)',
+    gen: (c) => {
+      const { r, i, v } = c;
+      if (i >= 8) {
+        const name = RETRO_HUMAN + ['sfx_deathscream_human1.wav', 'sfx_deathscream_human2.wav'][i - 8], k = rnd(r, 1.3, 1.5);
+        return { x: lp(packed(c, RETRO, name, k, 180, 0, 1.1), 5000), source: RETRO, note: `${src(RETRO, name.split('/').pop()!, k)}, low-passed 5 kHz (smooths the 8-bit grit)` };
+      }
+      const len = rnd(r, 0.6, 1.05), peakF = 380 + 200 * v, startF = peakF * rnd(r, 0.6, 0.75), rise = rnd(r, 0.08, 0.18), vib = rnd(r, 5, 7.5);
+      const f = (t: number) => (t < rise ? startF + (peakF - startF) * Math.sin(Math.PI / 2 * t / rise) : peakF * (1 - 0.3 * ((t - rise) / (len - rise)) ** 2)) * (1 + 0.025 * Math.sin(2 * Math.PI * vib * t));
+      const env = ahr(0.03, len * 0.55, len * 0.4), sc = rnd(r, 1.05, 1.2), tech = i % 4;
+      if (tech === 1) {
+        // source-filter: a tense, short-open glottal pulse through moving formants, plus breath
+        const vw = glide('eh', 'ah', (t) => t / 0.2, sc);
+        const g = shape(glottal(len, f, r, 0.015, 0.45), env);
+        const x = layer(len, [[formants(g, [{ f: (t) => vw(t)[0], bw: 110, g: 1 }, { f: (t) => vw(t)[1], bw: 150, g: 1.2 }, { f: (t) => vw(t)[2], bw: 220, g: 0.9 }]), 1], [breath(r, len, vw(0.3), env), 0.25]]);
+        return { x: lp(hp(x, 200), 6000), note: `pulse-train scream "eh-ah" ${f0(startF)} to ${f0(peakF)} Hz, ${ms(len)}` };
+      }
+      if (tech === 3) {
+        // strained: roughness from a subharmonic (period doubling), the "cracking" voice of a scream
+        const vw = glide('ah', 'uh', (t) => t / len, sc), a = additive(r, len, f, vw, { jitter: 0.03, shimmer: 0.25, bw: 1.4, tilt: 0.25 }), sub = additive(r, len, (t) => f(t) / 2, vw, { jitter: 0.03, bw: 1.4, tilt: 0.25 });
+        return { x: lp(hp(layer(len, [[shape(a, env), 1], [shape(sub, (t) => env(t) * 0.35 * Math.min(1, t / 0.2)), 1], [breath(r, len, vw(0.2), env), 0.3]]), 180), 6000), note: `rough scream "ah" ${f0(peakF)} Hz with a subharmonic, ${ms(len)}` };
+      }
+      // additive: clean harmonics under a formant envelope (an open "aah", or "ow" closing to "oo")
+      const ow = tech === 2, vw = ow ? glide('ah', 'oo', (t) => (t - len * 0.5) / (len * 0.4), sc) : glide('ah', 'ah', () => 0, sc);
+      const x = layer(len, [[shape(additive(r, len, f, vw, { jitter: 0.02, shimmer: 0.15, bw: 1.2, tilt: 0.25 }), env), 1], [breath(r, len, vw(0), (t) => env(t) * (t < 0.08 ? 1.5 : 0.6)), 0.2]]);
+      return { x: lp(hp(x, 180), 6000), note: `additive scream "${ow ? 'ow' : 'aah'}" ${f0(startF)} to ${f0(peakF)} Hz, vibrato ${f2(vib)} Hz, ${ms(len)}` };
+    },
+  },
+  {
+    id: 'pain_moan', label: 'Moan or groan on the turf (non-verbal)', group: 'Injuries', kind: 'long', count: 10, level: -18,
+    event: 'plays every few seconds while a knocked-out or injured athlete lies on the turf (no words)',
+    gen: (c) => {
+      const { r, i, v } = c;
+      const base = 105 + 85 * v, len = rnd(r, 1.2, 2.3), tech = i % 3, sc = rnd(r, 0.95, 1.05);
+      // pitch: a slow rise into the moan, then a long fall as the breath runs out; a little wobble of pain
+      const f = (t: number) => base * (1 + 0.18 * Math.sin(Math.PI * Math.min(1, t / (len * 0.6))) - 0.15 * Math.max(0, t / len - 0.6)) * (1 + 0.015 * Math.sin(2 * Math.PI * 4.5 * t));
+      const env = ahr(rnd(r, 0.12, 0.25), len * 0.45, len * 0.45);
+      if (tech === 0) {
+        // a closed-mouth hum (low F1, nasal resonance) opening into "oh", breath
+        const vw = glide('hn', 'oh', (t) => (t - 0.3 * len) / (0.4 * len), sc), x = additive(r, len, f, vw, { jitter: 0.02, shimmer: 0.2, bw: 1.6, top: 4000, tilt: 0.6 });
+        return { x: lp(hp(hp(layer(len, [[shape(x, env), 1], [breath(r, len, VOWELS.hn, env), 0.15]]), 140), 140), 4000), note: `hummed groan "mm-oh" ${f0(base)} Hz, ${f2(len)} s` };
+      }
+      if (tech === 1) {
+        // open "ohh-uhh" through a breathy pulse train, with a catch (a short break) in the middle
+        const vw = glide('oh', 'uh', (t) => t / len, sc), gap = rnd(r, 0.35, 0.6) * len;
+        const g = shape(glottal(len, f, r, 0.03, 0.65), (t) => env(t) * (Math.abs(t - gap) < 0.06 ? 0.15 : 1));
+        const x = formants(g, [{ f: (t) => vw(t)[0], bw: 100, g: 1 }, { f: (t) => vw(t)[1], bw: 120, g: 0.5 }, { f: (t) => vw(t)[2], bw: 170, g: 0.25 }]);
+        return { x: lp(hp(hp(layer(len, [[x, 1], [breath(r, len, VOWELS.oh, env), 0.3]]), 140), 140), 4500), note: `breathy moan "oh-uh" ${f0(base)} Hz with a catch, ${f2(len)} s` };
+      }
+      // a groan with creak: vocal fry (irregular low pulses) at its start and end, voice in the middle
+      const vw = glide('uh', 'ah', (t) => t / len, sc), voice = additive(r, len, f, vw, { jitter: 0.03, shimmer: 0.25, bw: 1.3, top: 4000 });
+      const fry = formants(shape(glottal(len, () => rnd(r, 35, 70), r, 0.25, 0.3), (t) => env(t) * (t < 0.3 || t > len - 0.4 ? 1 : 0.2)), [{ f: VOWELS.uh[0], bw: 120, g: 1 }, { f: VOWELS.uh[1], bw: 150, g: 0.5 }]);
+      return { x: lp(hp(layer(len, [[shape(voice, (t) => env(t) * Math.min(1, t / 0.3)), 1], [fry, 0.5], [breath(r, len, VOWELS.uh, env), 0.2]]), 140), 4500), note: `creaky groan "uh-ah" ${f0(base)} Hz, ${f2(len)} s` };
+    },
+  },
+  {
+    id: 'ko_thud', label: 'Knockout thud', group: 'Injuries', kind: 'oneshot', count: 8,
+    event: 'plays when an athlete is knocked out (the blow lands and he drops)',
+    gen: (c) => {
+      const { r, i, v } = c;
+      if (i >= 6) {
+        const name = `impactPunch_heavy_00${i - 5}`, k = rnd(r, 0.6, 0.7);
+        const x = layer(0.9, [[packed(c, IMPACT, name, k, 30, 1500), 1], [thump(0.5, 80, 32, 0.2, 2.5), 0.7], [crack(r, 2500, 0.003), 0.4]]);
+        return { x: drive(x, 1.6), source: IMPACT, note: `${src(IMPACT, name, k)}, low-passed, with sub thud and helmet click` };
+      }
+      const a = 70 + 30 * v, d = rnd(r, 0.15, 0.3), shell = rnd(r, 900, 1600);
+      const x = layer(1, [[thump(0.7, a, 30, d, 2.5), 1], [crack(r, rnd(r, 2000, 3500), 0.003), 0.6], [ring(r, shell, 0.06), 0.25], [burst(r, 0.5, 250, 0.7, 0.003, 0.12, 'lp', brown), 0.8]]);
+      return { x: lp(drive(x, 1.8), 6000), note: `deep thud ${f0(a)} Hz ${f2(d)} s, helmet clack ${f0(shell)} Hz` };
+    },
+  },
+  {
+    id: 'ko_ring', label: 'Knockout ringing (ears)', group: 'Injuries', kind: 'long', count: 8, level: -24,
+    event: 'plays after a knockout: the ringing in the ears (quiet, under everything)',
+    gen: (c) => {
+      const { r, i, v } = c;
+      if (i >= 6) {
+        const [pack, name] = ([[IMPACT, 'impactBell_heavy_001'], [OGA1, 'bell_02']] as const)[i - 6], k = rnd(r, 1.4, 1.8);
+        const raw = packed(c, pack, name, k, 800);
+        return { x: layer(1.6, [[raw, 0.6], [shape(osc(1.6, rnd(r, 3500, 5000)), ahr(0.05, 0.6, 0.9)), 0.4]]), source: pack, note: `${src(pack, name, k)} as a struck-bell "ding", with a ringing tone` };
+      }
+      const len = rnd(r, 1.6, 2.8), f = 3000 + 3500 * v, beat = rnd(r, 2, 6);
+      // tinnitus: a pure high tone with a slow beat against a close second, fading; some with a low muffled hum
+      const x = layer(len, [[osc(len, f), 1], [osc(len, f + beat), 0.6], [shape(lp(pink(len, r), 400), ahr(0.02, 0.2, 0.6)), i % 2 ? 0.5 : 0]]);
+      return { x: shape(x, (t) => Math.min(1, t / 0.05) * Math.exp(-t / (len * 0.45))), note: `tinnitus ${f0(f)} Hz beating ${f2(beat)} Hz, ${f2(len)} s` };
+    },
+  },
   // ================= Game
   {
     id: 'game_whistle_start', label: 'Whistle (rep start)', group: 'Game', kind: 'oneshot', count: 8,
@@ -420,21 +554,33 @@ export const CATEGORIES: Category[] = [
     },
   },
   {
-    id: 'crowd_cheer', label: 'Crowd cheer', group: 'Game', kind: 'long', count: 8, level: -16,
+    id: 'crowd_cheer', label: 'Crowd cheer', group: 'Game', kind: 'long', count: 10, level: -16,
     event: 'plays after a great play (big tackle, broken tackle, touchdown)',
-    gen: ({ r, v }) => {
-      const len = rnd(r, 2.4, 3.0), voices = Math.round(80 + 80 * v);
-      const voiced = crowd(r, len, voices, ['ah', 'eh', 'ee', 'oh'], (r) => {
-        const at = rnd(r, 0, 0.35), dur = rnd(r, 1.2, len - at), rise = rnd(r, 0.2, 0.4), vib = rnd(r, 4, 7), ph = r() * 6;
-        return { at, dur, g: rnd(r, 0.3, 1), env: ahr(rnd(r, 0.08, 0.2), dur * 0.5, dur * 0.4), f: (t) => (0.85 + 0.3 * Math.min(1, t / rise)) * (1 + 0.02 * Math.sin(2 * Math.PI * vib * t + ph)) };
-      });
-      const env = ahr(0.25, len - 1.1, 0.8);
-      let x = layer(len, [[voiced, 1], [shape(bp(pink(len, r), 900, 0.5), env), 0.5], [claps(r, len, Math.round(rnd(r, 80, 300)), env), 0.6]]);
-      for (let k = 0; k < 4; k++) {
-        const at = rnd(r, 0.1, 0.6), d = rnd(r, 0.5, 1.2), fw = rnd(r, 900, 1600), vib = rnd(r, 5, 7);
-        x = mix(x, shape(osc(d, (t) => fw * (1 + 0.3 * Math.min(1, t / 0.3)) * (1 + 0.03 * Math.sin(2 * Math.PI * vib * t))), ahr(0.1, d * 0.5, d * 0.4)), 0.04, Math.min(at, len - d));
+    gen: ({ r, i, v }) => {
+      // Rebuilt 2026-10-18 (the owner rejected the pooled pulse-train crowd as a roar in a cave): many separate shouts
+      // ("yeah", "woo", "hey") at the raised pitch people cheer at, each an additive voice with its own formants,
+      // open air (two short slap echoes, no reverb tail) and the low end cut, so it stays bright and human.
+      const len = rnd(r, 2.2, 2.9), shouts = Math.round(45 + 45 * v), env = ahr(0.2, len - 1.0, 0.75);
+      let x = buf(len);
+      for (let k = 0; k < shouts; k++) {
+        const fem = r() < 0.45, base = fem ? rnd(r, 300, 480) : rnd(r, 170, 290), sc = fem ? 1.17 : 1, kind = Math.floor(r() * 3);
+        const at = rnd(r, 0, 0.5) + (r() < 0.25 ? rnd(r, 0.4, 1.2) : 0), dur = Math.min(len - at - 0.05, rnd(r, 0.35, 1.1));
+        if (dur < 0.2) continue;
+        const f = kind === 1 ? (t: number) => base * (0.85 + 0.35 * Math.min(1, t / (dur * 0.6))) : (t: number) => base * (1 + 0.12 * Math.sin(Math.PI * Math.min(1, t / dur)));
+        const vw = kind === 0 ? glide('eh', 'ah', (t) => t / (dur * 0.4), sc) : kind === 1 ? glide('oo', 'oo', () => 0, sc) : glide('eh', 'ee', (t) => t / dur, sc);
+        const voice = shape(additive(r, dur, f, vw, { jitter: 0.02, shimmer: 0.2, bw: 1.5, top: 5000, tilt: 0.5 }), ahr(rnd(r, 0.03, 0.08), dur * 0.5, dur * 0.4));
+        x = mix(x, voice, rnd(r, 0.15, 0.6) / Math.sqrt(shouts / 20), at);
       }
-      return { x: lp(hp(reverb(x, 0.4, 1.6, 1.0, 0.82), 120), 7000), note: `${voices} synth voices, claps, roar, ${f2(len)} s` };
+      x = x.slice(0, buf(len).length);
+      // the crowd's breath and hiss: noise through an average open vowel, not a low rumble
+      x = mix(x, shape(formants(pink(len, r), [{ f: 700, bw: 300, g: 1 }, { f: 1500, bw: 500, g: 0.6 }, { f: 2700, bw: 700, g: 0.3 }]), env), 0.25);
+      x = mix(x, claps(r, len, Math.round(rnd(r, 120, 320)), env), 0.5);
+      if (i % 2) for (let k = 0; k < 2; k++) { // a couple of finger whistles over the top
+        const d = rnd(r, 0.4, 0.8), fw = rnd(r, 1800, 2800);
+        x = mix(x, shape(osc(d, (t) => fw * (1 + 0.15 * Math.min(1, t / 0.15)) * (1 - 0.1 * Math.max(0, t - d * 0.7) / d)), ahr(0.04, d * 0.6, d * 0.3)), 0.05, rnd(r, 0.2, len - d - 0.1));
+      }
+      const slap = mix(mix(x.slice(), x, 0.25, rnd(r, 0.03, 0.05)), x, 0.12, rnd(r, 0.07, 0.11)).slice(0, x.length);
+      return { x: lp(hp(hp(slap, 250), 250), 8000), note: `${shouts} separate additive shouts ("yeah", "woo", "hey") at 170-480 Hz, claps${i % 2 ? ', whistles' : ''}, open air, ${f2(len)} s` };
     },
   },
   {

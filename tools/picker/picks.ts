@@ -10,6 +10,8 @@ export interface Picks {
   stadium?: string | null;
   /** categoryId -> gain multiplier (1 = as recorded). */
   volumes: Record<string, number>;
+  /** Injury effect style ids (src/game/render/effects.ts STYLES) the owner likes; the game uses the first. Optional. */
+  effects?: string[];
   notes: string;
 }
 
@@ -41,7 +43,10 @@ export function validate(x: unknown): { ok: true; picks: Picks } | { ok: false; 
     if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > MAX_VOLUME) errors.push(`volumes.${cat} must be a number from 0 to ${MAX_VOLUME}`);
     else volumes[cat] = v;
   }
+  if (x.effects !== undefined && (!Array.isArray(x.effects) || !x.effects.every((id) => typeof id === 'string' && id.length > 0) || new Set(x.effects).size !== x.effects.length))
+    errors.push('effects must be a list of distinct effect style ids');
   if (typeof x.notes !== 'string') errors.push('notes must be a string');
   if (errors.length) return { ok: false, errors };
-  return { ok: true, picks: { version: 1, sounds, character: x.character as string | null, ...(x.stadium ? { stadium: x.stadium as string } : {}), volumes, notes: x.notes as string } };
+  const effects = Array.isArray(x.effects) && x.effects.length ? { effects: [...x.effects] as string[] } : {};
+  return { ok: true, picks: { version: 1, sounds, character: x.character as string | null, ...(x.stadium ? { stadium: x.stadium as string } : {}), volumes, ...effects, notes: x.notes as string } };
 }

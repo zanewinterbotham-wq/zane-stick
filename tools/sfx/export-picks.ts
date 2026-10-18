@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { validate } from '../picker/picks';
 import type { Manifest } from './checks';
 
-export interface SfxPicks { version: 1; categories: Record<string, { volume: number; files: string[] }> }
+export interface SfxPicks { version: 1; categories: Record<string, { volume: number; files: string[] }>; effects?: string[] }
+/** Injury sounds (design §6.6) the owner has not picked yet: the game plays their first two variants meanwhile. */
+export const TEMP_DEFAULTS = ['bone_crack', 'pain_scream', 'pain_moan', 'ko_thud', 'ko_ring'];
 
 export function exportPicks(o: { picks: string; libDir: string; publicDir: string; out: string }): SfxPicks {
   const v = validate(JSON.parse(readFileSync(o.picks, 'utf8')));
@@ -14,7 +16,8 @@ export function exportPicks(o: { picks: string; libDir: string; publicDir: strin
   const manifest: Manifest = JSON.parse(readFileSync(join(o.libDir, 'manifest.json'), 'utf8'));
   const res: SfxPicks = { version: 1, categories: {} };
   const copies: [string, string][] = [];
-  for (const [cat, ids] of Object.entries(v.picks.sounds)) {
+  const temp = TEMP_DEFAULTS.filter((id) => !v.picks.sounds[id]).flatMap((id) => { const c = manifest.categories.find((x) => x.id === id); return c ? [[id, c.variants.slice(0, 2).map((x) => x.id)] as [string, string[]]] : []; });
+  for (const [cat, ids] of [...Object.entries(v.picks.sounds), ...temp]) {
     const c = manifest.categories.find((x) => x.id === cat);
     if (!c) throw new Error(`picked category ${cat} is not in the library`);
     const files = ids.map((id) => {
@@ -27,6 +30,7 @@ export function exportPicks(o: { picks: string; libDir: string; publicDir: strin
     });
     res.categories[cat] = { volume: v.picks.volumes[cat] ?? 1, files };
   }
+  if (v.picks.effects?.length) res.effects = v.picks.effects;
   // a clean copy each time, so un-picked sounds never linger in the deploy
   rmSync(join(o.publicDir, 'sfx'), { recursive: true, force: true });
   for (const [src, dst] of copies) { mkdirSync(dirname(dst), { recursive: true }); copyFileSync(src, dst); }

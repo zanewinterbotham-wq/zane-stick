@@ -2026,6 +2026,414 @@
       ]
     },
     {
+      "id": "bone_crack",
+      "label": "Bone crack or snap",
+      "group": "Injuries",
+      "event": "plays when a joint breaks (knee, elbow, ankle, shoulder, collarbone); louder with the load that broke it",
+      "variants": [
+        {
+          "id": "bone_crack_01",
+          "file": "bone_crack/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.159,
+          "note": "snap: fibres 46 ms at 5328/s, bone ring 2220 Hz"
+        },
+        {
+          "id": "bone_crack_02",
+          "file": "bone_crack/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.162,
+          "note": "snap: fibres 15 ms at 5055/s, bone ring 1429 Hz, double break"
+        },
+        {
+          "id": "bone_crack_03",
+          "file": "bone_crack/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.159,
+          "note": "snap: fibres 25 ms at 7604/s, bone ring 1185 Hz"
+        },
+        {
+          "id": "bone_crack_04",
+          "file": "bone_crack/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.159,
+          "note": "snap: fibres 49 ms at 5292/s, bone ring 2135 Hz"
+        },
+        {
+          "id": "bone_crack_05",
+          "file": "bone_crack/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.161,
+          "note": "snap: fibres 14 ms at 6217/s, bone ring 1629 Hz, double break"
+        },
+        {
+          "id": "bone_crack_06",
+          "file": "bone_crack/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.159,
+          "note": "snap: fibres 23 ms at 4689/s, bone ring 1835 Hz"
+        },
+        {
+          "id": "bone_crack_07",
+          "file": "bone_crack/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.159,
+          "note": "snap: fibres 44 ms at 8704/s, bone ring 909 Hz"
+        },
+        {
+          "id": "bone_crack_08",
+          "file": "bone_crack/08.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.134,
+          "note": "impact-sounds impactWood_light_002 at x1.43, cut to 250 ms, with synth crack and flesh thud"
+        },
+        {
+          "id": "bone_crack_09",
+          "file": "bone_crack/09.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.139,
+          "note": "impact-sounds impactWood_medium_001 at x1.43, cut to 250 ms, with synth crack and flesh thud"
+        },
+        {
+          "id": "bone_crack_10",
+          "file": "bone_crack/10.ogg",
+          "source": "opengameart/100-cc0-sfx-2-rubberduck",
+          "license": "CC0",
+          "duration": 0.182,
+          "note": "100-cc0-sfx-2-rubberduck sfx100v2_wood_hit_02 at x1.63, cut to 250 ms, with synth crack and flesh thud"
+        }
+      ]
+    },
+    {
+      "id": "pain_scream",
+      "label": "Pain scream (non-verbal)",
+      "group": "Injuries",
+      "event": "plays when a joint breaks: the hurt athlete screams (no words)",
+      "variants": [
+        {
+          "id": "pain_scream_01",
+          "file": "pain_scream/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.847,
+          "note": "additive scream \"aah\" 250 to 380 Hz, vibrato 5.00 Hz, 864 ms"
+        },
+        {
+          "id": "pain_scream_02",
+          "file": "pain_scream/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.97,
+          "note": "pulse-train scream \"eh-ah\" 294 to 402 Hz, 1004 ms"
+        },
+        {
+          "id": "pain_scream_03",
+          "file": "pain_scream/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.73,
+          "note": "additive scream \"ow\" 269 to 424 Hz, vibrato 5.99 Hz, 738 ms"
+        },
+        {
+          "id": "pain_scream_04",
+          "file": "pain_scream/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.931,
+          "note": "rough scream \"ah\" 447 Hz with a subharmonic, 956 ms"
+        },
+        {
+          "id": "pain_scream_05",
+          "file": "pain_scream/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.634,
+          "note": "additive scream \"aah\" 319 to 469 Hz, vibrato 5.05 Hz, 639 ms"
+        },
+        {
+          "id": "pain_scream_06",
+          "file": "pain_scream/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.825,
+          "note": "pulse-train scream \"eh-ah\" 304 to 491 Hz, 846 ms"
+        },
+        {
+          "id": "pain_scream_07",
+          "file": "pain_scream/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.964,
+          "note": "additive scream \"ow\" 360 to 513 Hz, vibrato 7.39 Hz, 986 ms"
+        },
+        {
+          "id": "pain_scream_08",
+          "file": "pain_scream/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.666,
+          "note": "rough scream \"ah\" 536 Hz with a subharmonic, 671 ms"
+        },
+        {
+          "id": "pain_scream_09",
+          "file": "pain_scream/09.ogg",
+          "source": "opengameart/512-retro-sfx-juhani-junkala",
+          "license": "CC0",
+          "duration": 0.4,
+          "note": "512-retro-sfx-juhani-junkala sfx_deathscream_human1.wav at x1.33, low-passed 5 kHz (smooths the 8-bit grit)"
+        },
+        {
+          "id": "pain_scream_10",
+          "file": "pain_scream/10.ogg",
+          "source": "opengameart/512-retro-sfx-juhani-junkala",
+          "license": "CC0",
+          "duration": 0.466,
+          "note": "512-retro-sfx-juhani-junkala sfx_deathscream_human2.wav at x1.31, low-passed 5 kHz (smooths the 8-bit grit)"
+        }
+      ]
+    },
+    {
+      "id": "pain_moan",
+      "label": "Moan or groan on the turf (non-verbal)",
+      "group": "Injuries",
+      "event": "plays every few seconds while a knocked-out or injured athlete lies on the turf (no words)",
+      "variants": [
+        {
+          "id": "pain_moan_01",
+          "file": "pain_moan/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.549,
+          "note": "hummed groan \"mm-oh\" 105 Hz, 1.59 s"
+        },
+        {
+          "id": "pain_moan_02",
+          "file": "pain_moan/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.463,
+          "note": "breathy moan \"oh-uh\" 114 Hz with a catch, 1.48 s"
+        },
+        {
+          "id": "pain_moan_03",
+          "file": "pain_moan/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.588,
+          "note": "creaky groan \"uh-ah\" 124 Hz, 1.63 s"
+        },
+        {
+          "id": "pain_moan_04",
+          "file": "pain_moan/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.083,
+          "note": "hummed groan \"mm-oh\" 133 Hz, 2.15 s"
+        },
+        {
+          "id": "pain_moan_05",
+          "file": "pain_moan/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.464,
+          "note": "breathy moan \"oh-uh\" 143 Hz with a catch, 1.48 s"
+        },
+        {
+          "id": "pain_moan_06",
+          "file": "pain_moan/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.22,
+          "note": "creaky groan \"uh-ah\" 152 Hz, 1.26 s"
+        },
+        {
+          "id": "pain_moan_07",
+          "file": "pain_moan/07.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.184,
+          "note": "hummed groan \"mm-oh\" 162 Hz, 2.22 s"
+        },
+        {
+          "id": "pain_moan_08",
+          "file": "pain_moan/08.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.438,
+          "note": "breathy moan \"oh-uh\" 171 Hz with a catch, 1.45 s"
+        },
+        {
+          "id": "pain_moan_09",
+          "file": "pain_moan/09.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.117,
+          "note": "creaky groan \"uh-ah\" 181 Hz, 2.22 s"
+        },
+        {
+          "id": "pain_moan_10",
+          "file": "pain_moan/10.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.106,
+          "note": "hummed groan \"mm-oh\" 190 Hz, 2.24 s"
+        }
+      ]
+    },
+    {
+      "id": "ko_thud",
+      "label": "Knockout thud",
+      "group": "Injuries",
+      "event": "plays when an athlete is knocked out (the blow lands and he drops)",
+      "variants": [
+        {
+          "id": "ko_thud_01",
+          "file": "ko_thud/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.743,
+          "note": "deep thud 70 Hz 0.17 s, helmet clack 1407 Hz"
+        },
+        {
+          "id": "ko_thud_02",
+          "file": "ko_thud/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.741,
+          "note": "deep thud 74 Hz 0.17 s, helmet clack 1244 Hz"
+        },
+        {
+          "id": "ko_thud_03",
+          "file": "ko_thud/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.75,
+          "note": "deep thud 79 Hz 0.24 s, helmet clack 1135 Hz"
+        },
+        {
+          "id": "ko_thud_04",
+          "file": "ko_thud/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.753,
+          "note": "deep thud 83 Hz 0.25 s, helmet clack 961 Hz"
+        },
+        {
+          "id": "ko_thud_05",
+          "file": "ko_thud/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.738,
+          "note": "deep thud 87 Hz 0.16 s, helmet clack 1399 Hz"
+        },
+        {
+          "id": "ko_thud_06",
+          "file": "ko_thud/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 0.741,
+          "note": "deep thud 91 Hz 0.16 s, helmet clack 1329 Hz"
+        },
+        {
+          "id": "ko_thud_07",
+          "file": "ko_thud/07.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.782,
+          "note": "impact-sounds impactPunch_heavy_001 at x0.60, low-passed, with sub thud and helmet click"
+        },
+        {
+          "id": "ko_thud_08",
+          "file": "ko_thud/08.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 0.657,
+          "note": "impact-sounds impactPunch_heavy_002 at x0.65, low-passed, with sub thud and helmet click"
+        }
+      ]
+    },
+    {
+      "id": "ko_ring",
+      "label": "Knockout ringing (ears)",
+      "group": "Injuries",
+      "event": "plays after a knockout: the ringing in the ears (quiet, under everything)",
+      "variants": [
+        {
+          "id": "ko_ring_01",
+          "file": "ko_ring/01.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.794,
+          "note": "tinnitus 3000 Hz beating 5.90 Hz, 1.79 s"
+        },
+        {
+          "id": "ko_ring_02",
+          "file": "ko_ring/02.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.757,
+          "note": "tinnitus 3500 Hz beating 3.12 Hz, 1.76 s"
+        },
+        {
+          "id": "ko_ring_03",
+          "file": "ko_ring/03.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 1.955,
+          "note": "tinnitus 4000 Hz beating 3.66 Hz, 1.96 s"
+        },
+        {
+          "id": "ko_ring_04",
+          "file": "ko_ring/04.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.674,
+          "note": "tinnitus 4500 Hz beating 2.78 Hz, 2.67 s"
+        },
+        {
+          "id": "ko_ring_05",
+          "file": "ko_ring/05.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.17,
+          "note": "tinnitus 5000 Hz beating 5.98 Hz, 2.17 s"
+        },
+        {
+          "id": "ko_ring_06",
+          "file": "ko_ring/06.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.195,
+          "note": "tinnitus 5500 Hz beating 5.28 Hz, 2.20 s"
+        },
+        {
+          "id": "ko_ring_07",
+          "file": "ko_ring/07.ogg",
+          "source": "kenney/impact-sounds",
+          "license": "CC0",
+          "duration": 1.53,
+          "note": "impact-sounds impactBell_heavy_001 at x1.74 as a struck-bell \"ding\", with a ringing tone"
+        },
+        {
+          "id": "ko_ring_08",
+          "file": "ko_ring/08.ogg",
+          "source": "opengameart/100-cc0-sfx-rubberduck",
+          "license": "CC0",
+          "duration": 1.526,
+          "note": "100-cc0-sfx-rubberduck bell_02 at x1.77 as a struck-bell \"ding\", with a ringing tone"
+        }
+      ]
+    },
+    {
       "id": "game_whistle_start",
       "label": "Whistle (rep start)",
       "group": "Game",
@@ -2180,64 +2588,80 @@
           "file": "crowd_cheer/01.ogg",
           "source": "synth",
           "license": "CC0",
-          "duration": 3.398,
-          "note": "80 synth voices, claps, roar, 2.89 s"
+          "duration": 2.629,
+          "note": "45 separate additive shouts (\"yeah\", \"woo\", \"hey\") at 170-480 Hz, claps, open air, 2.77 s"
         },
         {
           "id": "crowd_cheer_02",
           "file": "crowd_cheer/02.ogg",
           "source": "synth",
           "license": "CC0",
-          "duration": 3.084,
-          "note": "91 synth voices, claps, roar, 2.44 s"
+          "duration": 2.168,
+          "note": "50 separate additive shouts (\"yeah\", \"woo\", \"hey\") at 170-480 Hz, claps, whistles, open air, 2.24 s"
         },
         {
           "id": "crowd_cheer_03",
           "file": "crowd_cheer/03.ogg",
           "source": "synth",
           "license": "CC0",
-          "duration": 3.339,
-          "note": "103 synth voices, claps, roar, 2.75 s"
+          "duration": 2.446,
+          "note": "55 separate additive shouts (\"yeah\", \"woo\", \"hey\") at 170-480 Hz, claps, open air, 2.61 s"
         },
         {
           "id": "crowd_cheer_04",
           "file": "crowd_cheer/04.ogg",
           "source": "synth",
           "license": "CC0",
-          "duration": 3.326,
-          "note": "114 synth voices, claps, roar, 2.84 s"
+          "duration": 2.539,
+          "note": "60 separate additive shouts (\"yeah\", \"woo\", \"hey\") at 170-480 Hz, claps, whistles, open air, 2.72 s"
         },
         {
           "id": "crowd_cheer_05",
           "file": "crowd_cheer/05.ogg",
           "source": "synth",
           "license": "CC0",
-          "duration": 3.317,
-          "note": "126 synth voices, claps, roar, 2.89 s"
+          "duration": 2.592,
+          "note": "65 separate additive shouts (\"yeah\", \"woo\", \"hey\") at 170-480 Hz, claps, open air, 2.77 s"
         },
         {
           "id": "crowd_cheer_06",
           "file": "crowd_cheer/06.ogg",
           "source": "synth",
           "license": "CC0",
-          "duration": 3.501,
-          "note": "137 synth voices, claps, roar, 2.84 s"
+          "duration": 2.564,
+          "note": "70 separate additive shouts (\"yeah\", \"woo\", \"hey\") at 170-480 Hz, claps, whistles, open air, 2.71 s"
         },
         {
           "id": "crowd_cheer_07",
           "file": "crowd_cheer/07.ogg",
           "source": "synth",
           "license": "CC0",
-          "duration": 3.458,
-          "note": "149 synth voices, claps, roar, 2.84 s"
+          "duration": 2.559,
+          "note": "75 separate additive shouts (\"yeah\", \"woo\", \"hey\") at 170-480 Hz, claps, open air, 2.71 s"
         },
         {
           "id": "crowd_cheer_08",
           "file": "crowd_cheer/08.ogg",
           "source": "synth",
           "license": "CC0",
-          "duration": 3.19,
-          "note": "160 synth voices, claps, roar, 2.72 s"
+          "duration": 2.435,
+          "note": "80 separate additive shouts (\"yeah\", \"woo\", \"hey\") at 170-480 Hz, claps, whistles, open air, 2.57 s"
+        },
+        {
+          "id": "crowd_cheer_09",
+          "file": "crowd_cheer/09.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.74,
+          "note": "85 separate additive shouts (\"yeah\", \"woo\", \"hey\") at 170-480 Hz, claps, open air, 2.89 s"
+        },
+        {
+          "id": "crowd_cheer_10",
+          "file": "crowd_cheer/10.ogg",
+          "source": "synth",
+          "license": "CC0",
+          "duration": 2.424,
+          "note": "90 separate additive shouts (\"yeah\", \"woo\", \"hey\") at 170-480 Hz, claps, whistles, open air, 2.55 s"
         }
       ]
     },

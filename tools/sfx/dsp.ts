@@ -220,6 +220,35 @@ function fft(re: Float64Array, im: Float64Array) {
     }
   }
 }
+/** Voice pitch: the median fundamental (Hz) of the voiced 40 ms frames (normalised autocorrelation ≥ 0.6 at a lag
+ *  for 70-1000 Hz; the shortest lag within 10 % of the best, so a period's multiples do not halve it), and the share
+ *  of non-silent frames that are voiced. */
+export function pitch(x: Sig): { f0: number; voiced: number } {
+  const N = Math.round(0.04 * SR), lo = Math.floor(SR / 1000), hi = Math.ceil(SR / 70), fs: number[] = [];
+  let loud = 0, frames = 0;
+  for (let s = 0; s + N < x.length; s += N) { let e = 0; for (let i = 0; i < N; i++) e += x[s + i] ** 2; loud = Math.max(loud, e); }
+  for (let s = 0; s + N + hi < x.length; s += N >> 1) {
+    let e0 = 0;
+    for (let i = 0; i < N; i++) e0 += x[s + i] ** 2;
+    if (e0 < loud * 0.01) continue;
+    frames++;
+    const r = new Float64Array(hi + 1);
+    let best = 0;
+    for (let L = lo; L <= hi; L++) {
+      let c = 0, e1 = 0;
+      for (let i = 0; i < N; i++) { c += x[s + i] * x[s + i + L]; e1 += x[s + i + L] ** 2; }
+      r[L] = c / Math.sqrt(e0 * e1 || 1);
+      best = Math.max(best, r[L]);
+    }
+    if (best < 0.6) continue;
+    let L = lo;
+    while (r[L] < 0.9 * best || r[L] < r[L - 1] || r[L] < r[L + 1]) L++;
+    fs.push(SR / L);
+  }
+  fs.sort((a, b) => a - b);
+  return { f0: fs.length ? fs[fs.length >> 1] : 0, voiced: frames ? fs.length / frames : 0 };
+}
+
 export const BAND_EDGES = [0, 100, 250, 500, 1000, 2000, 4000, 8000, 22050];
 export interface Stats { duration: number; peak: number; rmsDb: number; momentaryDb: number; onset: number; centroid: number; bands: number[]; segments: number[]; clipped: number; loopJump: number }
 /** Peak, RMS, loudest 50 ms RMS, onset, spectral centroid, 8-band and 8-time-segment energy shares, clipped samples, loop seam jump. */

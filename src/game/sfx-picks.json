@@ -264,6 +264,41 @@
       "files": [
         "sfx/game_whistle_end/02.ogg"
       ]
+    },
+    "bone_crack": {
+      "volume": 1,
+      "files": [
+        "sfx/bone_crack/01.ogg",
+        "sfx/bone_crack/02.ogg"
+      ]
+    },
+    "pain_scream": {
+      "volume": 1,
+      "files": [
+        "sfx/pain_scream/01.ogg",
+        "sfx/pain_scream/02.ogg"
+      ]
+    },
+    "pain_moan": {
+      "volume": 1,
+      "files": [
+        "sfx/pain_moan/01.ogg",
+        "sfx/pain_moan/02.ogg"
+      ]
+    },
+    "ko_thud": {
+      "volume": 1,
+      "files": [
+        "sfx/ko_thud/01.ogg",
+        "sfx/ko_thud/02.ogg"
+      ]
+    },
+    "ko_ring": {
+      "volume": 1,
+      "files": [
+        "sfx/ko_ring/01.ogg",
+        "sfx/ko_ring/02.ogg"
+      ]
     }
   }
 }

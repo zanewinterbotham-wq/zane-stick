@@ -1,13 +1,14 @@
 // npm run sfx:build — regenerates art/sfx/ (dev-only sound library: .ogg files, manifest.json, analysis.json).
+// npm run sfx:build -- <category> … regenerates only those categories and keeps every other one as it is.
 // Needs ffmpeg with libvorbis and the CC0 packs. Found via SFX_FFMPEG / SFX_PACKS, else an "art tools" folder
 // next to the repo or any parent of it.
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type Sig, SR, analyse, fade, gain, hashSeed, hp, makeRng, peak } from './dsp';
+import { type Sig, SR, analyse, fade, gain, hashSeed, hp, makeRng, peak, pitch } from './dsp';
 import { CATEGORIES, type Category } from './library';
-import { type Analysis, type Manifest, checkLibrary, oggInfo } from './checks';
+import { type Analysis, type Manifest, VOICE, checkLibrary, oggInfo } from './checks';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const outDir = join(root, 'art', 'sfx');
@@ -38,7 +39,8 @@ const packCache = new Map<string, Sig>();
 function pack(p: string, name: string): Sig {
   const key = `${p}/${name}`;
   if (!packCache.has(key)) {
-    const file = [join(packsDir, p, 'Audio', `${name}.ogg`), join(packsDir, p, `${name}.ogg`)].find(existsSync);
+    // a name with its extension is a path inside the pack (packs that are not flat .ogg folders)
+    const file = [join(packsDir, p, 'Audio', `${name}.ogg`), join(packsDir, p, `${name}.ogg`), join(packsDir, p, name)].find(existsSync);
     if (!file) throw new Error(`pack sound not found: ${key} (set SFX_PACKS)`);
     packCache.set(key, decode(file));
   }
@@ -65,11 +67,22 @@ function finish(x: Sig, c: Category): Sig {
 
 const t0 = Date.now();
 mkdirSync(outDir, { recursive: true });
-for (const d of readdirSync(outDir, { withFileTypes: true })) if (d.isDirectory()) rmSync(join(outDir, d.name), { recursive: true });
+const only = new Set(process.argv.slice(2));
+for (const id of only) if (!CATEGORIES.some((c) => c.id === id)) throw new Error(`unknown category ${id}`);
+const read = <T>(f: string, empty: T): T => (only.size && existsSync(join(outDir, f)) ? JSON.parse(readFileSync(join(outDir, f), 'utf8')) : empty);
+const kept: Manifest = read('manifest.json', { version: 1, categories: [] }), keptAnalysis: Analysis = read('analysis.json', {});
+for (const d of readdirSync(outDir, { withFileTypes: true })) if (d.isDirectory() && (!only.size || only.has(d.name))) rmSync(join(outDir, d.name), { recursive: true });
 const manifest: Manifest = { version: 1, categories: [] };
 const analysis: Analysis = {};
 const round = (x: number, k = 4) => Number(x.toFixed(k));
 for (const c of CATEGORIES) {
+  if (only.size && !only.has(c.id)) {
+    const prev = kept.categories.find((x) => x.id === c.id);
+    if (!prev) throw new Error(`${c.id} has never been built: build it too`);
+    manifest.categories.push(prev);
+    for (const v of prev.variants) analysis[v.id] = keptAnalysis[v.id];
+    continue;
+  }
   mkdirSync(join(outDir, c.id));
   const variants: Manifest['categories'][number]['variants'] = [];
   for (let i = 0; i < c.count; i++) {
@@ -86,11 +99,13 @@ for (const c of CATEGORIES) {
     const s = analyse(y);
     analysis[id] = { kind: c.kind, ...s, duration: round(s.duration), peak: round(s.peak), rmsDb: round(s.rmsDb, 2), momentaryDb: round(s.momentaryDb, 2),
       onset: round(s.onset), centroid: round(s.centroid, 1), bands: s.bands.map((b) => round(b)), segments: s.segments.map((e) => round(e)), loopJump: round(s.loopJump, 2) };
+    if (VOICE[c.id]) { const p = pitch(y); Object.assign(analysis[id], { f0: round(p.f0, 1), voiced: round(p.voiced, 3) }); }
     variants.push({ id, file, source: made.source ?? 'synth', license: 'CC0', duration: round(s.duration, 3), note: made.note });
   }
   manifest.categories.push({ id: c.id, label: c.label, group: c.group, event: c.event, variants });
   const ds = variants.map((v) => v.duration), cs = variants.map((v) => analysis[v.id].centroid);
-  console.log(`${c.id.padEnd(22)} ${String(c.count).padStart(2)}  ${Math.min(...ds).toFixed(2)}-${Math.max(...ds).toFixed(2)} s  centroid ${Math.min(...cs).toFixed(0)}-${Math.max(...cs).toFixed(0)} Hz  pack ${variants.filter((v) => v.source !== 'synth').length}`);
+  const f0s = VOICE[c.id] ? `  f0 ${variants.map((v) => analysis[v.id].f0!.toFixed(0)).join('/')} Hz` : '';
+  console.log(`${c.id.padEnd(22)} ${String(c.count).padStart(2)}  ${Math.min(...ds).toFixed(2)}-${Math.max(...ds).toFixed(2)} s  centroid ${Math.min(...cs).toFixed(0)}-${Math.max(...cs).toFixed(0)} Hz  pack ${variants.filter((v) => v.source !== 'synth').length}${f0s}`);
 }
 writeFileSync(join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 writeFileSync(join(outDir, 'analysis.json'), JSON.stringify(analysis) + '\n');
