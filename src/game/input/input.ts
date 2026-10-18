@@ -23,6 +23,8 @@ export class InputManager {
   bindings: Bindings = JSON.parse(JSON.stringify(defaults));
   readonly keys = new Set<string>();
   private keyCodes = new Set<string>();
+  /** Keys pressed since the last keyboard read: a tap shorter than one frame still counts as a press. */
+  private tapped = new Set<string>();
   private prevHeld: Set<string>[] = [new Set(), new Set()];
   private contact = [false, false];
   private sinkRamp = [0, 0];
@@ -35,6 +37,7 @@ export class InputManager {
     this.rebuildKeySet();
     target.addEventListener('keydown', (e) => {
       if (this.capture && this.keyCodes.has(e.code)) e.preventDefault(); // stop Tab focus moves, Space scrolling, etc.
+      if (!e.repeat) this.tapped.add(e.code);
       this.keys.add(e.code);
     });
     target.addEventListener('keyup', (e) => { this.keys.delete(e.code); });
@@ -63,6 +66,10 @@ export class InputManager {
     for (const a of DIGITAL) if (val(a) > 0.5) held.add(a);
     const prev = this.prevHeld[player];
     const pressed = new Set([...held].filter((a) => !prev.has(a)));
+    if (!usePad) {
+      for (const a of DIGITAL) if ((this.bindings.keyboard[a] ?? []).some((k) => this.tapped.has(k))) pressed.add(a);
+      this.tapped.clear();
+    }
     this.prevHeld[player] = held;
 
     const dz = this.bindings.options.deadzone;
