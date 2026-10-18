@@ -12,7 +12,7 @@ import { World, type PhysicsSettings } from '../sim/world';
 import { Audio } from './audio';
 import { chooseBest, reportText, runBenchmark } from './benchmark';
 import { ChaseCamera } from './camera';
-import { BIG_HIT_N, hitFeel, MPH } from './feel';
+import { HitMeter, hitFeel, MPH } from './feel';
 import { InputManager, type InputFrame } from './input/input';
 import { PRESETS, type PresetName } from './presets';
 import { GameRenderer, RENDER_PRESETS } from './render/renderer';
@@ -68,6 +68,8 @@ class App {
   slowUntil = 0;
   freezeUntil = 0;   // hit-stop: wall-clock ms until which no sim steps run
   nextStop = 0;      // one hit-stop per hit, not one per contact step
+  meter = new HitMeter();
+  meterWorld: World | null = null;
   speed = 0;         // smoothed human ground speed for the speedometer and FOV kick, m/s
   acc = 0;
   last = performance.now();
@@ -164,7 +166,7 @@ class App {
       { label: 'Reset rep', hint: 'Enter', action: () => { this.resume(); void this.newRep(); } },
       { label: `Quality: ${this.preset.label}`, hint: 'next rep', action: () => { this.cyclePreset(); this.pauseMenu(); } },
       { label: `Anatomy view: ${this.renderer?.xray ? 'on' : 'off'}`, hint: 'X', action: () => { this.renderer?.setXray(!this.renderer.xray); this.pauseMenu(); } },
-      { label: `Effort shading: ${s.effortShading ? 'on' : 'off'}`, action: () => { s.effortShading = !s.effortShading; if (this.renderer) this.renderer.effortShading = s.effortShading; this.save(); this.pauseMenu(); } },
+      { label: `Effort shading (anatomy view): ${s.effortShading ? 'on' : 'off'}`, action: () => { s.effortShading = !s.effortShading; if (this.renderer) this.renderer.effortShading = s.effortShading; this.save(); this.pauseMenu(); } },
       { label: `Big-hit slow motion: ${s.slowMo ? 'on' : 'off'}`, action: () => { s.slowMo = !s.slowMo; this.save(); this.pauseMenu(); } },
       { label: `Camera: ${this.cam.mode}`, hint: 'V', action: () => { this.toggleCamera(); this.pauseMenu(); } },
       { label: `Contact mode button: ${s.contactModeHold ? 'hold' : 'toggle'}`, action: () => { s.contactModeHold = !s.contactModeHold; this.input.bindings.options.contactModeHold = s.contactModeHold; this.save(); this.pauseMenu(); } },
@@ -347,7 +349,7 @@ class App {
         let steps = 0;
         while (this.acc >= w.dt && steps < 40) {
           d.step(); this.acc -= w.dt; steps++;
-          if (this.feedback(w.lastHitForce, now)) { this.acc = 0; break; }
+          if (this.feedback(now)) { this.acc = 0; break; }
         }
         if (steps >= 40) this.acc = 0; // never spiral: drop time rather than fall behind
         this.physMs += (performance.now() - t0 - this.physMs) * 0.1;
@@ -364,16 +366,25 @@ class App {
     requestAnimationFrame((t) => this.frame(t));
   }
 
-  /** Camera shake and punch, rumble, sound, hit-stop and slow motion scale with contact force and closing
-   *  speed. Returns true when a hit-stop starts. */
-  feedback(F: number, now: number): boolean {
-    if (F < 300) return false;
+  /** Every contact makes a sound and a light shake by how hard it was; only a big hit (impulse over 30 ms
+   *  and closing speed) gets slow motion, hit-stop, the camera punch and the banner. Call after each step;
+   *  returns true when a hit-stop starts. */
+  feedback(now: number): boolean {
     const w = this.drill!.world;
-    const fx = hitFeel(F, w.impact.closingSpeed);
-    this.cam.addShake(fx.shake);
-    this.audio.hit(F);
+    if (this.meterWorld !== w) { this.meter = new HitMeter(); this.meterWorld = w; }
+    const { sounds, bigNow } = this.meter.step(w);
+    for (const s of sounds) this.audio.hit(s);
+    const loud = sounds[0]?.loud ?? 0;
     const pad = navigator.getGamepads?.()[0] as (Gamepad & { vibrationActuator?: { playEffect: (t: string, o: object) => Promise<unknown> } }) | null;
-    pad?.vibrationActuator?.playEffect('dual-rumble', { duration: fx.rumble.duration, strongMagnitude: fx.rumble.strong, weakMagnitude: fx.rumble.weak }).catch(() => {});
+    const rumble = (r: { duration: number; strong: number; weak: number }) => pad?.vibrationActuator?.playEffect('dual-rumble', { duration: r.duration, strongMagnitude: r.strong, weakMagnitude: r.weak }).catch(() => {});
+    if (!bigNow) {
+      if (loud > 0.1) { this.cam.addShake(0.04 * loud * loud); rumble({ duration: 60, strong: 0.3 * loud, weak: 0.5 * loud }); }
+      return false;
+    }
+    const fx = hitFeel(bigNow.impulse, bigNow.closing);
+    this.cam.addShake(fx.shake);
+    rumble(fx.rumble);
+    this.hud.flash('BIG HIT');
     if (fx.slowMo && this.settings.slowMo && now / 1000 > this.slowUntil) { this.timeScale = 0.3; this.slowUntil = now / 1000 + 0.9; }
     const a = w.scene.athletes[0].state.com, b = w.scene.athletes[1].state.com;
     this.cam.punch(b[0] - a[0], b[2] - a[2], fx.punch);
@@ -408,12 +419,15 @@ class App {
       const imp = w.impact;
       const title = d.ended === 'down' && imp.firstContactTime < 0 ? 'Carrier fell (no contact)' : d.ended === 'down' ? 'Tackle — carrier down' : d.ended === 'touchdown' ? 'Missed — touchdown' : d.ended === 'out of bounds' ? 'Pushed out of bounds' : 'Time';
       const ms = (v: number) => `${v.toFixed(1)} m/s (${(v * MPH).toFixed(1)} mph)`;
+      // impulse over 30 ms, and the mean force it implies; the per-step peak force is a stiff-contact spike
+      const J = (h: { impulse: number }) => `${h.impulse.toFixed(0)} N·s in 30 ms (${(h.impulse / 30).toFixed(1)} kN avg)`;
+      const big = this.meter.big, best = this.meter.best;
       this.hud.showResult({
         title,
-        banner: imp.peakForce >= BIG_HIT_N ? `BIG HIT  ·  ${ms(imp.closingSpeed)}  ·  ${(imp.peakForce / 1000).toFixed(1)} kN` : undefined,
+        banner: big ? `BIG HIT  ·  ${ms(big.closing)}  ·  ${J(big)}` : undefined,
         rows: imp.firstContactTime >= 0 ? [
           ['Closing speed', ms(imp.closingSpeed)],
-          ['Peak contact force', `${(imp.peakForce / 1000).toFixed(2)} kN`],
+          ['Hardest hit', best ? J(best) : '—'],
           ['Peak head accel (you)', `${imp.peakHeadG[0].toFixed(0)} g`],
           ['Peak head accel (carrier)', `${imp.peakHeadG[1].toFixed(0)} g`],
         ] : [['Contact', 'none']],
