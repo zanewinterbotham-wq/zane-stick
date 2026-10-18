@@ -210,6 +210,7 @@ class App {
     this.human.latest = null;
     const p = this.preset;
     const s = this.settings;
+    this.human.steerAssist = s.steerAssist;
     this.drill = await OpenFieldDrill.create(mujocoEngine, {
       ...DEFAULT_OPEN_FIELD, physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), toughness: s.toughness, hitPower: s.hitPower,
       mode: this.drillMode, human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, traction: s.traction, gains: s.gains,
@@ -414,11 +415,12 @@ class App {
     row('Player strength', s.strength, 0.5, 1.5, 0.01, (v) => (s.strength = v), x);
     row('Player speed', s.speed, 0.7, 1.5, 0.01, (v) => (s.speed = v), x);
     row('Hit power', s.hitPower, 1, 3, 0.1, (v) => (s.hitPower = v), (v) => (v <= 1 ? '1.0 (pure physics)' : `${v.toFixed(1)}×`));
+    row('Steer assist', s.steerAssist, 0, 1, 0.05, (v) => (s.steerAssist = v), pct);
     render();
     const b = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back');
     b.addEventListener('click', back);
     this.layer.show(el('div', { class: 'panel menu wide', role: 'dialog', 'aria-label': 'Difficulty' }, el('h1', { text: 'Difficulty' }), status, presets, grid,
-      el('p', { class: 'sub', text: 'AI toughness: how hard the bot is to knock off balance (its hit, stun and wrap-up thresholds). AI juking: how well the bot carrier reads you, times his cuts and bursts away. Hit power above 1 adds an arcade push to whoever a hit drives back (the bot can blow you back too); 1 is pure physics.' }),
+      el('p', { class: 'sub', text: 'AI toughness: how hard the bot is to knock off balance (its hit, stun and wrap-up thresholds). AI juking: how well the bot carrier reads you, times his cuts and bursts away. Hit power above 1 adds an arcade push to whoever a hit drives back (the bot can blow you back too); 1 is pure physics. Steer assist turns your run part way toward the ball carrier (or a loose ball) when he is near and ahead.' }),
       b));
   }
 

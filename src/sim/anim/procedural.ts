@@ -44,8 +44,11 @@ const CONTACT = [[2.5, 0.27], [3.5, 0.235], [5, 0.18], [7, 0.14], [9, 0.115], [1
 const WALK_DUTY = 0.6;
 /** Human acceleration limits for the root velocity (m/s²): sprint starts ~5–7, braking is stronger. */
 const ACCEL = { walk: 3, jog: 5, sprint: 7 }, DECEL = 9, CUT_ACCEL = 14;
+/** Sideways acceleration that turns the run (m/s²) at a pivot, up to 4 m/s (~1.4 g, a planted field-sport change of
+ *  direction), and at a sprint, from 8 m/s (~0.9 g, a full-speed bend: any more and a straight chase answers every
+ *  juke); braking at a pivot (m/s², DECEL at a sprint); and the heading rate limit (rad/s, 180° in ~0.25 s). */
+const LAT_ACCEL = [14, 8.5] as const, PIVOT_DECEL = 12, TURN_RATE = 12;
 const BACK_MAX = 6.5, SIDE_MAX = 7; // fastest backpedal / sideways movement, m/s (reference athlete)
-const TURN_RATE = 8;                 // heading rate limit, rad/s
 const LEAD = 2.5;                    // farthest the root velocity may lead the measured velocity, m/s
 const GETUP_T = 2.0;
 /** Trunk pitch of a full forward lean (rad, ~83°: shoulders level with the hips), and the share of a posture
@@ -59,6 +62,8 @@ const DIVE = { load: [0.3, 0.08], push: [0.25, 0.12], vStand: 3.4, vy: [1.6, 0.4
  *  (m/s²). An explosive first step reaches ~4–5 m/s in 0.5 s at ~8–10 m/s² (sprint-start horizontal force ~1 body
  *  weight [S4]); holding the button longer changes nothing. */
 const LUNGE = { time: 0.5, v: 5, accel: 12 } as const;
+/** One press's whole hip thrust (s): the lunge and drive, then the rise up onto the balls of the feet. */
+const THRUST_T = 0.8;
 type DiveStage = 'load' | 'launch' | 'flight';
 
 type Mode = 'loco' | 'dive' | 'down' | 'getup';
@@ -70,9 +75,13 @@ interface Leg {
   hf: number; ab: number; rot: number; kn: number; knRot: number; dor: number; inv: number; toe: number;
   stance: boolean; F: [number, number]; yaw: number;       // planted flat-foot ankle point (heading frame x left, z fwd)
   liftPhase: number; qLift: LegQ; q: LegQ; tdF: [number, number]; tdYaw: number; tdG: number; prevPhi: number; reachOK: boolean;
+  scuff: number;                                         // 0..1: how far the swing leg is drawn up out of a scuff
+  reach: number;                                         // 0..1: how far a planted foot reaches for turf it lost
 }
 /** Fastest roll of a planted foot onto its ball or heel (rad/s). */
 const ROLL_RATE = 8;
+/** Tracking gain a sprinter's swing leg keeps while its foot touches the turf late in the swing. */
+const SWING_SOFT = 0.1;
 interface Arm { side: 1 | -1; flex: number; abd: number; rot: number; elbow: number; wrist: number; seg: number }
 
 export class ProceduralAnimator implements Animator {
@@ -98,7 +107,7 @@ export class ProceduralAnimator implements Animator {
   private aimAng = [[0, 0], [0, 0]];
   private cutT = 0; private cutSide = 0; private cutDir: [number, number] = [0, 1]; private cutSpeed = 0; private prevCut = 0;
   private turn = 0;
-  private lungeT = 0; private prevThrust = false;
+  private lungeT = 0; private thrustT = 0; private prevThrust = false;
 
   // whole-body modes and cross-fades
   private mode: Mode = 'loco'; private modeT = 0; private settleT = 0; private prevDive = false;
@@ -136,7 +145,7 @@ export class ProceduralAnimator implements Animator {
         hf: this.I(`hip${sx}.flex`), ab: this.I(`hip${sx}.abd`), rot: this.I(`hip${sx}.intRot`), kn: this.I(`knee${sx}.flex`),
         knRot: this.I(`knee${sx}.intRot`), dor: this.I(`ankle${sx}.dorsi`), inv: this.I(`ankle${sx}.inv`), toe: this.I(`toe${sx}.ext`),
         stance: true, F: [0, 0] as [number, number], yaw: 0, liftPhase: 0, qLift: [...z] as LegQ, q: [...z] as LegQ,
-        tdF: [0, 0] as [number, number], tdYaw: 0, tdG: NaN, prevPhi: 0, reachOK: true,
+        tdF: [0, 0] as [number, number], tdYaw: 0, tdG: NaN, prevPhi: 0, reachOK: true, scuff: 0, reach: 0,
       };
     });
     this.arms = ([1, -1] as const).map((side) => {
@@ -266,7 +275,7 @@ export class ProceduralAnimator implements Animator {
         if (!support.down) { this.mode = 'loco'; this.modeT = 0; }
         else if (this.getup.downT > 0.6) this.startGetup(view);
       }
-    } else if (this.mode === 'loco' && cmd.dive && !this.prevDive) this.startDive(view);
+    } else if (this.mode === 'loco' && cmd.dive && !this.prevDive) this.startDive(view, cmd);
     // one press, one whole dive: holding the button changes nothing; it ends on the turf (down), or on the
     // feet again if it never landed
     else if (this.mode === 'dive' && this.modeT > this.dv.tL + this.dv.tP + DIVE.maxFlight) this.enter('loco', 0.3);
@@ -311,7 +320,7 @@ export class ProceduralAnimator implements Animator {
     this.blendFrom.set(this.prevQ);
     this.blendRoot = { height: this.height, pitch: this.pitch, roll: this.roll };
     this.blendW = 0; this.blendDur = blend;
-    this.mode = mode; this.modeT = 0; this.settleT = 0; this.bend = 0;
+    this.mode = mode; this.modeT = 0; this.settleT = 0; this.bend = 0; this.thrustT = 0;
     if (mode === 'loco') this.resetFeet();
   }
 
@@ -378,19 +387,30 @@ export class ProceduralAnimator implements Animator {
     // a plant-and-cut trades some speed for the new direction, once (taken at the plant: re-taken every step it
     // bled the run to a near stop over the cut)
     if (cutting) { tx = this.cutDir[0] * this.cutSpeed; tz = this.cutDir[1] * this.cutSpeed; }
-    // a hip-thrust press lunges forward along the heading (one press, one lunge); against an opponent the legs
-    // stay planted and drive instead (stepping would leave no leg to push with)
-    const thrusting = cmd.thrustHips && !hold;
-    if (thrusting && !this.prevThrust) this.lungeT = LUNGE.time;
-    this.prevThrust = thrusting;
+    // One press, one whole hip thrust: it lunges forward along the heading, drives and rises, and holding the button
+    // changes nothing. Against an opponent the legs stay planted and drive instead of lunging (stepping would leave
+    // no leg to push with).
+    if (cmd.thrustHips && !this.prevThrust && this.thrustT <= 0 && !hold) { this.thrustT = THRUST_T; this.lungeT = LUNGE.time; }
+    this.prevThrust = cmd.thrustHips;
+    this.thrustT = hold ? 0 : Math.max(0, this.thrustT - dt);
+    const thrusting = this.thrustT > 0;
     this.lungeT = thrusting && !v.playerContact ? Math.max(0, this.lungeT - dt) : 0;
     const lunge = this.lungeT > 0;
     if (lunge) { const vs = Math.max(LUNGE.v, this.vel[0] * sh + this.vel[2] * ch); tx = sh * vs; tz = ch * vs; }
     if (hold) { tx = 0; tz = 0; }
     const dvx = tx - this.vel[0], dvz = tz - this.vel[2], dv = Math.hypot(dvx, dvz);
-    const lim = (cutting ? CUT_ACCEL : lunge ? LUNGE.accel : dvx * this.vel[0] + dvz * this.vel[2] >= 0 ? ACCEL[cmd.gait] : DECEL) * dt;
-    const px = this.vel[0], pz = this.vel[2];
-    if (dv > lim) { this.vel[0] += dvx * lim / dv; this.vel[2] += dvz * lim / dv; } else { this.vel[0] = tx; this.vel[2] = tz; }
+    const px = this.vel[0], pz = this.vel[2], ps = Math.hypot(px, pz);
+    if (!cutting && !lunge && ps > 0.5) {
+      // Along the run: speeding up or braking at the gait's rates; across it, turning the run at up to LAT_ACCEL. One
+      // grip on the turf does both (an ellipse, as for a tyre): braking hard leaves less to turn with.
+      const ux = px / ps, uz = pz / ps, dpar = dvx * ux + dvz * uz, qx = dvx - dpar * ux, qz = dvz - dpar * uz;
+      const slow = 1 - clamp((ps - 4) / 4, 0, 1), dec = lerp(DECEL, PIVOT_DECEL, slow), lat = lerp(LAT_ACCEL[1], LAT_ACCEL[0], slow);
+      const e = Math.hypot(dpar / ((dpar >= 0 ? ACCEL[cmd.gait] : dec) * dt), Math.hypot(qx, qz) / (lat * dt)), k = e > 1 ? 1 / e : 1;
+      this.vel[0] += dvx * k; this.vel[2] += dvz * k;
+    } else {
+      const lim = (cutting ? CUT_ACCEL : lunge ? LUNGE.accel : dvx * px + dvz * pz >= 0 ? ACCEL[cmd.gait] : DECEL) * dt;
+      if (dv > lim) { this.vel[0] += dvx * lim / dv; this.vel[2] += dvz * lim / dv; } else { this.vel[0] = tx; this.vel[2] = tz; }
+    }
     const ex = this.vel[0] - vx, ez = this.vel[2] - vz, e = Math.hypot(ex, ez);
     if (e > LEAD) { this.vel[0] = vx + ex * LEAD / e; this.vel[2] = vz + ez * LEAD / e; }
     this.aFwd = follow(this.aFwd, clamp(((this.vel[0] - px) * sh + (this.vel[2] - pz) * ch) / dt, -DECEL, ACCEL.sprint), dt, 0.15);
@@ -398,8 +418,8 @@ export class ProceduralAnimator implements Animator {
 
     // ---- levels (all filtered, so the pose blends over ~0.1–0.3 s)
     const contact = cmd.contactMode ? 1 : 0;
-    // a held hip thrust overrides sink, stance and lean: it is the explosive rise out of them; its lunge steps
-    // like a sprint start, while a thrust held in place (being driven along by it) does not start a walk
+    // a hip thrust overrides sink, stance and lean: it is the explosive rise out of them; its lunge steps like a
+    // sprint start, while a thrust in place (being driven along by it) does not start a walk
     const moving = mag > 0.05 || (sp > 0.4 && !thrusting) || lunge || cmd.chopFeet || cmd.driveLegs > 0.05;
     lv.gait = follow(lv.gait, moving && !hold ? 1 : 0, dt, 0.15);
     // Dropping into a sink is quick (the muscles let go and gravity pulls the hips down, full depth in ~0.25 s);
@@ -421,7 +441,7 @@ export class ProceduralAnimator implements Animator {
     lv.reachL = follow(lv.reachL, clamp(cmd.armL, 0, 1), dt, 0.08);
     lv.reachR = follow(lv.reachR, clamp(cmd.armR, 0, 1), dt, 0.08);
     // a raised arm whose hand holds an opponent rows him in (a wrap squeezes, a thrust drives him away instead)
-    const pulling = !cmd.wrap && !cmd.thrustHips;
+    const pulling = !cmd.wrap && !thrusting;
     lv.pullL = follow(lv.pullL, pulling && v.grips?.[0] && cmd.armL > 0.3 ? 1 : 0, dt, 0.03);
     lv.pullR = follow(lv.pullR, pulling && v.grips?.[1] && cmd.armR > 0.3 ? 1 : 0, dt, 0.03);
     lv.wrap = follow(lv.wrap, cmd.wrap ? 1 : 0, dt, 0.08);
@@ -533,8 +553,10 @@ export class ProceduralAnimator implements Animator {
         const gw = 0.22 * (1 - s01(u / 0.15)) - 0.5 * s01((u - 0.55) / 0.45);
         const gr = -0.08 * (1 - s01(u / 0.3)) - 0.6 * s01((u - 0.35) / 0.65);
         // running, in contact or changing posture, a planted foot that has not found the turf (the body came down
-        // higher than planned, or the trunk swung the hips up) reaches for it (idle standing it would keep hopping)
-        const h = v.feet[L.side > 0 ? 0 : 1].touching ? hIK : this.height + hUp * Math.max(gl, lv.contact, clamp(this.dropV / 0.3, 0, 1), clamp(this.pitchV / 0.5, 0, 1));
+        // higher than planned, or the trunk swung the hips up) reaches for it (idle standing it would keep hopping);
+        // filtered, since a lightly loaded foot's contact flickers step to step and the knee target jumped ~30° with it
+        L.reach = follow(L.reach, v.feet[L.side > 0 ? 0 : 1].touching ? 0 : 1, dt, 0.03);
+        const h = lerp(hIK, this.height + hUp * Math.max(gl, lv.contact, clamp(this.dropV / 0.3, 0, 1), clamp(this.pitchV / 0.5, 0, 1)), L.reach);
         const r = this.solve(L, L.F, L.yaw, gl * lerp(gw, gr, run) * (1 - lv.stance), 0, L.q[6], ROLL_RATE * dt, h, pIK);
         L.reachOK = r.ok; q = r.q;
         // the planted foot has left the leg's reach: it comes off the turf now rather than slide
@@ -562,6 +584,17 @@ export class ProceduralAnimator implements Animator {
           lerp(L.qLift[5], td[5], hm),
           lerp(L.qLift[6], td[6], hm),
         ];
+        // A foot that scuffs the turf early in its swing is drawn up out of it (hip, knee and ankle flex: the
+        // stumble reflex); dragged along, it loaded a folded leg and slid.
+        const touch = v.feet[L.side > 0 ? 0 : 1].touching;
+        L.scuff = follow(L.scuff, touch && sw < 0.6 ? 1 : 0, dt, touch ? 0.03 : 0.1);
+        q[0] += 0.3 * L.scuff; q[2] += 0.6 * L.scuff; q[3] += 0.2 * L.scuff;
+        // Running, a foot that meets the turf late in its swing (the body came down sooner than planned) gives:
+        // driven on through the turf, the leg bounced a sprinter into a long hop.
+        if (sw > 0.5 && touch && !v.playerContact) {
+          const g = lerp(1, SWING_SOFT, clamp((sp - 4) / 2, 0, 1));
+          for (const i of [L.hf, L.ab, L.rot, L.kn, L.knRot, L.dor, L.inv, L.toe]) if (i >= 0) out.gain[i] = g;
+        }
       }
       this.writeLeg(L, q);
     }
@@ -637,9 +670,10 @@ export class ProceduralAnimator implements Animator {
   }
 
   // ------------------------------------------------------------------ dive, down, get-up
-  private startDive(v: BodyView) {
-    const c = v.state.comVel, vh = Math.hypot(c[0], c[2]), run = s01((vh - 2) / 5);
-    const dir: [number, number] = vh > 1 ? [c[0] / vh, c[2] / vh] : [Math.sin(this.heading), Math.cos(this.heading)];
+  private startDive(v: BodyView, cmd: Commands) {
+    const c = v.state.comVel, vh = Math.hypot(c[0], c[2]), run = s01((vh - 2) / 5), mm = Math.hypot(cmd.move.x, cmd.move.z);
+    // along the way the player steers (the turn he is making), else the run, else the way he faces
+    const dir: [number, number] = mm > 0.2 ? [cmd.move.x / mm, cmd.move.z / mm] : vh > 1 ? [c[0] / vh, c[2] / vh] : [Math.sin(this.heading), Math.cos(this.heading)];
     this.dv = { run, vh, dir, tL: lerp(DIVE.load[0], DIVE.load[1], run), tP: lerp(DIVE.push[0], DIVE.push[1], run), stage: 'load', vy: 0 };
     this.enter('dive', 0.8 * this.dv.tL);
   }
@@ -650,6 +684,8 @@ export class ProceduralAnimator implements Animator {
     const D = this.dv, t = this.modeT, dt = v.dt, s = v.state;
     const uL = minJerk(t / D.tL), wP = minJerk((t - D.tL) / D.tP), wF = minJerk((t - D.tL - D.tP) / 0.15);
     D.stage = t < D.tL ? 'load' : t < D.tL + D.tP ? 'launch' : 'flight';
+    // the body turns to face the way it dives while it loads and pushes
+    if (D.stage !== 'flight') this.heading = wrapAngle(this.heading + clamp(wrapAngle(Math.atan2(D.dir[0], D.dir[1]) - this.heading), -TURN_RATE * dt, TURN_RATE * dt));
     const sd = lerp(1, 0.55, D.run), hLoad = this.standH - 0.16 * sd, pLoad = lerp(0.3, 0.45, D.run);
     // the push is forward first, then up: rising early would lift the feet off the turf before the speed is there
     D.vy = lerp(DIVE.vy[0], DIVE.vy[1], D.run) * wP;

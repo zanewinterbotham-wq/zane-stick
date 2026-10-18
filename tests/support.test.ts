@@ -5,7 +5,8 @@ import { DEFAULT_ATHLETE, type BodyPlan } from '../src/sim/anatomy/body';
 import { DEFAULT_SUPPORT } from '../src/sim/anim/types';
 import { ScriptBrain } from '../src/sim/brains/script';
 import { TrackingController } from '../src/sim/control/tracking';
-import type { Gait } from '../src/sim/control/types';
+import type { Commands, Gait } from '../src/sim/control/types';
+import { Rng } from '../src/sim/rng';
 import { DEFAULT_OPEN_FIELD, OpenFieldDrill } from '../src/sim/drills/openField';
 import type { MuscleSet } from '../src/sim/muscles';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
@@ -106,6 +107,100 @@ describe('supported locomotion', () => {
   });
 });
 
+describe('off-contact stability (nobody near)', () => {
+  /** A supported athlete runs a command script from t = 0.5 s: falls, knock, airborne time, instabilities. */
+  async function solo(script: (t: number, c: Commands) => void, seconds: number, physics: PhysicsSettings = STD) {
+    const sc = supportRunScenario(physics, null);
+    sc.setup.athletes[0].brain = new ScriptBrain((t, _p, c) => { if (t >= 0.5) script(t, c); });
+    const w = await World.create(mujocoEngine, sc.setup);
+    const a = w.athletes[0], s = w.scene.athletes[0].state;
+    let fellAt = -1, maxKnock = 0, maxAir = 0, flights = 0, ys: number[] = [];
+    for (let i = 0, n = Math.round(seconds / w.dt); i < n; i++) {
+      const air = a.airT;
+      w.step();
+      if (a.downBy) { fellAt = w.time; break; }
+      maxKnock = Math.max(maxKnock, a.knock); maxAir = Math.max(maxAir, a.airT);
+      if (air > 0.2 && a.airT === 0) flights++;
+      if (w.time > seconds / 2) ys.push(s.com[1]);
+    }
+    const out = { fellAt, maxKnock, maxAir, flights, bob: Math.max(...ys) - Math.min(...ys), instabilities: w.scene.stats().instabilities };
+    w.destroy();
+    return out;
+  }
+  /** Seeded random running: every 0.3–1.2 s a new gait, heading (a sharp cut, a bend or straight on), speed (or a
+   *  stop), sink, lean and turn rate; sometimes facing off the run (shuffle, backpedal) or a plant-and-cut. */
+  const randomRun = (seed: number) => {
+    const r = new Rng(seed);
+    let next = 0, ang = 0, gait: Gait = 'sprint', mag = 1, sink = 0, lean = 0, turn = 0, face = false, cut: -1 | 0 | 1 = 0;
+    return (t: number, c: Commands) => {
+      if (t >= next) {
+        next = t + r.range(0.3, 1.2);
+        gait = r.pick(['sprint', 'sprint', 'sprint', 'jog', 'walk'] as const);
+        const k = r.next();
+        ang = k < 0.4 ? ang + r.range(-Math.PI, Math.PI) : k < 0.7 ? ang + r.range(-0.6, 0.6) : ang;
+        mag = r.next() < 0.12 ? 0 : r.range(0.5, 1);
+        sink = r.next() < 0.3 ? r.range(0, 1) : 0;
+        lean = r.next() < 0.3 ? r.range(-0.3, 1) : 0;
+        turn = r.next() < 0.2 ? r.range(-2, 2) : 0;
+        face = r.next() < 0.1;
+        cut = r.next() < 0.1 ? (r.next() < 0.5 ? -1 : 1) : 0;
+      }
+      ang += turn / 240;
+      c.gait = gait; c.move = { x: Math.sin(ang) * mag, z: Math.cos(ang) * mag }; c.sink = sink; c.lean.fwd = lean;
+      if (face) c.face = { x: Math.sin(ang - 0.5), z: Math.cos(ang - 0.5) };
+      c.plantCut = cut; cut = 0;
+    };
+  };
+
+  it('never falls and is never knocked by his own running, cutting, stopping, sinking or leaning (24 random runs)', async () => {
+    let falls = 0, maxKnock = 0, maxAir = 0, flights = 0, instabilities = 0;
+    for (let seed = 1; seed <= 24; seed++) {
+      const r = await solo(randomRun(seed), 8);
+      falls += +(r.fellAt >= 0); maxKnock = Math.max(maxKnock, r.maxKnock); maxAir = Math.max(maxAir, r.maxAir); flights += r.flights; instabilities += r.instabilities;
+    }
+    // before the support and gait fixes, 100 such 10 s runs had 7 falls, knock up to 1 and flights up to ~0.46 s
+    console.log(`random runs: falls ${falls}, max knock ${maxKnock.toFixed(2)}, longest flight ${maxAir.toFixed(2)} s, flights over 0.2 s ${flights}`);
+    expect(falls).toBe(0);
+    expect(maxKnock).toBeLessThan(0.05);
+    expect(maxAir).toBeLessThan(0.45);
+    expect(instabilities).toBe(0);
+  });
+  it('sprints through slow and fast turns without tripping, on the minimum body too', async () => {
+    for (const physics of [STD, { hz: 240, iterations: 20, detail: 'minimum' } as PhysicsSettings]) for (const rate of [0.3, 0.5, 1, 2]) {
+      const r = await solo((t, c) => { c.gait = 'sprint'; c.move = { x: Math.sin(rate * t), z: Math.cos(rate * t) }; }, 8, physics);
+      expect(r.fellAt, `${physics.detail} ${rate} rad/s`).toBe(-1);
+      expect(r.maxKnock).toBeLessThan(0.05);
+      expect(r.instabilities).toBe(0);
+    }
+  });
+  it('no bunny hops at top speed: short flights and a ~4 cm bob at 10 m/s', async () => {
+    const r = await solo((_t, c) => { c.gait = 'sprint'; c.move = { x: 0, z: 1 }; }, 8);
+    // were flights up to ~0.18 s straight and ~0.48 s in a slow bend, every landing bouncing the next one higher
+    console.log(`straight sprint: longest flight ${r.maxAir.toFixed(3)} s, COM bob ${(100 * r.bob).toFixed(1)} cm`);
+    expect(r.maxAir).toBeLessThan(0.13);
+    expect(r.bob).toBeLessThan(0.07);
+    const bend = await solo((t, c) => { c.gait = 'sprint'; c.move = { x: Math.sin(0.5 * t), z: Math.cos(0.5 * t) }; }, 8);
+    expect(bend.maxAir).toBeLessThan(0.35);
+  });
+  it('pivots quickly: a 90° change of direction at a jog in under 0.7 s, staying up', async () => {
+    const sc = supportRunScenario(STD, null);
+    sc.setup.athletes[0].brain = new ScriptBrain((t, _p, c) => { if (t >= 0.5) { c.gait = 'jog'; c.move = t > 3 ? { x: 1, z: 0 } : { x: 0, z: 1 }; } });
+    const v = await World.create(mujocoEngine, sc.setup), s = v.scene.athletes[0].state;
+    let v0 = 0, tTurn = NaN;
+    while (v.time < 5) {
+      v.step();
+      const sp = Math.hypot(s.comVel[0], s.comVel[2]);
+      if (v.time < 3) v0 = sp;
+      else if (Number.isNaN(tTurn) && Math.abs(Math.atan2(s.comVel[0], s.comVel[2]) - Math.PI / 2) < 15 * Math.PI / 180 && sp > 0.6 * v0) tTurn = v.time - 3;
+    }
+    // was ~0.83 s with the turn limited to 7 m/s² and 8 rad/s
+    console.log(`jog 90° turn in ${tTurn.toFixed(2)} s`);
+    expect(tTurn).toBeLessThan(0.7);
+    expect(v.athletes[0].downBy).toBe(null);
+    v.destroy();
+  });
+});
+
 describe('support in contact', () => {
   const support = { ...DEFAULT_SUPPORT };
   /** Rates over seeds; also checks the carry force is exactly zero on every step an athlete touches another. */
@@ -130,7 +225,7 @@ describe('support in contact', () => {
   const upright = (speed: number, mass = 95): Side => ({ speed, script: technique.upright, params: { ...DEFAULT_ATHLETE, mass } });
 
   it('carry is exactly zero during player contact; a hitter driving through stays up more than the slower athlete hit', async () => {
-    const r = await rates(drive(8), upright(4), 12);
+    const r = await rates(drive(8), upright(4), 24);
     console.log('drive 8 m/s vs upright 4 m/s', r);
     expect(r.contactSteps).toBeGreaterThan(0);
     expect(r.carriedBefore).toBeGreaterThan(0);
@@ -344,8 +439,8 @@ describe('dive', () => {
 });
 
 describe('hip thrust', () => {
-  /** A tackler jogs into a standing carrier and wraps him up; 0.3 s after the first grip he either thrusts (held)
-   *  or just holds on. Carrier displacement and the load on his feet over the next 1.5 s. */
+  /** A tackler jogs into a standing carrier and wraps him up; 0.3 s after the first grip he either thrusts (a tap per
+   *  thrust) or just holds on. Carrier displacement and the load on his feet over the next 1.5 s. */
   async function wrapUp(thrust: boolean, seed: number) {
     const tracked = (p: BodyPlan, m: MuscleSet) => new TrackingController(p, m);
     let tWrap = -1;
@@ -354,7 +449,8 @@ describe('hip thrust', () => {
       athletes: [
         { params: DEFAULT_ATHLETE, pos: [0, 0, -0.8], yaw: 0, team: 0, controller: tracked, brain: new ScriptBrain((t, _p, c) => {
           c.contactMode = true; c.gait = 'jog'; c.move = { x: 0, z: tWrap < 0 ? 1 : 0 }; c.armL = c.armR = 1; c.wrap = true; c.sink = 0.7;
-          c.thrustHips = thrust && tWrap >= 0 && t > tWrap + 0.3;
+          // one press runs a whole thrust (~0.8 s): tapped again as each one ends
+          c.thrustHips = thrust && tWrap >= 0 && t > tWrap + 0.3 && (t - tWrap - 0.3) % 0.85 < 0.05;
         }) },
         { params: DEFAULT_ATHLETE, pos: [0, 0, 0.8 + 0.05 * seed], yaw: Math.PI, team: 1, controller: tracked, brain: new ScriptBrain(() => {}) },
       ],

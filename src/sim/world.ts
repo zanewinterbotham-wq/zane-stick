@@ -4,7 +4,7 @@ import { buildBody, type AthleteParams, type BodyPlan, type Detail } from './ana
 import { GRIP_TIMECONST, EQUIPMENT } from './anatomy/equipment';
 import type { Brain, Perception, AthleteView } from './brains/types';
 import { neutralCommands, type BodyView, type Commands, type FootContact, type MotorController } from './control/types';
-import { clamp, headingOf, qaxis, qconj, qlog, qmul, qrot, type Quat, type Vec3 } from './math';
+import { clamp, headingOf, lerp, qaxis, qconj, qlog, qmul, qrot, type Quat, type Vec3 } from './math';
 import { MuscleSet, newTargets, type MuscleTargets } from './muscles';
 import type { AthleteState, LinkRef, PhysicsEngine, PhysicsScene, PropDesc } from './physics/engine';
 import { Rng } from './rng';
@@ -43,9 +43,13 @@ const HELD = { start: 0.3, full: 0.9, oneArm: 0.6, sag: 1.0, sagMax: 0.8 };
  *  where the knock starts and where it is full (m/s), and how long that hit is remembered (s); and a dive
  *  take-off's velocity gain (1/s) and largest acceleration (m/s², about the ~1.5 g net a standing long-jump
  *  take-off reaches), and the largest horizontal acceleration of a hip-thrust lunge (m/s², ~1 body weight of
- *  horizontal ground force, a sprint start's); and the knock's rise time (s), a big hit's (about two steps at 240 Hz). */
+ *  horizontal ground force, a sprint start's); the knock's rise time (s), a big hit's (about two steps at 240 Hz); and
+ *  how long after the last contact a tilt or a flight stops counting as a knock (s), and the largest downward brake
+ *  on a body rising past its pelvis target (× body weight), and the largest sideways acceleration the carry gives
+ *  to turn a run at up to 4 m/s and from 8 m/s (m/s², the animator's LAT_ACCEL). */
 const SUP = { kv: 6, stable: 0.3, fadeIn: 0.3, window: 0.2, flight: 0.15, decay: 1, getup: 1, hKp: 36, hKd: 10, kUp: 1.5, cUp: 6, yaw: 0.3,
-  stunStart: 1, stunFull: 2, stunTime: 0.5, drivenStart: 0.5, drivenFull: 2, drivenTime: 1.5, launchKv: 20, launch: 15, lunge: 12, rise: 0.02, bigRise: 0.008 };
+  stunStart: 1, stunFull: 2, stunTime: 0.5, drivenStart: 0.5, drivenFull: 2, drivenTime: 1.5, launchKv: 20, launch: 15, lunge: 12, rise: 0.02, bigRise: 0.008,
+  free: 1, brake: 0.5, lat: [14, 8.5] as const };
 
 /** One body-part-on-body-part contact between two athletes this step (summed over its contact points). */
 export interface HitEvent {
@@ -87,6 +91,10 @@ export class Athlete {
   /** Support levels handed to the controller, and the fade state behind them (design §6.5). */
   support: SupportState = { posture: 1, carry: 1, down: false };
   knock = 0; carryLevel = 1; supStable = 0; airT = 0; getup = 0;
+  /** Share of the time a foot is on the turf (low-passed): sizes the posture support's push through the feet. */
+  grounded = 1;
+  /** Time since this athlete last touched another (s). */
+  freeT = Infinity;
   /** How long opponents have held this athlete (s), for the held knock. */
   heldT = 0;
   /** 0..1 loss of muscle tone after being driven back by a big hit (handed to controllers that take it). */
@@ -223,8 +231,15 @@ export class World {
       // a hip-thrust lunge is a take-off too: the carry stands in for the explosive push off the turf
       const kv = r.thrust > 0 ? SUP.launchKv : SUP.kv;
       let fx = m * kv * (r.vel[0] - s.comVel[0]), fz = m * kv * (r.vel[2] - s.comVel[2]);
-      const n = Math.hypot(fx, fz), lim = m * (r.thrust > 0 ? SUP.lunge : S.carryAccel);
-      if (n > lim) { fx *= lim / n; fz *= lim / n; }
+      const n = Math.hypot(fx, fz), lim = m * (r.thrust > 0 ? SUP.lunge : S.carryAccel), sp = Math.hypot(s.comVel[0], s.comVel[2]);
+      if (r.thrust <= 0 && sp > 0.5) {
+        // across the run the carry may turn it harder than it speeds it up (a cut's sideways push), within one
+        // ellipse for both (as the animator's root velocity)
+        const ux = s.comVel[0] / sp, uz = s.comVel[2] / sp, along = fx * ux + fz * uz;
+        const lat = m * Math.max(S.carryAccel, lerp(SUP.lat[1], SUP.lat[0], 1 - clamp((sp - 4) / 4, 0, 1)));
+        const e = Math.hypot(along / lim, Math.hypot(fx - along * ux, fz - along * uz) / lat);
+        if (e > 1) { fx /= e; fz /= e; }
+      } else if (n > lim) { fx *= lim / n; fz *= lim / n; }
       a.carryForce = [fx * c, 0, fz * c];
     }
     const p = sup.posture * k;
@@ -232,8 +247,22 @@ export class World {
     // A dive loads and pushes off the athlete's own legs, and so does a hip thrust: the posture support leaves the
     // weight to them (the tracking controller's legShare), so it never lifts the athlete or what he drives.
     const ps = p * weightSupport(r);
-    // a commanded sink is not braked as a fall; a rise (thrust) gets no help: the legs must drive it
-    if (ps > 0) fy = clamp(ps * (S.weightShare * m * G + m * SUP.hKp * (r.height - s.segPos[3 * pi + 1]) - m * SUP.hKd * (s.segVel[3 * pi + 1] - Math.min(0, r.vel[1]))), 0, 1.5 * ps * m * G);
+    // a commanded sink is not braked as a fall; a rise (thrust) gets no help: the legs must drive it.
+    // It holds the body up through the feet, as a leg would: on the feet's share of the stride, harder the less of
+    // the time they are down, and not at all in a stride's flight (held up there, a sprinter floated for a quarter
+    // second at a time and every landing bounced him into a hop). It still catches a body in the air that drops well
+    // below its target (legs that have not reached the turf yet). Lying or getting up it acts as before. All of this
+    // is off contact only (it comes in with the carry level); in contact the support holds him up as it always has.
+    const off = a.playerContact ? 0 : a.carryLevel;
+    const footing = a.feet[0].touching || a.feet[1].touching, y = s.segPos[3 * pi + 1];
+    a.grounded += ((footing ? 1 : 0) - a.grounded) * Math.min(1, this.dt / 0.4);
+    // (running only: a walker has no flight, and both feet up at a walk is a stumble the support must catch)
+    const run = off * clamp((Math.hypot(r.vel[0], r.vel[2]) - 2) / 1, 0, 1);
+    const gs = 1 + run * ((a.downBy ? 1 : footing ? 1 / Math.max(0.3, a.grounded) : clamp((r.height - y) / 0.1, 0, 1)) - 1);
+    const vy = s.segVel[3 * pi + 1];
+    if (ps > 0 && gs > 0) fy = clamp(ps * gs * (S.weightShare * m * G + m * SUP.hKp * (r.height - y) - m * SUP.hKd * (vy - Math.min(0, r.vel[1]))), 0, 1.5 * ps * gs * m * G);
+    // the height damping brakes a body rising past its target too (a bounce off the turf), not only a falling one
+    if (ps > 0 && y > r.height && vy > Math.max(0, r.vel[1])) fy -= off * ps * Math.min(m * SUP.hKd * (vy - Math.max(0, r.vel[1])), SUP.brake * m * G);
     this.scene.applyWrench(a.index, pi, [a.carryForce[0], fy + a.carryForce[1], a.carryForce[2]], [0, 0, 0]);
     if (p <= 0) return;
     const H = a.plan.standHeight, kUp = p * SUP.kUp * m * G * H, cUp = 0.5 * p * SUP.cUp * m * H * H;
@@ -243,7 +272,11 @@ export class World {
     // the pelvis takes part of the trunk lean, the thorax all of it (as in the hand controller's attitude targets)
     for (const [name, f] of [['pelvis', 0.3], [a.segIndex.has('thorax') ? 'thorax' : 'trunk', 1]] as const) {
       const i = a.segIndex.get(name)!, q = s.segQuat.subarray(4 * i, 4 * i + 4);
-      const e = qlog(qmul(orient(r.heading, f * r.pitch, f * r.roll), qconj([q[0], q[1], q[2], q[3]])));
+      // ... except, off contact, running, where the pelvis pitches with the trunk from 3 to 6 m/s (as the animator
+      // solves the legs), and a lean into a turn, which takes the whole body: turning the pelvis through only part of
+      // it left the legs solved for hips at the wrong heights, one foot hanging off the turf and the other striking it
+      const fp = f + (1 - f) * off * clamp((Math.hypot(s.comVel[0], s.comVel[2]) - 3) / 3, 0, 1), fr = f + (1 - f) * off;
+      const e = qlog(qmul(orient(r.heading, fp * r.pitch, fr * r.roll), qconj([q[0], q[1], q[2], q[3]])));
       this.scene.applyWrench(a.index, i, [0, 0, 0], [kUp * e[0] - cUp * wb[0], SUP.yaw * (kUp * e[1] - cUp * wb[1]), kUp * e[2] - cUp * wb[2]]);
     }
   }
@@ -322,7 +355,12 @@ export class World {
     // Held on to past that, his legs give: a balance controller alone would keep a wrapped athlete standing for
     // ever. Muscle tone drains (the stun's looseness) until he goes down or breaks free.
     if (held >= 2) a.stun = Math.max(a.stun, clamp((a.heldT - (HELD.start + HELD.full) * T) / (HELD.sag * T), 0, HELD.sagMax));
-    const target = Math.min(1, Math.max(knockHit, knockTilt, knockAir, knockDriven, knockLift, knockHeld));
+    // Untouched for a while (no contact, no hit still carrying him, nobody holding him) and not still knocked from
+    // one, a tilt or a flight is his own running, cutting or leaning, never a knock: off contact the support keeps
+    // him upright (design §6.5). One still off balance from a hit keeps stumbling until he has caught himself.
+    a.freeT = a.playerContact ? 0 : a.freeT + dt;
+    const own = a.freeT > SUP.free && a.hitMem <= 0 && a.heldT <= 0 && a.knock < 0.05 ? 0 : 1;
+    const target = Math.min(1, Math.max(knockHit, own * knockTilt, own * knockAir, knockDriven, knockLift, knockHeld));
     // rises fast, within a couple of steps on a big hit (the body goes as its impulse lands), decays slowly
     a.knock = target > a.knock ? a.knock + (target - a.knock) * Math.min(1, dt / (knockHit >= 1 ? SUP.bigRise : SUP.rise)) : Math.max(target, a.knock - dt * SUP.decay);
     const down = a.downBy !== null, clip = a.controller.debug?.().clip;

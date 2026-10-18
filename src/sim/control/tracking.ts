@@ -22,8 +22,8 @@ const STUN_LOOSE = 0.6;
 /** Stun gained in one step that marks the jolt of a big hit (an impact's impulse lands in a few steps). */
 const JOLT = 0.05;
 /** Forward drive of a full hip thrust, × body weight: a near-maximal leg extension, about the ~1 body weight of
- *  horizontal force a sprint start puts into the turf [S4], for the explosive first `burst` s; held longer, the
- *  legs keep driving at `held` (a maximal effort is brief). */
+ *  horizontal force a sprint start puts into the turf [S4], for the explosive first `time` s; through the rest of the
+ *  thrust the legs keep driving at `held` (a maximal effort is brief). */
 const THRUST_DRIVE = { burst: 1, held: 0.5, time: 0.5 };
 /** Upward push of each hand in a full thrust, N (assumption: about what one arm curls up at chest height). */
 const THRUST_LIFT = 250;
@@ -64,7 +64,7 @@ export class TrackingController implements MotorController {
   private armOf: Int8Array;
   /** Fraction of time some foot carries the legs' share of the weight (low-passed): sizes the stance push. */
   private grounded = 0.6;
-  /** How long the current hip thrust has been held (s). */
+  /** How long the current hip thrust has run (s). */
   private thrustT = 0;
   private handCmd: Commands = neutralCommands();
   private prevDive = false;
@@ -103,13 +103,18 @@ export class TrackingController implements MotorController {
     const sup = v.support ?? NO_SUPPORT, set = this.supportSettings, n = this.muscles.n;
     this.animator.update(v, cmd, sup, this.frame);
     // The hand controller runs every step so its gait and balance state are current when it is blended in.
-    // It sees a dive only on the press: one press is one dive, however long it is held.
+    // It sees a dive only on the press (one press is one dive, however long it is held), and a hip thrust for as long
+    // as the animator's one-press thrust runs.
+    const r = this.frame.root;
     Object.assign(this.handCmd, cmd).dive = cmd.dive && !this.prevDive;
+    this.handCmd.thrustHips = r.thrust > 0.05;
     this.prevDive = cmd.dive;
     this.hand.compute(v, this.handCmd, this.handOut);
-    const r = this.frame.root;
-    let want = 1 - Math.min(sup.posture, sup.carry);
-    // A held hip thrust has priority: the muscles drive the thrust pose, in contact too, while the athlete still
+    // The carry fades through a running stride's flight; off contact that is no reason to hand the legs to the balance
+    // controller (it did, every long stride, and the landing came on legs placed for a different gait).
+    const flying = !v.playerContact && !v.feet[0].touching && !v.feet[1].touching && Math.hypot(r.vel[0], r.vel[2]) > 3;
+    let want = 1 - Math.min(sup.posture, flying ? 1 : sup.carry);
+    // A hip thrust has priority: the muscles drive the thrust pose, in contact too, while the athlete still
     // has his posture. Dive flight has nothing to balance: the muscles hold the dive pose until the landing.
     want = r.dive === 'flight' ? 0 : Math.min(want, 1 - sup.posture * r.thrust);
     // in quickly (a hit; at once on the jolt of a big one, so the body reacts the step it lands, not to a shove's
@@ -151,7 +156,7 @@ export class TrackingController implements MotorController {
     const th = this.vec(v.state.segCom, this.thoraxSeg);
     this.arms.forEach((arm, k) => {
       const p = this.vec(v.state.segCom, arm.hand), F: Vec3 = [0, lift, 0];
-      if (v.grips?.[k] && (k === 0 ? cmd.armL : cmd.armR) > 0.3 && !cmd.wrap && !cmd.thrustHips) {
+      if (v.grips?.[k] && (k === 0 ? cmd.armL : cmd.armR) > 0.3 && !cmd.wrap && r.thrust <= 0.05) {
         const d: Vec3 = [th[0] - p[0], th[1] - p[1], th[2] - p[2]], m = Math.hypot(...d) || 1;
         for (let j = 0; j < 3; j++) F[j] += PULL * this.grip * d[j] / m;
       }

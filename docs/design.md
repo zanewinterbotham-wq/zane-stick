@@ -269,22 +269,39 @@ player thinks about hitting, not balancing; hits and tackles still come out of t
   stance, walk, jog, sprint (cadence and stride from speed, so planted feet do not slide), backpedal,
   shuffle, plant-and-cut, dive, contact overlays (arm reach, wrap, shoot, sink, drive, head tuck), ball
   carry, get-up. Writes an `AnimFrame` (target joint angles and speeds, per-dof gain, root target).
+  The root velocity turns at up to 14 m/s² sideways at a pivot (≤ 4 m/s) falling to 8.5 m/s² from 8 m/s, and
+  brakes at up to 12 / 9 m/s², all in one ellipse with the speed-up (braking hard leaves less to turn with); the
+  heading turns at up to 12 rad/s. A dive launches along the commanded move (where the player steers). A swing
+  foot that scuffs the turf early is drawn up out of it; one that lands late in a sprint's swing goes soft (gain
+  0.1) instead of being driven through the turf (that bounce was the bunny hop); a planted foot's reach for lost
+  turf is filtered (light contacts flicker step to step).
 - **Tracking controller** (`src/sim/control/tracking.ts`): muscles track the frame through the same muscle
   limits as before. During contact, and while the support is faded, it blends toward the hand-built
   balance controller (`hand.ts`: capture-point stepping and push recovery), so a hit athlete steps and fights
   for balance physically.
 - **Support** (`World.applySupport`, replaces `applyAssist` for tracked athletes), two levels per athlete:
   - *carry* (horizontal): force on the pelvis toward the root target velocity, capped at a human
-    acceleration. **Zero during player contact** (fades out within 0.1 s of first contact; returns after
-    separation and 0.3 s of stable footing), so it never pushes anyone into an opponent.
+    acceleration (8 m/s² along the run; across it as the animator's turn, in one ellipse). **Zero during player
+    contact** (fades out within 0.1 s of first contact; returns after separation and 0.3 s of stable footing),
+    so it never pushes anyone into an opponent.
   - *posture* (vertical weight share + upright torque on pelvis and thorax toward the root target):
     kept through contact, but fades by how badly this athlete is knocked: trunk tilt beyond ~25°, both feet
     off the turf, or a large impulse received. A hitter who drives through stays up; the athlete who gets
     blown up loses support and goes down. Zero once down; ramps back in with the get-up.
+  - *off contact* (2026-10-18; everything here comes in with the carry level, so in contact the support is as
+    before): a runner's weight share acts through the feet (divided by the share of time a foot is down, none in
+    a stride's flight, catching a body that drops 10 cm below its target), a body rising past its target is
+    braked (up to 0.5 g), the pelvis pitches with the trunk from 3 to 6 m/s and takes all of a turn's lean (as
+    the animator solves the legs), and a tilt or a flight counts as a knock only within 1 s of the last contact,
+    while a hit still carries him, while held, or while he is still knocked: his own running, cutting, sinking or
+    leaning never knocks him. 200 seeded random 10 s runs (cuts, bends, stops, sinks, leans, shuffles): 0 falls
+    and knock 0, was 7 falls per 100 and knock up to 1; flights over 0.2 s 43 per 100 runs, was 261, the longest
+    0.43 s, was 0.46.
 - *Contact technique* (all through muscles and contact; the carry stays zero in contact):
-  - hip thrust: one press lunges forward off contact (the carry stands in for the push off the turf, up to
-    10 m/s², ~1 m in 0.5 s from standing); in contact the legs drive ~1 body weight forward for 0.5 s, then
-    half that while held, and the arms lift what they hold;
+  - hip thrust: one press runs the whole thrust (0.8 s: lunge, drive and rise; holding changes nothing). Off
+    contact it lunges forward (the carry stands in for the push off the turf, up to 10 m/s², ~1 m in 0.5 s from
+    standing); in contact the legs drive ~1 body weight forward for 0.5 s, then half that to its end, and the
+    arms lift what they hold;
   - pad level: driving legs push along the foot → trunk line (a low athlete drives forward and up, an upright
     one mostly up), a low drive lifts with the arms, shoot/reach arms are raised by the trunk's lean; the knock
     counts being lifted (upward force from opponents beyond 0.2 body weight unloads the feet) and a low athlete's
@@ -306,7 +323,12 @@ player thinks about hitting, not balancing; hits and tackles still come out of t
     downed 6 / 3 / 2 at 0.6 / 1 / 1.6.
   - *AI juking* (`carrierSkill(k)`, 0..1): 1 = the carrier as before (`DIFFICULTY.normal`, full moves);
     0 = 0.2 s slower to react, noisier, makes his move 0.8 s of time to contact early and does not burst out
-    of it. Easy 0, Normal 0.5, Hard 1. A straight chase with a 0.4 s lead tackles 7 / 6 / 1 of 8 reps.
+    of it. Easy 0, Normal 0.5, Hard 1. A straight chase with a 0.4 s lead tackles 8 / 5 / 1 of 8 reps (was
+    7 / 6 / 1 before the snappier turning; a sprint's sideways limit of 8.5 m/s² keeps a juke worth making).
+  - *Steer assist* (owner decision 2026-10-18; Difficulty screen, 0–1, default 0.3): the human brain turns the
+    stick's move direction that share of the way toward the ball carrier, or a loose ball, when it is within
+    10 m and within ~60° of the stick (fading out at both edges). It changes only the Commands (the brain's
+    intent), never forces on the body, and never steers the human's own carry.
   - *Player strength / speed*: the human's `AthleteParams.strength` and `speed`. Easy 1.2 / 1.1, else 1.
   - *Hit power* (`WorldSetup.hitPower`, 1–3, game default 1.5): an arcade knob, not physics. At 1 the
     simulation is bit-identical to having none. Above 1, each step the athlete a hit drives back (he and

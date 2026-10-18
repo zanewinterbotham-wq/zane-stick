@@ -46,6 +46,27 @@ describe('HumanBrain', () => {
     expect(c.face).toBeNull();
   });
 
+  it('steer assist turns the run part way toward a carrier near and ahead, or a loose ball; not behind, far, or at 0', () => {
+    const ang = (c: { move: { x: number; z: number } }) => Math.atan2(c.move.x, c.move.z);
+    const steer = (k: number, p: Perception) => { const b = new HumanBrain(); b.steerAssist = k; b.latest = input(); return b.think(p); };
+    // carrier 6 m away, 30° to the left (+X) of the straight-ahead stick
+    const ahead = perceive(view(3, 5.2));
+    const half = ang(steer(0.5, ahead)), full = ang(steer(1, ahead));
+    expect(ang(steer(0, ahead))).toBeCloseTo(0, 6);
+    expect(half).toBeGreaterThan(0.1); expect(half).toBeLessThan(Math.PI / 6);
+    expect(full).toBeCloseTo(Math.PI / 6, 2);
+    expect(Math.hypot(steer(1, ahead).move.x, steer(1, ahead).move.z)).toBeCloseTo(1, 6);   // the stick's magnitude is kept
+    expect(ang(steer(1, perceive(view(0, -6))))).toBeCloseTo(0, 6);                        // behind
+    expect(ang(steer(1, perceive(view(10, 17))))).toBeCloseTo(0, 6);                       // too far
+    // nobody has the ball: it steers toward the loose ball instead
+    const loose: Perception = { ...perceive(view(0, 30)), ball: { pos: [-2, 0.1, 4], vel: [0, 0, 0] } };
+    loose.athletes[1].hasBall = false;
+    expect(ang(steer(1, loose))).toBeCloseTo(Math.atan2(-2, 4), 2);
+    // the human's own carry is never steered
+    const mine = perceive(view(3, 5.2)); mine.athletes[0].hasBall = true; mine.athletes[1].hasBall = false;
+    expect(ang(steer(1, mine))).toBeCloseTo(0, 6);
+  });
+
   it('with shift lock, holding D shuffles sideways without turning the body (headless)', async () => {
     await mujocoEngine.init();
     const run = async (shiftLock: boolean) => {

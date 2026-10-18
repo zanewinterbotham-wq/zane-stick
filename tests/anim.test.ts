@@ -244,7 +244,8 @@ describe('procedural animator', () => {
     expect(peakA).toBeLessThan(7.01);
     expect(peakA).toBeGreaterThan(6);
     expect(t10).toBeLessThan(2);
-    expect(peakTurn).toBeLessThan(8.01);
+    expect(peakTurn).toBeLessThan(12.01);
+    expect(peakTurn).toBeGreaterThan(11);
     // root target at speed 1.0: the sprint gait speed
     const top = kinematicRig();
     run(top, 3, (_t, c) => { c.move = { x: 0, z: 1 }; c.gait = 'sprint'; });
@@ -294,19 +295,37 @@ describe('procedural animator', () => {
     expect(runs[1].out).toEqual(runs[0].out);
   });
 
-  it('a held hip thrust rises out of a sink and a lean (it has priority over both) and punches the arms forward', () => {
-    const r = kinematicRig(), i = (n: string) => r.muscles.index(n);
+  it('one press runs a whole hip thrust: it rises out of a sink and a lean (priority over both), punches the arms forward, then ends; holding changes nothing', () => {
     const sunk = (c: Commands) => { c.contactMode = true; c.sink = 1; c.lean.fwd = 1; };
-    run(r, 1, (_t, c) => sunk(c));
-    const h0 = r.frame.root.height, p0 = r.frame.root.pitch, k0 = r.frame.q[i('kneeL.flex')];
-    // one press lunges forward first (0.5 s), then the held thrust stands tall on the balls of the feet
-    run(r, 1.5, (_t, c) => { sunk(c); c.thrustHips = true; }, undefined, 1);
-    expect(r.frame.root.thrust).toBeGreaterThan(0.95);
-    expect(r.frame.root.height).toBeGreaterThan(h0 + 0.2);
-    expect(r.frame.root.height).toBeGreaterThan(r.plan.standHeight);
-    expect(r.frame.root.pitch).toBeLessThan(p0 - 0.5);
-    expect(r.frame.q[i('kneeL.flex')]).toBeLessThan(k0 - 0.5);
-    expect(r.frame.q[i('shoulderL.flex')]).toBeGreaterThan(1.3);
+    const press = (hold: number) => {
+      const r = kinematicRig(), i = (n: string) => r.muscles.index(n), out: number[] = [];
+      run(r, 1, (_t, c) => sunk(c));
+      const at = { h0: r.frame.root.height, p0: r.frame.root.pitch, k0: r.frame.q[i('kneeL.flex')], thrust: 0, h: 0, p: 0, k: 0, sh: 0 };
+      run(r, 2, (t, c) => { sunk(c); c.thrustHips = t < 1 + hold; }, (t) => {
+        out.push(...r.frame.q, r.frame.root.height, r.frame.root.vel[2]);
+        // late in the thrust: the lunge is over and the rise stands tall on the balls of the feet
+        if (Math.abs(t - 1.75) < DT / 2) Object.assign(at, { thrust: r.frame.root.thrust, h: r.frame.root.height, p: r.frame.root.pitch, k: r.frame.q[i('kneeL.flex')], sh: r.frame.q[i('shoulderL.flex')] });
+      }, 1);
+      return { ...at, end: r.frame.root.thrust, out, stand: r.plan.standHeight };
+    };
+    const tap = press(0.05), held = press(2);
+    expect(tap.thrust).toBeGreaterThan(0.95);
+    expect(tap.h).toBeGreaterThan(tap.h0 + 0.2);
+    expect(tap.h).toBeGreaterThan(tap.stand);
+    expect(tap.p).toBeLessThan(tap.p0 - 0.5);
+    expect(tap.k).toBeLessThan(tap.k0 - 0.5);
+    expect(tap.sh).toBeGreaterThan(1.3);
+    expect(tap.end).toBeLessThan(0.05);   // over by itself
+    expect(held.out).toEqual(tap.out);
+  });
+
+  it('a dive launches along the way the player steers, not the way he was running', () => {
+    const r = kinematicRig();
+    let dir = NaN;
+    run(r, 2, (t, c) => { c.gait = 'sprint'; c.move = t < 1 ? { x: 0, z: 1 } : { x: 1, z: 0 }; c.dive = t >= 1; }, () => {
+      if (Number.isNaN(dir) && r.frame.root.dive === 'launch') dir = Math.atan2(r.frame.root.vel[0], r.frame.root.vel[2]);
+    });
+    expect(dir).toBeCloseTo(Math.PI / 2, 1);
   });
 
   it('layers contact overlays on the arms and relaxes the arms while running', () => {

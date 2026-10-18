@@ -21,7 +21,10 @@ Engine comparison: `docs/physics-benchmark.md`.
   (`sim/rng.ts`); no `Math.random` / `Date.now` / `performance.now` inside the sim.
 - SI units everywhere.
 - Support: horizontal carry only while not touching another player (zero in contact); posture support fades
-  by how badly the athlete is knocked. Never pushes anyone into an opponent.
+  by how badly the athlete is knocked. Never pushes anyone into an opponent. Off contact it may be stronger:
+  an athlete's own running, cutting, sinking or leaning never knocks him (design §6.5).
+- Steer assist (owner decision 2026-10-18): the human brain may turn its move direction part way toward the
+  ball carrier or a loose ball (a 0–1 setting). Through Commands only, never a force on the body.
 - If a requirement can't be met as written, stop and explain options. Never quietly substitute a shortcut.
 - Physics settings change only between reps. Every body detail level preserves mass properties.
 - Public repo: no personal info in code, docs, commits or settings. Free/open-source libraries only.
