@@ -1,0 +1,21 @@
+{
+ "label": "Coastal Hills Field",
+ "pitch": "A coastal Southern California high-school stadium: blue padded wall, a red eight-lane track, a tall dark grandstand, palms and a hillside of stucco homes.",
+ "scene": {
+  "sky": "#8cc4ee",
+  "fog": [
+   "#c9dfec",
+   110,
+   340
+  ],
+  "hemi": [
+   "#e6f0ff",
+   "#5a6b3a",
+   1.1
+  ],
+  "sun": [
+   "#fff6e0",
+   2.2
+  ]
+ }
+}

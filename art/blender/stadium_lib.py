@@ -237,6 +237,31 @@ class Mesh:
                 self.section(s, d_end, d_end, z_base, z, back, ('outer',), miter, L=None if miter else (L if L else HALF[s][1] + d_end))
         return d_end, z
 
+    # ---- stadium-shaped (straights and semicircles) rings, for a running track round the field ----
+    @staticmethod
+    def oval_pts(r, c, n=24):
+        """Closed counter-clockwise outline: semicircles of radius r centred (0, +-c), joined by straights."""
+        top = [(r * math.cos(math.pi * k / n), c + r * math.sin(math.pi * k / n)) for k in range(n + 1)]
+        bot = [(r * math.cos(math.pi + math.pi * k / n), -c + r * math.sin(math.pi + math.pi * k / n)) for k in range(n + 1)]
+        return top + bot
+
+    def oval(self, r0, r1, c, z0, z1, mat, faces=('top',), inner_mat=None, n=24):
+        """Ring between two oval outlines (radii r0 < r1, semicircle centres (0, +-c)). faces: top, bot, inner, outer."""
+        a, b = self.oval_pts(r0, c, n), self.oval_pts(r1, c, n)
+        for i in range(len(a)):
+            j = (i + 1) % len(a)
+            if 'top' in faces:
+                self.quad([(*a[i], z1), (*b[i], z1), (*b[j], z1), (*a[j], z1)], mat)
+            if 'bot' in faces:
+                self.quad([(*a[j], z0), (*b[j], z0), (*b[i], z0), (*a[i], z0)], mat)
+            if 'outer' in faces:
+                self.quad([(*b[i], z0), (*b[j], z0), (*b[j], z1), (*b[i], z1)], inner_mat or mat)
+            if 'inner' in faces:
+                self.quad([(*a[j], z0), (*a[i], z0), (*a[i], z1), (*a[j], z1)], inner_mat or mat)
+
+    def oval_fill(self, r, c, z, mat, n=24):
+        self.quad([(*p, z) for p in self.oval_pts(r, c, n)], mat)
+
     # ---- output ----
     def build(self, collection=None):
         me = bpy.data.meshes.new(self.name)

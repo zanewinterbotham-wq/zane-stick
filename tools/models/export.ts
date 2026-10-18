@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const STYLES = ['vinyl', 'lowpoly', 'toon', 'voxel', 'clay', 'future', 'paper', 'rubberhose'];
-const STADIUMS = ['college', 'highschool', 'pro', 'night', 'backyard', 'crater'];
+const STADIUMS = ['college', 'highschool', 'coastal', 'pro', 'night', 'backyard', 'crater'];
 // how the game shades each style; everything else keeps the file's PBR materials
 const LOOK: Record<string, string> = { toon: 'toon', rubberhose: 'toon', clay: 'clay', paper: 'paper' };
 
