@@ -99,7 +99,7 @@ describe('muscles', () => {
   it('clamps controller requests to the available torque', () => {
     const ms = new MuscleSet(buildBody(DEFAULT_ATHLETE));
     const i = ms.index('kneeL.flex');
-    const t = { q: new Float64Array(ms.n), kp: new Float64Array(ms.n), kd: new Float64Array(ms.n), tff: new Float64Array(ms.n).fill(1e6) };
+    const t = { q: new Float64Array(ms.n), qd: new Float64Array(ms.n), kp: new Float64Array(ms.n), kd: new Float64Array(ms.n), tff: new Float64Array(ms.n).fill(1e6) };
     const q = new Float64Array(ms.n), qd = new Float64Array(ms.n);
     ms.compute(t, q, qd);
     expect(ms.torque[i]).toBeCloseTo(ms.tPos[i], 6);

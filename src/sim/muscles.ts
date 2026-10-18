@@ -18,11 +18,12 @@ export function forceVelocity(x: number): number {
 /** Per-dof targets a controller sends every step (plan dof order). */
 export interface MuscleTargets {
   q: Float64Array;    // target joint angle (rad)
+  qd: Float64Array;   // target joint velocity (rad/s); damping acts on (qd − actual)
   kp: Float64Array;   // stiffness (N·m/rad)
   kd: Float64Array;   // damping (N·m·s/rad)
   tff: Float64Array;  // feed-forward torque (N·m)
 }
-export const newTargets = (n: number): MuscleTargets => ({ q: new Float64Array(n), kp: new Float64Array(n), kd: new Float64Array(n), tff: new Float64Array(n) });
+export const newTargets = (n: number): MuscleTargets => ({ q: new Float64Array(n), qd: new Float64Array(n), kp: new Float64Array(n), kd: new Float64Array(n), tff: new Float64Array(n) });
 
 export class MuscleSet {
   readonly n: number;
@@ -66,14 +67,17 @@ export class MuscleSet {
    *  exceed the muscle's capacity. */
   compute(t: MuscleTargets, q: Float64Array, qd: Float64Array): void {
     for (let i = 0; i < this.n; i++) {
-      let explicit = t.kp[i] * (t.q[i] - q[i]) + t.tff[i];
+      let explicit = t.kp[i] * (t.q[i] - q[i]) + t.kd[i] * t.qd[i] + t.tff[i];
       let kd = t.kd[i];
       const damp = -kd * qd[i];
       const total = explicit + damp;
       const cap = this.available(i, total, qd[i]);
       if (Math.abs(total) > cap) {
-        if (Math.abs(damp) >= cap) { kd = cap / Math.max(1e-6, Math.abs(qd[i])); explicit = 0; }
-        else explicit = (total >= 0 ? cap : -cap) - damp;
+        const sgn = total >= 0 ? 1 : -1;
+        // Only when damping alone pushes the same way past capacity is the damping itself cut back;
+        // otherwise the explicit part is reduced so the total sits exactly at capacity.
+        if (Math.sign(damp) === sgn && Math.abs(damp) >= cap) { kd = cap / Math.max(1e-6, Math.abs(qd[i])); explicit = 0; }
+        else explicit = sgn * cap - damp;
       }
       this.torque[i] = explicit;
       this.damping[i] = kd;
