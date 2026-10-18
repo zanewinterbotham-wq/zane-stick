@@ -100,7 +100,7 @@ mass. Every number and its source lives in `docs/realism-sources.md` and in code
 
 ### 5.2 Segments
 
-**Standard detail (19 segments):** pelvis, lumbar (abdomen), thorax, neck, head; per side: clavicle
+**Standard detail (21 segments):** pelvis, lumbar (abdomen), thorax, neck, head; per side: clavicle
 (shoulder girdle incl. scapula), upper arm, forearm, hand, thigh, shank, foot, toes.
 
 **Minimum detail (13 segments):** pelvis, trunk (lumbar+thorax+clavicles merged), head (neck+head
