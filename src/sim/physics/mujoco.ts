@@ -137,13 +137,22 @@ class MujocoScene implements PhysicsScene {
     this.read();
   }
 
-  private views() { this.xfrc = this.d.xfrc_applied; this.qfrc = this.d.qfrc_applied; }
+  /** Typed-array views into MuJoCo memory. Each property access allocates a new view, so they are cached
+   *  and only re-fetched when WASM memory has grown (which detaches old views: byteLength 0). */
+  private v: Record<'qpos' | 'qvel' | 'xpos' | 'xquat' | 'xipos' | 'cvel' | 'subtree_com' | 'subtree_linvel' | 'xaxis' | 'xanchor' | 'dof_damping', Float64Array> = {} as never;
+  private views() {
+    if (this.qfrc && this.qfrc.byteLength > 0 && this.qfrc.buffer === this.v.qpos?.buffer) return;
+    const d = this.d;
+    this.xfrc = d.xfrc_applied; this.qfrc = d.qfrc_applied;
+    this.v = { qpos: d.qpos, qvel: d.qvel, xpos: d.xpos, xquat: d.xquat, xipos: d.xipos, cvel: d.cvel, subtree_com: d.subtree_com,
+      subtree_linvel: d.subtree_linvel, xaxis: d.xaxis, xanchor: d.xanchor, dof_damping: this.m.dof_damping };
+  }
 
   private read() {
     const d = this.d;
     mj.mj_subtreeVel(this.m, d);
-    const qpos = d.qpos, qvel = d.qvel, xpos = d.xpos, xquat = d.xquat, xipos = d.xipos, cvel = d.cvel;
-    const subCom = d.subtree_com, subVel = d.subtree_linvel, xaxis = d.xaxis, xanchor = d.xanchor;
+    this.views();
+    const { qpos, qvel, xpos, xquat, xipos, cvel, subtree_com: subCom, subtree_linvel: subVel, xaxis, xanchor } = this.v;
     this.athletes.forEach((a, ai) => {
       const s = a.state, dq = this.dofQ[ai], dv = this.dofV[ai], dj = this.dofJ[ai];
       for (let i = 0; i < a.nDof; i++) {
@@ -170,7 +179,8 @@ class MujocoScene implements PhysicsScene {
   }
 
   setDamping(ai: number, kd: Float64Array) {
-    const dv = this.dofV[ai], base = this.passiveDamp[ai], dd = this.m.dof_damping;
+    this.views();
+    const dv = this.dofV[ai], base = this.passiveDamp[ai], dd = this.v.dof_damping;
     for (let i = 0; i < kd.length; i++) dd[dv[i]] = base[i] + kd[i];
   }
 
