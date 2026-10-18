@@ -55,6 +55,9 @@ export class InputManager {
   private mouse = { x: 0, y: 0, wheel: 0 };
   private auto = false;
   private shiftLock = [false, false];
+  /** Toggle mode (settings): a press switches sprint / sink on and off instead of holding the key. */
+  sprintToggle = false; sinkToggle = false;
+  private sprintOn = [false, false]; private sinkOn = [false, false];
   /** While false (menus open), bound keys keep their normal browser behaviour (Tab moves focus, etc.). */
   capture = true;
   /** Which source drives each player: player 0 = keyboard and mouse (or the first gamepad once it is used), player 1 = first gamepad. */
@@ -165,6 +168,10 @@ export class InputManager {
     }
     this.mouse.x = this.mouse.y = this.mouse.wheel = 0;
     if (pressed.has('shiftLock')) this.shiftLock[player] = !this.shiftLock[player];
+    if (pressed.has('sprint')) this.sprintOn[player] = !this.sprintOn[player];
+    if (pressed.has('sink')) this.sinkOn[player] = !this.sinkOn[player];
+    const sprintKey = this.sprintToggle ? this.sprintOn[player] : held.has('sprint');
+    const sinkKey = this.sinkToggle ? this.sinkOn[player] : held.has('sink');
     // torso: an accumulated angle, eased so a wheel notch does not jerk the trunk
     this.torsoTarget[player] = Math.max(-1, Math.min(1, this.torsoTarget[player] + torsoStep));
     this.torso[player] += (this.torsoTarget[player] - this.torso[player]) * Math.min(1, dt / 0.12);
@@ -172,11 +179,11 @@ export class InputManager {
     let sink: number;
     if (usePad) sink = val('sink');
     else {
-      this.sinkRamp[player] = held.has('sink') ? Math.min(1, this.sinkRamp[player] + o.sinkRampPerSecond * dt) : Math.max(0, this.sinkRamp[player] - 3 * o.sinkRampPerSecond * dt);
+      this.sinkRamp[player] = sinkKey ? Math.min(1, this.sinkRamp[player] + o.sinkRampPerSecond * dt) : Math.max(0, this.sinkRamp[player] - 3 * o.sinkRampPerSecond * dt);
       sink = this.sinkRamp[player];
     }
     return {
-      move, look, torso: this.torso[player], shiftLock: this.shiftLock[player], sprint: usePad ? val('sprint') : held.has('sprint') ? 1 : 0, sink,
+      move, look, torso: this.torso[player], shiftLock: this.shiftLock[player], sprint: usePad ? val('sprint') : sprintKey ? 1 : 0, sink,
       armL: val('armL'), armR: val('armR'), held, pressed,
       device: usePad ? 'gamepad' : 'keyboard',
     };

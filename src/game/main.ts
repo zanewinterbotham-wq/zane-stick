@@ -110,6 +110,7 @@ class App {
     this.input.capture = false;
     this.cam.mode = this.settings.camera;
     this.cam.follow = this.input.autoCamera = this.settings.autoCamera;
+    this.input.sprintToggle = this.settings.sprintToggle; this.input.sinkToggle = this.settings.sinkToggle;
     this.input.setKeyboard(this.settings.bindings);
     this.audio.muted = this.settings.mute;
     // Alt+Tab (or any switch away): pause, which frees the mouse; Resume or a click on the field captures it again
@@ -229,6 +230,8 @@ class App {
       { label: `Big-hit slow motion: ${s.slowMo ? 'on' : 'off'}`, action: () => { s.slowMo = !s.slowMo; this.save(); this.pauseMenu(); } },
       { label: `Camera: ${this.cam.mode}`, action: () => { this.toggleCamera(); this.pauseMenu(); } },
       { label: `Automatic camera: ${s.autoCamera ? 'on (follows the athlete)' : 'off (mouse look)'}`, action: () => { this.setAutoCamera(!s.autoCamera); this.pauseMenu(); } },
+      { label: `Sprint: ${s.sprintToggle ? 'toggle (press on / off)' : 'hold'}`, action: () => { s.sprintToggle = this.input.sprintToggle = !s.sprintToggle; this.save(); this.pauseMenu(); } },
+      { label: `Sink hips: ${s.sinkToggle ? 'toggle (press on / off)' : 'hold'}`, action: () => { s.sinkToggle = this.input.sinkToggle = !s.sinkToggle; this.save(); this.pauseMenu(); } },
       { label: `Sound: ${s.mute ? 'off' : 'on'}`, action: () => { s.mute = !s.mute; this.audio.muted = s.mute; this.save(); this.pauseMenu(); } },
       { label: 'Tuning panel', hint: 'T', action: () => this.tuning() },
       { label: 'Controls', action: () => this.controls(() => this.pauseMenu()) },
