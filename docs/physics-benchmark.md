@@ -117,3 +117,20 @@ Costs and how they are handled:
 
 Rapier is the fallback if MuJoCo hits a blocker. The engine sits behind `src/sim/physics/engine.ts`
 so swapping it doesn't touch the rest of the sim.
+
+## In-game preset benchmark (idle desktop, 2026-10-18)
+
+`npx tsx bench/presets/run.ts` on the production build: headless Chrome 156, Ryzen 7 7800X3D, SwiftShader
+rendering, CPU throttled with DevTools to approximate slower machines (6x ≈ a low-end school Chromebook).
+Three athletes with the game's own controller (active ragdoll: animator + tracking + support), jogging into
+each other. Physics cost = wall time per simulated second; render is capped by vsync at 16.7 ms here.
+
+| CPU throttle | Minimum (240 Hz, 20 iters, 13 segments) | High (480 Hz, 40 iters, 21 segments) | Auto choice |
+|---|---|---|---|
+| 1x | 86 ms/s (9 % of real time) | 149 ms/s (15 %) | High |
+| 4x | 464 ms/s (46 %) | 953 ms/s (95 %) | Minimum |
+| 6x | 780 ms/s (78 %) | 1503 ms/s (150 %, cannot keep up) | Minimum |
+
+The open-field drill has two athletes (≈ 2/3 of this cost), so Minimum at 6x uses about half of each second for
+physics. Three-athlete drills on the slowest machines are close to the limit. The hand-built controller alone
+measured 72 / 400 / 675 ms/s at Minimum for 1x / 4x / 6x, so the active ragdoll adds about 15 %.

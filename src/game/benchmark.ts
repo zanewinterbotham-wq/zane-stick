@@ -2,7 +2,8 @@
 // first-launch automatic preset choice and for the copyable report on the benchmark screen.
 import { DEFAULT_ATHLETE } from '../sim/anatomy/body';
 import { ScriptBrain } from '../sim/brains/script';
-import { HandController } from '../sim/control/hand';
+import { DEFAULT_SUPPORT } from '../sim/anim/types';
+import { makeController } from '../sim/drills/controllers';
 import { mujocoEngine } from '../sim/physics/mujoco';
 import { World } from '../sim/world';
 import { PRESETS, type Preset, type PresetName } from './presets';
@@ -10,13 +11,13 @@ import { GameRenderer } from './render/renderer';
 
 export interface BenchResult { preset: PresetName; physicsMsPerSimSecond: number; physicsRealtimeShare: number; renderMsPerFrame: number; fpsEstimate: number }
 
-/** Three athletes jogging into each other, as in a two-bot drill. */
+/** Three athletes jogging into each other, as in a two-bot drill, with the game's controller and support. */
 async function physicsWorld(p: Preset) {
   return World.create(mujocoEngine, {
-    physics: p.physics, seed: 3, assist: 0.2,
+    physics: p.physics, seed: 3, assist: 0.2, support: { ...DEFAULT_SUPPORT },
     athletes: [0, 1, 2].map((i) => ({
       params: DEFAULT_ATHLETE, pos: [(i - 1) * 1.2, 0, i === 1 ? 4 : 0] as [number, number, number], yaw: i === 1 ? Math.PI : 0, team: (i === 1 ? 1 : 0) as 0 | 1,
-      controller: (pl, m) => new HandController(pl, m),
+      controller: (pl, m) => makeController(pl, m, 'tracking'),
       brain: new ScriptBrain((t, _p, c) => { if (t > 0.3) { c.gait = 'jog'; c.move = { x: 0, z: i === 1 ? -1 : 1 }; } }),
     })),
   });
