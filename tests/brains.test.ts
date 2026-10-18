@@ -92,13 +92,15 @@ describe('TacklerBrain', () => {
     expect(cs.filter((x) => x.dive).length).toBe(1);
   });
 
-  it('dives on a loose ball it is running at', () => {
-    const b = new TacklerBrain(new Rng(1), DIFFICULTY.normal);
-    const p = (time: number): Perception => ({ time, self: 0, athletes: [view([0, 1, 0], [0, 0, 5]), view([3, 1, 8], [0, 0, 0])], field, ball: { pos: [0, 0.1, 2.6], vel: [0, 0, 0] } });
-    const cs: Commands[] = [];
-    for (let i = 0; i < 0.2 / DT; i++) cs.push(b.think(p(i * DT), DT));
-    expect(cs.filter((x) => x.dive).length).toBe(1);
-    expect(cs.at(-1)!.carry).toBe(0);
+  it('dives on a loose ball rolling away from it, but not on one lying still', () => {
+    for (const [vz, dives] of [[1.5, 1], [0, 0]] as const) {
+      const b = new TacklerBrain(new Rng(1), DIFFICULTY.normal);
+      const p = (time: number): Perception => ({ time, self: 0, athletes: [view([0, 1, 0], [0, 0, 5]), view([3, 1, 8], [0, 0, 0])], field, ball: { pos: [0, 0.1, 2.2], vel: [0, 0, vz] } });
+      const cs: Commands[] = [];
+      for (let i = 0; i < 0.2 / DT; i++) cs.push(b.think(p(i * DT), DT));
+      expect(cs.filter((x) => x.dive).length).toBe(dives);
+      expect(cs.at(-1)!.carry).toBe(0);
+    }
   });
 
   it('slows for a loose ball it cannot turn onto at speed, then reaches both hands down to it', () => {

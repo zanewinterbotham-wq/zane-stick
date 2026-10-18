@@ -32,7 +32,7 @@ describe('stadium barrier', () => {
       expect(far).toBeGreaterThan(limit - 1.5);            // it did run to the wall
       expect(far).toBeLessThan(limit + 0.15);              // and no further than a soft contact's give
       expect(d.world.scene.stats().instabilities).toBe(0);
-      expect(d.world.scene.athletes[d.human].state.com[1]).toBeGreaterThan(0.2); // nobody fell through the world
+      expect(d.world.scene.athletes[d.human].state.com[1]).toBeGreaterThan(0.05); // nobody fell through the world (lying on the turf after slamming the wall is fine)
     }, 60_000);
   }
 

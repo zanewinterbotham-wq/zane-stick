@@ -148,7 +148,7 @@ export class TacklerBrain implements Brain {
 
   /** Run to a loose ball and pick it up by hand: flat out only while the way is clear, slowing so the run can still
    *  turn onto the ball (a sprint cannot: it orbits it) and stop on it, then sink and reach down for it. Dives only
-   *  when it cannot stop short of the ball. */
+   *  at a rolling ball it cannot stop short of. */
   private recover(me: AthleteView, ball: { pos: Vec3; vel: Vec3 }, age: number, dt: number, c: Commands) {
     const bx = ball.pos[0] + ball.vel[0] * age, bz = ball.pos[2] + ball.vel[2] * age;
     const sp = Math.hypot(me.comVel[0], me.comVel[2]);
@@ -170,7 +170,9 @@ export class TacklerBrain implements Brain {
       c.sink = 0.5 * k; c.lean.fwd = k;
     }
     const x = dx + (ball.vel[0] - me.comVel[0]) * DIVE_T, z = dz + (ball.vel[2] - me.comVel[2]) * DIVE_T;
-    if (!this.dived && sp > 4 && sp * sp > 2 * (BALL_BRAKE - 1) * d && this.onLine(me, x, z, sp)) { c.dive = true; this.dived = true; }
+    // only at a ball still rolling away: a dive at one lying still pushes it on and costs the get-up
+    const rolling = Math.hypot(ball.vel[0], ball.vel[2]) > 1;
+    if (!this.dived && rolling && sp > 4 && sp * sp > 2 * (BALL_BRAKE - 1) * d && this.onLine(me, x, z, sp)) { c.dive = true; this.dived = true; }
   }
 
   /** Whether a point (relative x, z) lies DIVE_D ahead along the current run and within DIVE_SIDE of its line. */
