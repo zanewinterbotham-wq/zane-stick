@@ -1,0 +1,66 @@
+[
+  {
+    "id": "voxel",
+    "label": "Voxel Block",
+    "pitch": "3.4 cm voxels on one world grid with merged faces: a sandbox-game athlete, 1.6x head.",
+    "file": "models/voxel.glb",
+    "look": "standard",
+    "unlocked": true
+  },
+  {
+    "id": "vinyl",
+    "label": "Vinyl Toy",
+    "pitch": "Chunky designer-toy figure: glossy rounded plastic, mitten hands, 1.9x head.",
+    "file": "models/vinyl.glb",
+    "look": "standard",
+    "unlocked": true
+  },
+  {
+    "id": "lowpoly",
+    "label": "Low-Poly Facet",
+    "pitch": "Faceted crystal-cut athlete: six-sided limbs, jittered flat facets, 1.55x head.",
+    "file": "models/lowpoly.glb",
+    "look": "standard",
+    "unlocked": true
+  },
+  {
+    "id": "toon",
+    "label": "Ink Toon",
+    "pitch": "Saturday-morning cel shading: two-tone ramps, rim highlight, inked outlines, 1.75x head.",
+    "file": "models/toon.glb",
+    "look": "toon",
+    "unlocked": true
+  },
+  {
+    "id": "clay",
+    "label": "Claymation",
+    "pitch": "Stop-motion plasticine: lumpy hand-pressed surfaces, soft matte, 1.65x head.",
+    "file": "models/clay.glb",
+    "look": "clay",
+    "unlocked": true
+  },
+  {
+    "id": "future",
+    "label": "Future Armor",
+    "pitch": "Sleek armored future football: visor helmet with fin, hard plates, light strips.",
+    "file": "models/future.glb",
+    "look": "standard",
+    "unlocked": true
+  },
+  {
+    "id": "paper",
+    "label": "Paper Cutout",
+    "pitch": "Layered cardstock puppet: flat silhouettes, paper-white borders, 1.7x head.",
+    "file": "models/paper.glb",
+    "look": "paper",
+    "unlocked": true
+  },
+  {
+    "id": "rubberhose",
+    "label": "Rubber Hose",
+    "pitch": "1930s cartoon: noodle limbs, white mitts, pie-cut eyes, huge shoes, 1.95x head.",
+    "file": "models/rubberhose.glb",
+    "look": "toon",
+    "unlocked": true
+  }
+]

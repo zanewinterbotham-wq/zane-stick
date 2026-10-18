@@ -13,6 +13,7 @@
     "test:realism": "vitest run --config vitest.realism.config.ts",
     "sfx:build": "tsx tools/sfx/build.ts",
     "sfx:export": "tsx tools/sfx/export-picks.ts",
+    "models:export": "tsx tools/models/export.ts",
     "picker": "vite --config tools/picker/vite.config.ts",
     "test:picker": "playwright test --config tools/picker/playwright.config.ts"
   },
