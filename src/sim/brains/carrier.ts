@@ -2,7 +2,8 @@
 // reaction delay. It scores candidate paths by how far they stay from where the tackler can get to, commits to
 // one for a minimum time, and executes it with smooth bends, or a plant-and-cut (juke) plus a burst when the
 // tackler is close; a stutter (hesitation, chopped feet) baits a squared-up tackler first. Difficulty is only
-// reaction delay, decision noise and aim noise. Issues ordinary Commands. Without the ball it is a tackler.
+// reaction delay, decision noise, aim noise and juke skill (when the move is made, how hard he bursts out of it).
+// Issues ordinary Commands. Without the ball it is a tackler.
 import { GAIT_SPEED } from '../control/hand';
 import { neutralCommands, type Commands, type Gait } from '../control/types';
 import { clamp, wrapAngle } from '../math';
@@ -10,10 +11,19 @@ import type { Rng } from '../rng';
 import { predict, TacklerBrain, turnRate } from './tackler';
 import type { AthleteView, Brain, Perception } from './types';
 
-export interface BotDifficulty { reaction: number; noise: number }
+/** reaction: delay before the bot sees a change (s); noise: decision and aim noise; juke: 0..1 skill of a carrier's
+ *  moves (timing and the burst after them), absent = 1. */
+export interface BotDifficulty { reaction: number; noise: number; juke?: number }
 export const DIFFICULTY: Record<'easy' | 'normal' | 'hard', BotDifficulty> = {
   easy: { reaction: 0.35, noise: 0.35 }, normal: { reaction: 0.25, noise: 0.2 }, hard: { reaction: 0.15, noise: 0.1 },
 };
+/** The "AI juking" setting 0..1 as a bot skill: 1 = DIFFICULTY.normal with full moves (the carrier that escapes a
+ *  straight-line tackler most reps), 0 = slower to read the tackler, noisier, makes his move too early (the tackler
+ *  has time to answer it) and hardly bursts out of it. */
+export const carrierSkill = (k: number): BotDifficulty => ({ reaction: 0.25 + JUKE_SKILL.reaction * (1 - k), noise: 0.2 + JUKE_SKILL.noise * (1 - k), juke: k });
+/** At juking 0: extra reaction delay (s), extra noise, how much earlier the move is made (s of time to contact), and
+ *  the burst share of the sprint speed (the jog's own share: no burst). */
+const JUKE_SKILL = { reaction: 0.2, noise: 0.3, early: 0.8, burst: GAIT_SPEED.jog / GAIT_SPEED.sprint };
 
 /** The threat model of a tackler: reach from his COM to a carrier's COM (m), his acceleration (m/s²), top speed
  *  (m/s) and the time before he answers a move (s). Path look-ahead and its step (s). */
@@ -54,8 +64,10 @@ export class CarrierBrain implements Brain {
   move: CarrierMove = 'run';
   /** Number of plant-and-cuts made (tests, benchmarks). */
   jukes = 0;
+  private skill: number;
   constructor(private rng: Rng, private diff: BotDifficulty, private gait: Gait = 'jog', private carryArm: 1 | 2 = 2) {
     this.tackler = new TacklerBrain(rng, diff);
+    this.skill = diff.juke ?? 1;
   }
 
   think(p: Perception, dt = 1 / 240): Commands {
@@ -92,7 +104,7 @@ export class CarrierBrain implements Brain {
         const engaged = d < ENGAGE_D || ttc < ENGAGE_TTC;
         // a squared-up tackler closing fast is baited once with a stutter
         const lateral = Math.abs(dx * Math.cos(goalH) - dz * Math.sin(goalH));
-        if (engaged && Number.isNaN(this.trigger)) this.trigger = this.rng.range(...JUKE_TTC) + this.diff.noise * this.rng.gauss() * 0.2;
+        if (engaged && Number.isNaN(this.trigger)) this.trigger = this.rng.range(...JUKE_TTC) + this.diff.noise * this.rng.gauss() * 0.2 + JUKE_SKILL.early * (1 - this.skill);
         if (engaged && !this.stuttered && d > 5 && lateral < 1.5 && closing > 5) {
           this.stuttered = true;
           if (this.rng.next() < STUTTER_P) this.stutterUntil = p.time + this.rng.range(...STUTTER);
@@ -116,7 +128,7 @@ export class CarrierBrain implements Brain {
     c.move = { x: Math.sin(this.heading) * this.mag, z: Math.cos(this.heading) * this.mag };
     if (sprint) {
       // the burst's speed ramps up from the cruise speed (the gait switch alone keeps the speed)
-      const k0 = GAIT_SPEED[this.gait] / GAIT_SPEED.sprint, k1 = Math.max(k0, BURST);
+      const k0 = GAIT_SPEED[this.gait] / GAIT_SPEED.sprint, k1 = Math.max(k0, BURST - (BURST - JUKE_SKILL.burst) * (1 - this.skill));
       this.burstK = Number.isNaN(this.burstK) ? k0 : this.burstK + (k1 - this.burstK) * (1 - Math.exp(-dt / 0.3));
       c.gait = 'sprint'; c.move.x *= this.burstK; c.move.z *= this.burstK;
     }
