@@ -19,17 +19,17 @@ export interface Outcome { aDown: boolean; bDown: boolean; aBack: number; bBack:
 
 /** A at z = −gap/2 facing +Z, B at +gap/2 facing −Z; both moving toward each other. With `opts.support` both
  *  use the tracking controller and the world's active-ragdoll support. */
-export async function collide(a: Side, b: Side, seed: number, physics: PhysicsSettings, seconds = 2, opts: { support?: SupportSettings; onStep?: (w: World) => void; gap?: number; mirrorB?: boolean } = {}): Promise<Outcome> {
+export async function collide(a: Side, b: Side, seed: number, physics: PhysicsSettings, seconds = 2, opts: { support?: SupportSettings; onStep?: (w: World) => void; gap?: number; mirrorB?: boolean; hitPower?: number; toughnessB?: number } = {}): Promise<Outcome> {
   const rng = new Rng(seed);
   const gap = (opts.gap ?? 1.6) + rng.range(-0.1, 0.1), lateral = rng.range(-0.08, 0.08);
   // mirrorB: B's script is written in his own frame (move +z = toward A), as a human facing A would press
   const brain = (s: Side, mirror = false) => new ScriptBrain((t: number, _p: Perception, c: Commands) => { s.script(t, c); if (mirror) c.move = { x: -c.move.x, z: -c.move.z }; });
   const controller = opts.support ? (p: BodyPlan, m: MuscleSet) => new TrackingController(p, m) : (p: BodyPlan, m: MuscleSet) => new HandController(p, m);
   const w = await World.create(mujocoEngine, {
-    physics, seed, assist: 0, support: opts.support,
+    physics, seed, assist: 0, support: opts.support, hitPower: opts.hitPower,
     athletes: [
       { params: a.params ?? DEFAULT_ATHLETE, pos: [0, 0, -gap / 2], yaw: 0, team: 0, controller, brain: brain(a) },
-      { params: b.params ?? DEFAULT_ATHLETE, pos: [lateral, 0, gap / 2], yaw: Math.PI, team: 1, controller, brain: brain(b, opts.mirrorB) },
+      { params: b.params ?? DEFAULT_ATHLETE, pos: [lateral, 0, gap / 2], yaw: Math.PI, team: 1, controller, brain: brain(b, opts.mirrorB), toughness: opts.toughnessB },
     ],
   });
   const va = a.speed * (1 + rng.range(-0.05, 0.05)), vb = b.speed * (1 + rng.range(-0.05, 0.05));

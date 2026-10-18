@@ -30,6 +30,10 @@ export interface OpenFieldConfig {
   gains?: Partial<Gains>;
   /** Active-ragdoll support for both athletes; absent = old balance assist only. */
   support?: SupportSettings;
+  /** The bot's support toughness (WorldSetup athletes' toughness; 1 = the player's). */
+  toughness?: number;
+  /** Arcade hit power (WorldSetup.hitPower; 1 = pure physics). */
+  hitPower?: number;
 }
 export const DEFAULT_OPEN_FIELD: Omit<OpenFieldConfig, 'physics'> = {
   assist: 0.2, seed: 1, human: DEFAULT_ATHLETE, carrier: { height: 1.80, mass: 98, strength: 1, speed: 1 },
@@ -79,11 +83,11 @@ export class OpenFieldDrill {
     // whoever holds the ball keeps it tucked in the right arm (a human's input has no carry button)
     const possess = (i: number): Brain => ({ think: (p, dt) => { const c = brains[i].think(p, dt); if (p.athletes[i].hasBall) c.carry = 2; return c; } });
     const setup: WorldSetup = {
-      physics: cfg.physics, seed: cfg.seed + rep, assist: cfg.assist, traction: cfg.traction,
+      physics: cfg.physics, seed: cfg.seed + rep, assist: cfg.assist, traction: cfg.traction, hitPower: cfg.hitPower,
       field: { halfWidth: HALF_WIDTH, goalZ: attackDir(1) * GOAL_LINE, dirZ: attackDir(1) },
       athletes: [
         { params: cfg.human, pos: [hx, 0, 0], yaw: 0, team: 0, controller: ctl(cfg), brain: possess(0) },
-        { params: cfg.carrier, pos: [cx, 0, gap], yaw: Math.PI, team: 1, controller: ctl(cfg), brain: possess(1), hasBall: true },
+        { params: cfg.carrier, pos: [cx, 0, gap], yaw: Math.PI, team: 1, controller: ctl(cfg), brain: possess(1), hasBall: true, toughness: cfg.toughness },
       ],
       // ball parked under the field until the carrier has tucked his arm (setup only)
       props: [{ name: 'ball', shape: 'ellipsoid', size: [BALL.diameter / 2, BALL.diameter / 2, BALL.length / 2], mass: BALL.mass, pos: [cx, -5, gap], friction: 0.8 }],

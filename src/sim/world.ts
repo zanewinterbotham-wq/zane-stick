@@ -18,11 +18,17 @@ export interface AthleteSetup {
   controller: (plan: BodyPlan, muscles: MuscleSet) => MotorController;
   brain: Brain;
   hasBall?: boolean;
+  /** Bot difficulty (owner decision 2026-10-18): multiplies this athlete's support thresholds (big hit, stun,
+   *  held knock, tilt fade), so a tougher bot takes more force to tackle. 1 / absent = the player's. */
+  toughness?: number;
 }
 export interface FieldInfo { halfWidth: number; goalZ: number; dirZ: 1 | -1 }
 export interface WorldSetup { physics: PhysicsSettings; athletes: AthleteSetup[]; props?: PropDesc[]; seed: number; assist: number; field?: FieldInfo; traction?: number;
   /** Active-ragdoll support (design §6.5) for athletes whose controller has root(); absent = balance assist only. */
-  support?: SupportSettings }
+  support?: SupportSettings;
+  /** Arcade hit power (owner decision 2026-10-18): 1 / absent = pure physics; above 1 the athlete a hit drives back
+   *  gets (hitPower − 1) × the contact force he receives on top (World.applyHitPower). */
+  hitPower?: number }
 
 /** Balance assist timing [design §6.4]. */
 const ASSIST_FADE_OUT = 0.15, ASSIST_STABLE_TIME = 0.3, ASSIST_FADE_IN = 0.3;
@@ -61,6 +67,8 @@ export class Athlete {
   assistLevel = 1;          // 0..1 multiplier on the world assist setting (fade state)
   stableTimer = 0;
   playerContactNow = false;
+  /** Athletes this one touches (last contact read). */
+  touching: number[] = [];
   grips: { active: boolean; force: number; cooldown: number; jersey: boolean; limit: number; target: LinkRef | null }[] = [0, 1].map(() => ({ active: false, force: 0, cooldown: 0, jersey: false, limit: 0, target: null }));
   /** Last contact per hand: target link and point, for grip forming. */
   handTouch: ({ athlete: number; seg: number; pos: Vec3 } | null)[] = [null, null];
@@ -184,6 +192,7 @@ export class World {
       this.scene.setTorques(a.index, a.muscles.torque);
       this.scene.setDamping(a.index, a.muscles.damping);
       if (this.supported(a)) this.applySupport(a); else this.applyAssist(a);
+      if ((this.setup.hitPower ?? 1) > 1) this.applyHitPower(a, this.setup.hitPower!);
     }
     this.scene.step();
     this.time += dt; this.steps++;
@@ -236,6 +245,26 @@ export class World {
     }
   }
 
+  /** Arcade hit power (owner decision 2026-10-18): the athlete a hit drives back gets (hitPower − 1) × the contact
+   *  force he received last step on top, along it (half on the pelvis, half on the thorax, so it does not spin
+   *  him), plus a lift so a big hit takes him off the turf. The hitter driving through gets nothing. */
+  private applyHitPower(a: Athlete, hp: number) {
+    const f = a.hitForce, fh = Math.hypot(f[0], f[2]);
+    if (fh < 1e-6 || a.downBy) return;
+    // Driven back: he and whoever he touches move, together, along the push he gets. For the hitter that
+    // combined momentum is against his push, so only the one hit qualifies; equal momenta head on, neither.
+    const s = this.scene.athletes[a.index].state;
+    let m = a.mass, px = m * s.comVel[0], pz = m * s.comVel[2];
+    for (const k of a.touching) {
+      const o = this.athletes[k], so = this.scene.athletes[k].state, mo = o.mass;
+      px += mo * so.comVel[0]; pz += mo * so.comVel[2]; m += mo;
+    }
+    if ((px * f[0] + pz * f[2]) / (fh * m) < HIT.minV) return;
+    const k = 0.5 * (hp - 1), F: Vec3 = [k * f[0], k * HIT.lift * fh, k * f[2]];
+    this.scene.applyWrench(a.index, a.segIndex.get('pelvis')!, F, [0, 0, 0]);
+    this.scene.applyWrench(a.index, a.segIndex.get('thorax') ?? a.segIndex.get('trunk')!, F, [0, 0, 0]);
+  }
+
   /** Knock, carry and posture levels from what happened this step (design §6.5). */
   private updateSupport(a: Athlete, dt: number) {
     const S = this.setup.support!, s = this.scene.athletes[a.index].state, m = a.mass, r = a.controller.root!();
@@ -249,8 +278,8 @@ export class World {
     const Jh = Math.hypot(J[0], J[2]), vAlong = Jh > 1e-9 ? (s.comVel[0] * J[0] + s.comVel[2] * J[2]) / Jh : 0;
     // Pad level: a low athlete (meaning to be low, and low) has his weight down and his feet wide, so the same
     // impulse takes him less far off balance than an upright one.
-    const pi = a.segIndex.get('pelvis')!, H0 = a.plan.standHeight;
-    const low = r ? clamp(Math.min(H0 - r.height, H0 - s.segPos[3 * pi + 1]) / LOW.drop, 0, 1) : 0, big = S.bigHit * (1 + LOW.base * low);
+    const pi = a.segIndex.get('pelvis')!, H0 = a.plan.standHeight, T = a.setup.toughness ?? 1;
+    const low = r ? clamp(Math.min(H0 - r.height, H0 - s.segPos[3 * pi + 1]) / LOW.drop, 0, 1) : 0, big = S.bigHit * T * (1 + LOW.base * low);
     const Jknock = Math.min(Jh, m * Math.max(0, vAlong)), knockHit = Jknock / big;
     // Stun: an athlete driven back hard loses muscle tone for a moment (the controller loosens), so the hit's
     // momentum goes through a limp-ish body instead of being caught by a stiff balance reaction.
@@ -269,7 +298,7 @@ export class World {
     const up = qrot([q[0], q[1], q[2], q[3]], [0, 1, 0]);
     const upD: Vec3 = r ? qrot(orient(r.heading, r.pitch, r.roll), [0, 1, 0]) : [0, 1, 0];
     const tilt = Math.min(Math.acos(clamp(up[1], -1, 1)), Math.acos(clamp(up[0] * upD[0] + up[1] * upD[1] + up[2] * upD[2], -1, 1)));
-    const knockTilt = clamp((tilt - S.tiltStart) / Math.max(1e-6, S.tiltEnd - S.tiltStart), 0, 1);
+    const knockTilt = clamp((tilt - S.tiltStart * T) / Math.max(1e-6, (S.tiltEnd - S.tiltStart) * T), 0, 1);
     // both feet off the turf: a sprint stride's flight is allowed, longer means the athlete was lifted or launched
     const footing = a.feet[0].touching || a.feet[1].touching, speed = Math.hypot(s.comVel[0], s.comVel[2]);
     a.airT = footing ? 0 : a.airT + dt;
@@ -281,7 +310,7 @@ export class World {
     let held = 0;
     for (const o of this.athletes) if (o !== a) for (const g of o.grips) if (g.active && g.target?.athlete === a.index) held++;
     a.heldT = held > 0 ? a.heldT + dt : Math.max(0, a.heldT - 2 * dt);
-    const knockHeld = clamp((a.heldT - HELD.start) / HELD.full, 0, 1) * (held >= 2 ? 1 : HELD.oneArm);
+    const knockHeld = clamp((a.heldT - HELD.start * T) / (HELD.full * T), 0, 1) * (held >= 2 ? 1 : HELD.oneArm);
     const target = Math.min(1, Math.max(knockHit, knockTilt, knockAir, knockDriven, knockLift, knockHeld));
     // rises fast, decays slowly
     a.knock = target > a.knock ? a.knock + (target - a.knock) * Math.min(1, dt / 0.02) : Math.max(target, a.knock - dt * SUP.decay);
@@ -348,6 +377,7 @@ export class World {
       a.feet.forEach((f) => { f.force = 0; f.cop = [0, 0, 0]; f.touching = false; });
       a.downBy = null; a.handTouch = [null, null];
       a.playerContactNow = false;
+      a.touching = [];
       a.hitForce = [0, 0, 0];
     }
     let hit = 0;
@@ -365,7 +395,7 @@ export class World {
           });
           if (!a.limbEndSegs.has(p.seg)) a.downBy = a.plan.segments[p.seg].name;
         } else {
-          if (o.athlete >= 0 && o.athlete !== p.athlete) a.playerContactNow = true;
+          if (o.athlete >= 0 && o.athlete !== p.athlete) { a.playerContactNow = true; if (!a.touching.includes(o.athlete)) a.touching.push(o.athlete); }
           const hand = a.handSegs.indexOf(p.seg);
           if (hand >= 0 && (o.athlete !== p.athlete)) a.handTouch[hand] = { athlete: o.athlete, seg: o.seg, pos: c.pos };
         }
@@ -547,6 +577,9 @@ const LOW = { drop: 0.25, base: 1, liftStart: 0.2, liftFull: 0.6 };
 /** A grip pulled open loads the finger flexors eccentrically, which hold ~1.5× their isometric (dynamometer)
  *  force; at 1× tacklers' wraps and the carrier's ball grip let go of loads a hand really holds. */
 const GRIP_ECC = 1.5;
+/** Hit power: combined speed along the push (m/s) above which the athlete pushed counts as driven back (a lean on a
+ *  standing opponent does not), and the lift added per unit of horizontal boost. */
+const HIT = { minV: 0.3, lift: 0.5 };
 /** Orientation from heading, forward pitch and left roll (same convention as the hand controller). */
 const orient = (heading: number, pitchFwd: number, rollLeft: number): Quat =>
   qmul(qaxis([0, 1, 0], heading), qmul(qaxis([1, 0, 0], pitchFwd), qaxis([0, 0, -1], rollLeft)));
