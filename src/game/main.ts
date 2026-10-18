@@ -1,7 +1,7 @@
 // Browser entry: title menu, open-field drill, HUD, pause menu, panels. The simulation runs on a fixed
 // timestep; slow motion only changes how fast real time feeds the fixed steps.
 import './testLock'; // first: tests must not capture the owner's real cursor
-import { DEFAULT_SUPPORT, type SupportSettings } from '../sim/anim/types';
+import type { SupportSettings } from '../sim/anim/types';
 import { HumanBrain } from '../sim/brains/human';
 import { carrierSkill } from '../sim/brains/carrier';
 import { DEFAULT_GAINS } from '../sim/control/hand';
@@ -18,7 +18,7 @@ import { HitMeter, hitFeel, MPH } from './feel';
 import { InputManager, keyName, keysText, RESERVED, type InputFrame } from './input/input';
 import { PRESETS, type PresetName } from './presets';
 import { GameRenderer, RENDER_PRESETS } from './render/renderer';
-import { DEFAULT_SETTINGS, DIFFICULTY_PRESETS, difficultyOf, loadSettings, saveSettings, type Settings } from './settings';
+import { DEFAULT_SETTINGS, DIFFICULTY_PRESETS, GAME_SUPPORT, PLAYER_BASE, difficultyOf, loadSettings, saveSettings, type Settings } from './settings';
 import { skinById, unlockedSkins } from './render/skin';
 import { el, Hud, Layer, menu, moveFocus } from './ui';
 
@@ -208,8 +208,8 @@ class App {
     const s = this.settings;
     this.drill = await OpenFieldDrill.create(mujocoEngine, {
       ...DEFAULT_OPEN_FIELD, physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), toughness: s.toughness, hitPower: s.hitPower,
-      human: { ...DEFAULT_OPEN_FIELD.human, strength: s.strength, speed: s.speed }, traction: s.traction, gains: s.gains,
-      support: { ...DEFAULT_SUPPORT, ...s.support },
+      human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, traction: s.traction, gains: s.gains,
+      support: { ...GAME_SUPPORT, ...s.support },
     }, this.human, this.rep++);
     if (!this.renderer || this.rendererPreset !== p.name) {
       this.renderer?.renderer.dispose();
@@ -434,13 +434,13 @@ class App {
       row(`Gain: ${k}`, v, d * 0.25, d * 4, d / 100, (x) => (s.gains[k] = x));
     }
     const exp = el('textarea', { readonly: 'true', 'aria-label': 'Exported values' });
-    const update = () => (exp.value = JSON.stringify({ support: sup, speed: s.speed, strength: s.strength, assist: s.assist, traction: s.traction, gains: { ...DEFAULT_GAINS, ...s.gains } }, null, 2));
+    const update = () => (exp.value = JSON.stringify({ support: sup, speed: PLAYER_BASE.speed * s.speed, strength: PLAYER_BASE.strength * s.strength, assist: s.assist, traction: s.traction, gains: { ...DEFAULT_GAINS, ...s.gains } }, null, 2));
     update();
     grid.addEventListener('input', update);
     const copy = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Copy values');
     copy.addEventListener('click', () => { void navigator.clipboard?.writeText(exp.value).then(() => this.hud.flash('Copied'), () => { exp.select(); }); });
     const reset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset to defaults');
-    reset.addEventListener('click', () => { s.gains = {}; s.assist = 0.2; s.traction = 1.2; s.support = { ...DEFAULT_SUPPORT }; this.save(); this.tuning(); });
+    reset.addEventListener('click', () => { s.gains = {}; s.assist = 0.2; s.traction = 1.2; s.support = { ...GAME_SUPPORT }; this.save(); this.tuning(); });
     const back = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back');
     back.addEventListener('click', () => (this.drill ? this.pauseMenu() : this.title()));
     this.layer.show(el('div', { class: 'panel menu wide' }, el('h1', { text: 'Tuning' }), el('p', { class: 'sub', text: 'Changes apply from the next rep (physics settings never change mid-rep).' }), grid, exp, copy, reset, back));

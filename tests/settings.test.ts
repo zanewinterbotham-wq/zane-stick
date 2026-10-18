@@ -1,0 +1,23 @@
+// Stored settings from before the owner's baseline (absolute strength/speed) migrate to multipliers.
+import { beforeEach, expect, it } from 'vitest';
+import { loadSettings, saveSettings, PLAYER_BASE } from '../src/game/settings';
+
+const store = new Map<string, string>();
+beforeEach(() => {
+  store.clear();
+  (globalThis as unknown as { localStorage: Pick<Storage, 'getItem' | 'setItem'> }).localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => void store.set(k, v) };
+});
+
+it('old absolute values become 1x of the owner baseline, and saved v2 settings stay put', () => {
+  store.set('zane-stick-settings-v1', JSON.stringify({ strength: PLAYER_BASE.strength, speed: PLAYER_BASE.speed, support: { carryAccel: 8 } }));
+  const s = loadSettings();
+  expect(s.strength).toBeCloseTo(1); expect(s.speed).toBeCloseTo(1); expect(s.support.carryAccel).toBe(10.5);
+  s.strength = 1.2; saveSettings(s);
+  expect(loadSettings().strength).toBeCloseTo(1.2);
+});
+
+it('fresh settings are 1x with the owner carry acceleration', () => {
+  const s = loadSettings();
+  expect([s.strength, s.speed, s.support.carryAccel]).toEqual([1, 1, 10.5]);
+  saveSettings(s); expect(loadSettings().strength).toBe(1);
+});

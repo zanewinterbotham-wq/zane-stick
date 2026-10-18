@@ -7,6 +7,7 @@ export interface Settings {
   preset: PresetName | null;     // null = not chosen yet (run the first-launch benchmark)
   assist: number;                // balance assist 0..1 (hand controller without support)
   support: SupportSettings;      // active-ragdoll support (tuning)
+  version?: number;               // stored layout (see VERSION)
   strength: number;              // the player's muscle strength scale (difficulty)
   speed: number;                 // the player's max joint speed scale (difficulty)
   toughness: number;             // AI toughness: the bot's support thresholds × (difficulty; 1 = the player's)
@@ -26,8 +27,15 @@ export interface Settings {
   skin: string;                  // character skin id (src/game/skins.json, or 'classic')
 }
 
+/** Owner's tuned baseline for Normal (2026-10-18): the player's strength and speed at 1x, and the carry
+ *  acceleration. The difficulty sliders are multipliers on these. */
+export const PLAYER_BASE = { strength: 1.5, speed: 1.29 };
+export const GAME_SUPPORT = { ...DEFAULT_SUPPORT, carryAccel: 10.5 };
+/** Stored settings layout; 2 = strength/speed are multipliers on PLAYER_BASE. */
+const VERSION = 2;
+
 export const DEFAULT_SETTINGS: Settings = {
-  preset: null, assist: 0.2, support: DEFAULT_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, hitPower: 1.5, traction: 1.2, gains: {}, mute: false, effortShading: true,
+  version: VERSION, preset: null, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, hitPower: 1.5, traction: 1.2, gains: {}, mute: false, effortShading: true,
   slowMo: true, autoCamera: false, sprintToggle: false, sinkToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: 'voxel',
 };
 
@@ -47,9 +55,18 @@ const KEY = 'zane-stick-settings-v1';
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) { const s = JSON.parse(raw); return { ...DEFAULT_SETTINGS, ...s, support: { ...DEFAULT_SUPPORT, ...s.support } }; }
+    if (raw) {
+      const s = JSON.parse(raw);
+      // version 1 stored absolute strength/speed; they are multipliers on the owner's baseline now
+      if ((s.version ?? 1) < VERSION) {
+        if (typeof s.strength === 'number') s.strength /= PLAYER_BASE.strength;
+        if (typeof s.speed === 'number') s.speed /= PLAYER_BASE.speed;
+        if (s.support?.carryAccel === DEFAULT_SUPPORT.carryAccel) s.support.carryAccel = GAME_SUPPORT.carryAccel;
+      }
+      return { ...DEFAULT_SETTINGS, ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support } };
+    }
   } catch { /* storage unavailable: use defaults */ }
-  return { ...DEFAULT_SETTINGS, support: { ...DEFAULT_SUPPORT } };
+  return { ...DEFAULT_SETTINGS, support: { ...GAME_SUPPORT } };
 }
 
 export function saveSettings(s: Settings) {
