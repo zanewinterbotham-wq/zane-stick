@@ -357,7 +357,7 @@ export class World {
         const tgtAth = t.athlete >= 0 ? this.athletes[t.athlete] : null;
         const segName = tgtAth ? tgtAth.plan.segments[t.seg].name : '';
         g.jersey = /thorax|lumbar|trunk|pelvis/.test(segName);
-        g.limit = g.jersey ? Math.min(a.plan.gripStrength, EQUIPMENT.jersey.tearStrength) : a.plan.gripStrength;
+        g.limit = g.jersey ? Math.min(GRIP_ECC * a.plan.gripStrength, EQUIPMENT.jersey.tearStrength) : GRIP_ECC * a.plan.gripStrength;
         this.scene.gripOn(a.index, h, { athlete: t.athlete, seg: t.seg }, t.pos, g.jersey ? GRIP_TIMECONST.jersey : GRIP_TIMECONST.hand);
         g.active = true; g.force = 0;
       }
@@ -368,7 +368,7 @@ export class World {
   attachGrip(ai: number, hand: 0 | 1, target: { athlete: number; seg: number }, point: Vec3) {
     const a = this.athletes[ai], g = a.grips[hand];
     this.scene.gripOn(ai, hand, target, point, GRIP_TIMECONST.hand);
-    g.active = true; g.force = 0; g.jersey = false; g.limit = a.plan.gripStrength;
+    g.active = true; g.force = 0; g.jersey = false; g.limit = GRIP_ECC * a.plan.gripStrength;
   }
 
   private updateHeadAccel(a: Athlete, dt: number) {
@@ -400,6 +400,9 @@ export class World {
 }
 
 const G = 9.81;
+/** A grip pulled open loads the finger flexors eccentrically, which hold ~1.5× their isometric (dynamometer)
+ *  force; at 1× tacklers' wraps and the carrier's ball grip let go of loads a hand really holds. */
+const GRIP_ECC = 1.5;
 /** Orientation from heading, forward pitch and left roll (same convention as the hand controller). */
 const orient = (heading: number, pitchFwd: number, rollLeft: number): Quat =>
   qmul(qaxis([0, 1, 0], heading), qmul(qaxis([1, 0, 0], pitchFwd), qaxis([0, 0, -1], rollLeft)));
