@@ -4,6 +4,7 @@ import type { AthleteState } from '../physics/engine';
 import type { MuscleSet, MuscleTargets } from '../muscles';
 import type { Vec3 } from '../math';
 import type { RootTarget, SupportState } from '../anim/types';
+import type { Hurt } from '../injury';
 
 export type Gait = 'walk' | 'jog' | 'sprint';
 
@@ -59,6 +60,8 @@ export interface BodyView {
    *  hand could reach for (null: none near). Absent outside a World. */
   grips?: [boolean, boolean];
   reachTo?: (Vec3 | null)[];
+  /** Broken limbs he plays on with (design §6.6); absent outside a World. */
+  hurt?: Hurt;
 }
 
 /** Body state + commands in, muscle targets out, every physics step. A learned policy implements the same. */

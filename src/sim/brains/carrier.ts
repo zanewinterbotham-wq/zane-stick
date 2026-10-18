@@ -6,6 +6,7 @@
 // Issues ordinary Commands. Without the ball it is a tackler.
 import { GAIT_SPEED } from '../control/hand';
 import { neutralCommands, type Commands, type Gait } from '../control/types';
+import { HOBBLE } from '../injury';
 import { clamp, wrapAngle } from '../math';
 import type { Rng } from '../rng';
 import { predict, TacklerBrain, turnRate } from './tackler';
@@ -137,7 +138,8 @@ export class CarrierBrain implements Brain {
 
   /** Pick the path that best keeps away from the tackler while gaining ground; commit to it. */
   private decide(p: Perception, me: AthleteView, o: AthleteView, goalH: number, moveNow: boolean) {
-    const V = Math.max(GAIT_SPEED[this.gait], BURST * GAIT_SPEED.sprint);
+    // a hobbling carrier plans the paths he can run (and makes the most of a hobbling tackler)
+    const V = Math.max(GAIT_SPEED[this.gait], BURST * GAIT_SPEED.sprint) * (me.lame ? HOBBLE.speed : 1);
     let bestOff = this.plan.off, bestS = -Infinity, curS = -Infinity;
     for (const off of OFFSETS) {
       const s = this.score(p, me, o, goalH + off, V, off);
@@ -161,8 +163,8 @@ export class CarrierBrain implements Brain {
       const ex = ux - vx, ez = uz - vz, e = Math.hypot(ex, ez);
       if (e > a) { vx += ex * a / e; vz += ez * a / e; } else { vx = ux; vz = uz; }
       qx += vx * PLAN_DT; qz += vz * PLAN_DT;
-      const tr = Math.max(0, t - THREAT.react), tv = THREAT.vmax / THREAT.accel;
-      const R = THREAT.reach + (tr < tv ? 0.5 * THREAT.accel * tr * tr : 0.5 * THREAT.accel * tv * tv + THREAT.vmax * (tr - tv));
+      const tr = Math.max(0, t - THREAT.react), vmax = THREAT.vmax * (o.lame ? HOBBLE.speed : 1), tv = vmax / THREAT.accel;
+      const R = THREAT.reach + (tr < tv ? 0.5 * THREAT.accel * tr * tr : 0.5 * THREAT.accel * tv * tv + vmax * (tr - tv));
       let g = Math.hypot(qx - o.com[0] - o.comVel[0] * t, qz - o.com[2] - o.comVel[2] * t) - R;
       const out = Math.abs(qx) - (p.field.halfWidth - 1);
       if (out > 0) g = Math.min(g, -2 * out);

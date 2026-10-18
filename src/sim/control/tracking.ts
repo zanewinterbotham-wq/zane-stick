@@ -32,6 +32,9 @@ const DRIVE = 1;
 /** Pull of each hand that holds an opponent with the arm raised, × its grip strength: about as hard as the fist
  *  holds without being pulled open (the grip breaks at 1.5×, World's GRIP_ECC); the arm muscles cap it too. */
 const PULL = 0.5;
+/** Damping of a limp (broken) arm's dofs, × the tracking's critical damping at full gain (I·wn): its swing relative
+ *  to the body dies away in ~0.2 s (assumption), floppy but not whipping. */
+const LIMP_DAMP = 0.25;
 /** Pelvis drop below standing (m) at which a driving athlete is fully low: his drive lifts with the arms. */
 const LOW_DROP = 0.25;
 
@@ -168,6 +171,9 @@ export class TrackingController implements MotorController {
         out.tff[i] += loose * dot(cross(this.vec(v.state.dofAxis, i), [p[0] - a[0], p[1] - a[1], p[2] - a[2]]), F);
       }
     });
+    // A broken arm hangs and swings with the body: no muscle force at all, only a little damping (the torn tissue's;
+    // light segments need some at 240 Hz), toward rest, never toward a pose.
+    if (v.hurt) for (let i = 0; i < n; i++) if (v.hurt.tone[i] === 0) { out.kp[i] = 0; out.tff[i] = 0; out.qd[i] = 0; out.kd[i] = LIMP_DAMP * this.muscles.ieff[i] * this.wn[i]; }
     this.dbg = { clip: this.frame.clip, phase: this.frame.phase, blend: b, legShare, stun: this.stun, mode: String(this.hand.debug().mode ?? '') };
   }
 

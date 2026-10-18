@@ -9,6 +9,8 @@ export interface AthleteView {
   down: boolean;
   hasBall: boolean;
   team: 0 | 1;
+  /** Playing on a broken leg (he hobbles, injury.ts HOBBLE). */
+  lame?: boolean;
 }
 export interface Perception {
   time: number;

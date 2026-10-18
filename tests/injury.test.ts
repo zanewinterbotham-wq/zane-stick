@@ -1,14 +1,16 @@
-// Injuries (owner decision 2026-10-18, design §6.6): joints break under limit loads beyond tolerance, big head blows
-// knock out, and either keeps the athlete down for the rep. Same rules for every athlete; physics decides.
+// Injuries (owner decisions 2026-10-18, design §6.6): joints break under limit loads beyond tolerance (scaled by bone
+// strength) and he plays on hurt, hobbling or one-armed; big head blows knock out and keep him down for the rep.
+// Same rules for every athlete; physics decides.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { DEFAULT_ATHLETE } from '../src/sim/anatomy/body';
 import { DEFAULT_SUPPORT } from '../src/sim/anim/types';
 import { ScriptBrain } from '../src/sim/brains/script';
 import { DEFAULT_OPEN_FIELD, OpenFieldDrill } from '../src/sim/drills/openField';
-import { BREAK } from '../src/sim/injury';
+import { BREAK, HOBBLE } from '../src/sim/injury';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
 import { supportRunScenario } from '../src/sim/scenarios';
 import { World } from '../src/sim/world';
+import type { TrackingController } from '../src/sim/control/tracking';
 import { SoundCues } from '../src/game/cues';
 import { collide, technique } from './helpers/contact';
 import { STD } from './helpers/scenario';
@@ -38,15 +40,12 @@ async function blow(seg: string, force: [number, number, number], dur: number, s
 }
 
 describe('limb breaks', () => {
-  it('the knee of an engaged athlete driven backward (200 N·s at the joint) hyper-extends and breaks: limp, dangling, down', async () => {
-    let clipAfter = '', maxPelvis = 0, kneeTorque = 0, minKnee = 0;
+  it('the knee of an engaged athlete driven backward (200 N·s at the joint) hyper-extends and breaks: weak, dangling, still in play', async () => {
+    let minPelvis = 9, minKnee = 0;
     const w = await blow('shankL', [0, 0, -4000], 0.05, 5, { engaged: true }, (w) => {
       const a = w.athletes[0];
       minKnee = Math.min(minKnee, w.scene.athletes[0].state.q[a.muscles.index('kneeL.flex')]);
-      if (w.time < 2.5) return;
-      clipAfter = String(a.controller.debug?.().clip);
-      maxPelvis = Math.max(maxPelvis, w.scene.athletes[0].state.segPos[3 * a.segIndex.get('pelvis')! + 1]);
-      kneeTorque = Math.max(kneeTorque, Math.abs(a.muscles.torque[a.muscles.index('kneeL.flex')]));
+      if (w.time > 2.5) minPelvis = Math.min(minPelvis, w.scene.athletes[0].state.segPos[3 * a.segIndex.get('pelvis')! + 1]);
     });
     const a = w.athletes[0], ki = a.muscles.index('kneeL.flex');
     console.log('knee blow:', w.injuries.map((e) => `${e.joint} ${e.what} ${e.load.toFixed(0)} N·m at ${e.time.toFixed(3)} s`), `knee hyper-extended to ${(-minKnee * 180 / Math.PI).toFixed(0)}°`);
@@ -54,13 +53,149 @@ describe('limb breaks', () => {
     const e = w.injuries.find((x) => x.joint === 'kneeL')!;
     expect(e).toMatchObject({ athlete: 0, what: 'knee', seg: 'shankL', parentSeg: 'thighL' });
     expect(e.load).toBeGreaterThan(BREAK['knee.flex'].torque);
-    expect(a.injury.out).toBe(true);
-    expect(kneeTorque).toBe(0);                       // the broken knee's muscles give nothing
-    expect(minKnee).toBeLessThan(a.muscles.lo[ki] - 0.3); // and it bends well past where it used to stop
-    expect(clipAfter).toBe('down');                   // no get-up
-    expect(maxPelvis).toBeLessThan(0.6);              // he stays on the turf
+    expect(minKnee).toBeLessThan(a.muscles.lo[ki] - 0.3); // it bends well past where it used to stop
+    expect(a.injury.leg).toEqual([true, false]);
+    expect(a.injury.tone[ki]).toBe(HOBBLE.legTone);      // the leg's muscles weak, not gone
+    expect(a.injury.out).toBe(false);                     // he plays on: this blow left him on his feet
+    expect(minPelvis).toBeGreaterThan(0.85);
+    expect(String(a.controller.debug?.().clip)).not.toBe('down');
     expect(w.scene.stats().instabilities).toBe(0);
     w.destroy();
+  });
+
+  it('a hit that breaks a bone puts him down as physics decides; he gets up and plays on', async () => {
+    // a low drive into an upright runner at bone strength 0.3 breaks an arm or a shoulder most runs
+    const rows: string[] = [];
+    let hurt = 0, up = 0, instabilities = 0;
+    for (let seed = 2; seed <= 5; seed++) {
+      const st = [0, 1].map(() => ({ down: false, getup: false, clip: '', pelvis: 0, downNow: false }));
+      let joints: string[] = [];
+      const o = await collide({ speed: 8, script: technique.lowDrive, params: { ...DEFAULT_ATHLETE, mass: 95 } }, { speed: 4, script: technique.upright }, seed, STD, 8, {
+        support: { ...DEFAULT_SUPPORT }, boneStrength: 0.3,
+        onStep: (w) => {
+          joints = w.injuries.map((e) => `${e.athlete}:${e.joint}`);
+          w.athletes.forEach((a, i) => {
+            const s = w.scene.athletes[i].state;
+            st[i].down ||= !!a.downBy; st[i].downNow = !!a.downBy; st[i].getup ||= a.controller.debug?.().clip === 'getup';
+            st[i].clip = String(a.controller.debug?.().clip); st[i].pelvis = s.segPos[3 * a.segIndex.get('pelvis')! + 1];
+          });
+        },
+      });
+      instabilities += o.instabilities;
+      st.forEach((x, i) => {
+        if (!joints.some((j) => j.startsWith(`${i}:`))) return;
+        hurt++;
+        const ok = (!x.down || x.getup) && !x.downNow && x.clip !== 'down' && x.clip !== 'getup';
+        up += +ok;
+        rows.push(`seed ${seed} athlete ${i} (${joints.filter((j) => j.startsWith(`${i}:`)).join(', ')}): ${x.down ? 'down, ' : ''}${x.getup ? 'got up, ' : ''}ends ${x.clip} at pelvis ${x.pelvis.toFixed(2)} m`);
+      });
+    }
+    console.log('playing on hurt:\n' + rows.join('\n'));
+    expect(hurt).toBeGreaterThanOrEqual(3);
+    expect(up).toBe(hurt);
+    expect(instabilities).toBe(0);
+  });
+
+  /** One athlete running at `gait` for 7 s; `joint` ('kneeL.flex' …) broken at the start (by the world's own rule). */
+  async function hurtRun(gait: 'jog' | 'sprint', joint: string, each: (w: World) => void) {
+    const w = await World.create(mujocoEngine, supportRunScenario(STD, gait).setup);
+    if (joint) {
+      const a = w.athletes[0], [j, d] = joint.split('.'), r = BREAK[`${j.slice(0, -1)}.${d}`];
+      w.breakJoint(0, j, a.muscles.index(joint), r.side < 0 ? -1 : 1, r.relax);
+    }
+    let downs = 0;
+    while (w.time < 7) { w.step(); downs += +(!!w.athletes[0].downBy); if (w.time > 4) each(w); }
+    const instabilities = w.scene.stats().instabilities;
+    w.destroy();
+    return { downs, instabilities };
+  }
+
+  it('on a broken leg he hobbles: 30-50 % of his top speed, off the bad leg quickly, on his feet', async () => {
+    const rows: string[] = [];
+    for (const gait of ['jog', 'sprint'] as const) {
+      const speed: Record<string, number> = {};
+      for (const joint of ['', 'kneeL.flex', 'ankleR.inv']) {
+        let v = 0, n = 0, hobble = 0;
+        const foot = [0, 0], load = [0, 0], plan = [0, 0], bad = joint ? (joint.includes('L.') ? 0 : 1) : -1;
+        const r = await hurtRun(gait, joint, (w) => {
+          const a = w.athletes[0], s = w.scene.athletes[0].state;
+          v += Math.hypot(s.comVel[0], s.comVel[2]); n++;
+          hobble += +(a.controller.debug?.().clip === 'hobble');
+          a.feet.forEach((f, k) => { foot[k] += +f.touching; load[k] += f.force; });
+          const pl = (a.controller as TrackingController).frame.planted; plan[0] += +pl[0]; plan[1] += +pl[1];
+        });
+        speed[joint] = v / n;
+        rows.push(`${gait} ${joint || 'sound'}: ${(v / n).toFixed(2)} m/s, feet down ${foot.map((x) => (x / n * 100).toFixed(0)).join(' / ')} % (L / R), planted ${plan.map((x) => (x / n * 100).toFixed(0)).join(' / ')} %, load ${load.map((x) => (x / n).toFixed(0)).join(' / ')} N, hobble ${(hobble / n * 100).toFixed(0)} %`);
+        expect(r.downs).toBe(0);
+        expect(r.instabilities).toBe(0);
+        if (!joint) continue;
+        expect(hobble / n).toBeGreaterThan(0.95);
+        // a short stance on the bad leg, which bears well under the good one's load (its weak foot may brush the turf
+        // through its swing, so the contact time itself says little)
+        expect(plan[bad]).toBeLessThan(0.8 * plan[1 - bad]);
+        expect(load[bad]).toBeLessThan(0.6 * load[1 - bad]);
+        if (gait === 'sprint') { expect(speed[joint] / speed['']).toBeGreaterThan(0.3); expect(speed[joint] / speed['']).toBeLessThan(0.5); }
+      }
+    }
+    console.log('hobble:\n' + rows.join('\n'));
+  });
+
+  it('a broken arm hangs floppy: no muscle force, straight under gravity, swinging with the body', async () => {
+    const rows: string[] = [];
+    for (const joint of ['', 'elbowR.flex', 'shoulderR.flex']) {
+      let el = 0, n = 0, maxTorque = 0;
+      const fl: number[] = [];
+      await hurtRun('sprint', joint, (w) => {
+        const a = w.athletes[0], q = w.scene.athletes[0].state.q, m = a.muscles;
+        el += q[m.index('elbowR.flex')]; n++; fl.push(q[m.index('shoulderR.flex')]);
+        for (let i = 0; i < m.n; i++) if (/^(sc|shoulder|elbow|wrist)R\./.test(m.names[i])) maxTorque = Math.max(maxTorque, Math.abs(m.torque[i]));
+      });
+      const swing = Math.max(...fl) - Math.min(...fl);
+      rows.push(`${joint || 'sound'}: elbow ${(el / n).toFixed(2)} rad on average, shoulder swings ${swing.toFixed(2)} rad, right-arm muscle torque up to ${maxTorque.toFixed(1)} N·m`);
+      if (!joint) continue;
+      expect(maxTorque).toBe(0);
+      expect(el / n).toBeLessThan(0.4);  // hangs nearly straight (a sound running arm is bent ~1.4 rad)
+      expect(swing).toBeGreaterThan(0.1); // and swings with the run
+    }
+    console.log('floppy arm:\n' + rows.join('\n'));
+  });
+
+  it('a ball carried in an arm that breaks goes to the other arm; with both broken it comes loose', async () => {
+    const dr = await OpenFieldDrill.create(mujocoEngine, { ...DEFAULT_OPEN_FIELD, physics: STD, timeLimit: 8 }, new ScriptBrain(() => {}), 0);
+    const w = dr.world, c = dr.carrier, a = w.athletes[c], ball = { athlete: -1, seg: dr.ball };
+    const brk = (joint: string) => w.breakJoint(c, joint.split('.')[0], a.muscles.index(joint), -1, 1);
+    expect(w.gripping(c, ball)).toBe(1);
+    brk('elbowR.flex');
+    expect(w.gripping(c, ball)).toBe(0);
+    for (let i = 0; i < 480; i++) dr.step();
+    expect(dr.fumbles).toBe(0);
+    expect(w.gripping(c, ball)).toBe(0);
+    expect(a.cmd.carry).toBe(1);
+    brk('elbowL.flex');
+    dr.step();
+    expect(dr.fumbles).toBe(1);
+    expect(w.scene.stats().instabilities).toBe(0);
+    dr.destroy();
+  });
+
+  it('bone strength orders break rates: weaker bones break more often', async () => {
+    const counts: Record<number, number> = {};
+    for (const bones of [0.3, 0.6, 1, 3]) {
+      counts[bones] = 0;
+      for (let seed = 1; seed <= 6; seed++) {
+        let n = 0;
+        await collide({ speed: 8, script: technique.lowDrive, params: { ...DEFAULT_ATHLETE, mass: 95 } }, { speed: 4, script: technique.upright }, seed, STD, 2.5, {
+          support: { ...DEFAULT_SUPPORT }, boneStrength: bones, onStep: (w) => { n = new Set(w.injuries.filter((e) => e.kind === 'break').map((e) => e.athlete)).size; },
+        });
+        counts[bones] += n;
+      }
+    }
+    console.log('athletes with a break in 6 low drives, by bone strength:', counts);
+    expect(counts[0.3]).toBeGreaterThan(counts[1]);
+    expect(counts[0.3]).toBeGreaterThanOrEqual(counts[0.6]);
+    expect(counts[0.6]).toBeGreaterThanOrEqual(counts[1]);
+    expect(counts[1]).toBeGreaterThanOrEqual(counts[3]);
+    expect(counts[3]).toBe(0);
   });
 
   it('ordinary tackles break nothing and knock nobody out', async () => {

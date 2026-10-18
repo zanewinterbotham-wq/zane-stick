@@ -31,6 +31,16 @@ const CONTACT_WINDOW = 1;
  *  removed, beyond KO.dv (m/s). Concussed NFL players' heads changed velocity by 7.2 ± 1.8 m/s [S6]; a knockout
  *  (loss of consciousness) is the severe end of that. */
 export const KO = { window: 0.015, dv: 10 };
+/** Playing on hurt (owner item 2026-10-18): a broken leg's muscles keep `legTone` of their output (assumption: pain
+ *  and the injury let him load it only lightly), he hobbles at `speed` × his top speed, the bad leg's stance lasts
+ *  `badStance` × and the good leg's `goodStance` × the gait's (a limp: off the bad leg quickly, onto the good one).
+ *  A broken arm hangs limp. */
+export const HOBBLE = { legTone: 0.35, speed: 0.4, badStance: 0.6, goodStance: 1.35 };
+const ARM = /^(sc|shoulder|elbow|wrist)[LR]$/, LEG = /^(hip|knee|ankle|toe)[LR]$/;
+
+/** What a body's controller and animator read of its injuries: broken legs and arms [left, right], and each dof's
+ *  remaining muscle tone (1 sound, 0 limp). */
+export interface Hurt { readonly leg: readonly boolean[]; readonly arm: readonly boolean[]; readonly tone: Float64Array }
 
 export interface InjuryEvent {
   athlete: number;
@@ -51,11 +61,12 @@ export interface InjuryEvent {
 const G = 9.81;
 
 /** One athlete's injury state: what is broken, whether he is knocked out, and the filtered loads behind them. */
-export class InjuryState {
+export class InjuryState implements Hurt {
   ko = false;
-  /** Broken joints (with side) and the dofs that hang limp because of them. */
+  /** Broken joints (with side), the limbs they belong to [left, right], and each dof's remaining muscle tone. */
   readonly broken = new Set<string>();
-  readonly limp = new Set<number>();
+  readonly leg = [false, false]; readonly arm = [false, false];
+  readonly tone: Float64Array;
   private readonly rules: ({ joint: string; side: -1 | 0 | 1; torque: number; relax: number; what: string } | null)[];
   private readonly load: Float64Array;
   private readonly head: Vec3[];
@@ -65,17 +76,20 @@ export class InjuryState {
   /** Largest filtered limit torque per dof and head velocity change seen (for tests and tuning). */
   readonly peak: Float64Array; peakDv = 0;
 
-  constructor(private muscles: MuscleSet, dt: number) {
+  /** `bones` scales every break tolerance (the bone-strength setting: lower breaks more easily). */
+  constructor(private muscles: MuscleSet, dt: number, bones = 1) {
     this.rules = muscles.names.map((n) => {
       const [j, d] = n.split('.'), base = j.replace(/[LR]$/, ''), r = BREAK[`${base}.${d}`];
-      return r && base !== j ? { joint: j, ...r } : null;
+      return r && base !== j ? { joint: j, ...r, torque: r.torque * bones } : null;
     });
     this.load = new Float64Array(muscles.n); this.peak = new Float64Array(muscles.n);
+    this.tone = new Float64Array(muscles.n).fill(1);
     this.head = Array.from({ length: Math.max(1, Math.round(KO.window / dt)) }, () => [0, 0, 0] as Vec3);
   }
 
-  /** Out of play: down for the rest of the rep (no get-up, no support, no brain). */
-  get out() { return this.ko || this.broken.size > 0; }
+  /** Out of play: down for the rest of the rep (no get-up, no support, no brain). Knocked out, or both legs broken
+   *  (nothing to stand on); a single break he plays on with. */
+  get out() { return this.ko || (this.leg[0] && this.leg[1]); }
   /** How long he has been out of play (s). */
   outFor = 0;
 
@@ -106,9 +120,12 @@ export class InjuryState {
     return (this.ko = true);
   }
 
-  /** Every dof of a broken joint goes limp. */
+  /** A broken arm goes limp from the collarbone to the wrist; a broken leg's muscles keep HOBBLE.legTone. */
   breakJoint(joint: string) {
     this.broken.add(joint);
-    this.muscles.names.forEach((n, i) => { if (n.startsWith(joint + '.')) this.limp.add(i); });
+    const arm = ARM.test(joint), limb = arm ? ARM : LEG, sx = joint.slice(-1);
+    if (!limb.test(joint)) return;
+    (arm ? this.arm : this.leg)[sx === 'L' ? 0 : 1] = true;
+    this.muscles.names.forEach((n, i) => { const j = n.split('.')[0]; if (limb.test(j) && j.endsWith(sx)) this.tone[i] = Math.min(this.tone[i], arm ? 0 : HOBBLE.legTone); });
   }
 }

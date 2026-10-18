@@ -2,9 +2,11 @@
 // down near contact (sinks and chops the feet so a cut can be mirrored), then strikes: drives through with both
 // arms wrapping and gripping and rolls the hips at contact, and dives when the carrier is slipping just out of
 // reach. With nobody holding the ball it runs to it and picks it up by hand. Reads the world through a reaction delay;
-// difficulty is only that delay, how far ahead it leads, and aim noise. Same Commands as a human.
+// difficulty is only that delay, how far ahead it leads, and aim noise. Same Commands as a human. Hurt, it plays on:
+// on a broken leg it plans its angles at a hobble; a broken arm simply does nothing (World), the other one tackles.
 import { GAIT_SPEED } from '../control/hand';
 import { neutralCommands, type Commands } from '../control/types';
+import { HOBBLE } from '../injury';
 import { clamp, wrapAngle, type Vec3 } from '../math';
 import type { Rng } from '../rng';
 import type { BotDifficulty } from './carrier';
@@ -117,7 +119,7 @@ export class TacklerBrain implements Brain {
     // on him at the breakdown's or the strike's pace (on top of his own speed away, when chasing)
     const ux = dx / d, uz = dz / d;
     if (this.phase === 'pursue') {
-      const lead = this.intercept(dx, dz, t.comVel) * clamp(1 - this.diff.noise, 0.5, 1);
+      const lead = this.intercept(dx, dz, t.comVel, PURSUE_V * (me.lame ? HOBBLE.speed : 1)) * clamp(1 - this.diff.noise, 0.5, 1);
       // the aim error is across the line to him, the leverage toward his goal, both fading in close
       const k = Math.min(1, d / 4);
       const ax = dx + t.comVel[0] * lead - uz * this.aimErr * k, az = dz + t.comVel[2] * lead + ux * this.aimErr * k + p.field.dirZ * LEVERAGE * k;
@@ -189,9 +191,9 @@ export class TacklerBrain implements Brain {
     return along > DIVE_D[0] && along < DIVE_D[1] && Math.abs(x * uz - z * ux) < DIVE_SIDE;
   }
 
-  /** Smallest positive time at which running at PURSUE_V meets the target (s), capped at LEAD_MAX. */
-  private intercept(dx: number, dz: number, v: Vec3) {
-    const a = v[0] * v[0] + v[2] * v[2] - PURSUE_V * PURSUE_V, b = 2 * (dx * v[0] + dz * v[2]), cc = dx * dx + dz * dz;
+  /** Smallest positive time at which running at `speed` (PURSUE_V, or a hobble) meets the target (s), capped at LEAD_MAX. */
+  private intercept(dx: number, dz: number, v: Vec3, speed: number) {
+    const a = v[0] * v[0] + v[2] * v[2] - speed * speed, b = 2 * (dx * v[0] + dz * v[2]), cc = dx * dx + dz * dz;
     if (a >= 0) return LEAD_MAX;
     return Math.min(LEAD_MAX, (-b - Math.sqrt(b * b - 4 * a * cc)) / (2 * a));
   }

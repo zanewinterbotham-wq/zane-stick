@@ -1,7 +1,7 @@
 // The simulation loop: brains → commands → motor controller → muscles → physics, at a fixed timestep.
 // Runs unchanged in the browser, a Worker, or Node. No DOM, no wall clock, no Math.random.
 import { buildBody, type AthleteParams, type BodyPlan, type Detail } from './anatomy/body';
-import { GRIP_TIMECONST, EQUIPMENT } from './anatomy/equipment';
+import { BALL, GRIP_TIMECONST, EQUIPMENT } from './anatomy/equipment';
 import type { Brain, Perception, AthleteView } from './brains/types';
 import { neutralCommands, type BodyView, type Commands, type FootContact, type MotorController } from './control/types';
 import { clamp, headingOf, lerp, qaxis, qconj, qlog, qmul, qrot, type Quat, type Vec3 } from './math';
@@ -22,6 +22,9 @@ export interface AthleteSetup {
   /** Bot difficulty (owner decision 2026-10-18): multiplies this athlete's support thresholds (big hit, stun,
    *  held knock, tilt fade), so a tougher bot takes more force to tackle. 1 / absent = the player's. */
   toughness?: number;
+  /** Bone strength (owner item 2026-10-18): multiplies this athlete's break tolerances (lower breaks more easily);
+   *  1 / absent = the measured tolerances (injury.ts BREAK). */
+  boneStrength?: number;
 }
 export interface FieldInfo { halfWidth: number; goalZ: number; dirZ: 1 | -1 }
 export interface WorldSetup { physics: PhysicsSettings; athletes: AthleteSetup[]; props?: PropDesc[]; seed: number; assist: number; field?: FieldInfo; traction?: number;
@@ -163,7 +166,7 @@ export class World {
     setup.athletes.forEach((a, i) => {
       const muscles = new MuscleSet(plans[i]);
       const ath = new Athlete(i, a, plans[i], a.controller(plans[i], muscles), a.brain);
-      ath.injury = new InjuryState(ath.muscles, scene.dt);
+      ath.injury = new InjuryState(ath.muscles, scene.dt, a.boneStrength);
       w.athletes.push(ath);
       if (a.hasBall) w.ballCarrier = i;
     });
@@ -178,7 +181,7 @@ export class World {
 
   view(a: Athlete): BodyView {
     return { plan: a.plan, muscles: a.muscles, state: this.scene.athletes[a.index].state, dt: this.dt, time: this.time, feet: a.feet, playerContact: a.playerContact, support: this.supported(a) ? a.support : undefined,
-      grips: [a.grips[0].active && (a.grips[0].target?.athlete ?? -1) >= 0, a.grips[1].active && (a.grips[1].target?.athlete ?? -1) >= 0], reachTo: a.reachTo };
+      grips: [a.grips[0].active && (a.grips[0].target?.athlete ?? -1) >= 0, a.grips[1].active && (a.grips[1].target?.athlete ?? -1) >= 0], reachTo: a.reachTo, hurt: a.injury };
   }
 
   perception(self: number): Perception {
@@ -191,7 +194,7 @@ export class World {
         com: [...s.com] as Vec3, comVel: [...s.comVel] as Vec3,
         pelvis: [s.segPos[3 * pi], s.segPos[3 * pi + 1], s.segPos[3 * pi + 2]],
         head: [s.segPos[3 * hi], s.segPos[3 * hi + 1], s.segPos[3 * hi + 2]],
-        heading: headingOf(fwd), down: a.downBy !== null, hasBall: a.index === this.ballCarrier, team: a.setup.team,
+        heading: headingOf(fwd), down: a.downBy !== null, hasBall: a.index === this.ballCarrier, team: a.setup.team, lame: a.injury.leg[0] || a.injury.leg[1],
       };
     });
     const bi = this.ballIndex;
@@ -202,13 +205,12 @@ export class World {
   step() {
     const dt = this.dt;
     for (const a of this.athletes) {
-      // an athlete out of play thinks no more: his hands let go of all but a ball held by a sound arm
-      a.cmd = a.injury.out ? this.outCommands(a) : a.brain.think(this.perception(a.index), dt);
+      a.cmd = this.hurtCommands(a, a.injury.out ? neutralCommands() : a.brain.think(this.perception(a.index), dt));
       for (const h of [0, 1] as const) a.reachTo[h] = this.raised(a, h) ? this.reachPoint(a, h) : null;
       a.controller.compute(this.view(a), a.cmd, a.targets);
       const s = this.scene.athletes[a.index].state;
       a.muscles.compute(a.targets, s.q, s.qd);
-      if (a.injury.out) this.limp(a);
+      if (a.injury.broken.size || a.injury.out) this.limp(a);
       this.scene.setTorques(a.index, a.muscles.torque);
       this.scene.setDamping(a.index, a.muscles.damping);
       if (this.supported(a)) this.applySupport(a); else this.applyAssist(a);
@@ -487,15 +489,14 @@ export class World {
   }
 
   // ---------------------------------------------------------------- injuries (design §6.6)
-  /** Breaks and knockout from this step's loads. A broken joint goes limp and its range gives way at the end that
-   *  broke (the limb dangles past where it should stop); either puts the athlete out of play for the rep. */
+  /** Breaks and knockout from this step's loads. A broken joint's range gives way at the end that broke (the limb
+   *  dangles past where it should stop), a broken arm goes limp and a broken leg weak (InjuryState.breakJoint); he
+   *  plays on, hobbling or one-armed. A knockout, or both legs broken, puts him out of play for the rep. */
   private updateInjury(a: Athlete, dt: number) {
     const s = this.scene.athletes[a.index].state, inj = a.injury, at = (k: number): Vec3 => [s.dofAnchor[3 * k], s.dofAnchor[3 * k + 1], s.dofAnchor[3 * k + 2]];
     if (inj.out) inj.outFor += dt;
     for (const b of inj.checkBreaks(this.scene.limitTorques(a.index), s, a.playerContact, dt)) {
-      inj.breakJoint(b.joint);
-      const lo = a.muscles.lo[b.dof], hi = a.muscles.hi[b.dof];
-      this.scene.setJointRange(a.index, b.dof, b.end < 0 ? lo - b.relax : lo, b.end > 0 ? hi + b.relax : hi);
+      this.breakJoint(a.index, b.joint, b.dof, b.end, b.relax);
       const j = a.plan.joints.find((x) => x.name === b.joint)!;
       this.injuries.push({ athlete: a.index, kind: 'break', joint: b.joint, what: b.what, seg: j.child, parentSeg: j.parent, pos: at(b.dof), load: b.load, time: this.time });
     }
@@ -504,20 +505,53 @@ export class World {
       this.injuries.push({ athlete: a.index, kind: 'ko', joint: 'head', what: 'ko', seg: 'head', parentSeg: a.plan.joints.find((x) => x.child === 'head')!.parent, pos: [s.segPos[3 * hi], s.segPos[3 * hi + 1], s.segPos[3 * hi + 2]], load: inj.peakDv, time: this.time });
   }
 
-  /** Muscle output of an athlete out of play: a broken joint's muscles give nothing at once, the rest lose tone over
-   *  INJURY.fade (the hit's own load is still met by muscles that were braced for it). */
+  /** Break a joint of athlete ai (a physics load did, or a test): its range gives way by `relax` rad at the end that
+   *  broke, and a ball held in an arm that broke goes to the other arm while that one is sound (else it comes loose). */
+  breakJoint(ai: number, joint: string, dof: number, end: -1 | 1, relax: number) {
+    const a = this.athletes[ai], lo = a.muscles.lo[dof], hi = a.muscles.hi[dof];
+    a.injury.breakJoint(joint);
+    this.scene.setJointRange(ai, dof, end < 0 ? lo - relax : lo, end > 0 ? hi + relax : hi);
+    const h = (this.ballCarrier === ai ? this.gripping(ai, { athlete: -1, seg: this.ballIndex }) : -1) as -1 | 0 | 1;
+    if (h !== -1 && a.injury.arm[h] && !a.injury.arm[1 - h]) {
+      this.releaseGrip(ai, h);
+      this.tuckBall(ai, h === 1 ? 0 : 1);
+    }
+    a.cmd = this.hurtCommands(a, a.cmd);
+  }
+
+  /** Drill rules: put the ball against athlete ai's palm and grip it (a rep start, a recovery, or a hand-off from a
+   *  broken arm: the possession rule standing in for what fingerless hands cannot do). The gap clears the contact
+   *  margin, so the grip carries only the ball's own load, not a squeeze against the hand. */
+  tuckBall(ai: number, h: 0 | 1) {
+    const a = this.athletes[ai], s = this.scene.athletes[ai].state, k = a.handSegs[h], seg = a.plan.segments[k], q = quatAt(s.segQuat, k);
+    const g = seg.geoms.find((x) => x.role === 'hand' && x.type === 'box');
+    const c: Vec3 = g ? [g.pos![0] - seg.origin[0], g.pos![1] - seg.origin[1], g.pos![2] - seg.origin[2]] : [0, -0.05, 0];
+    // the palm faces the body: +X in the right hand's frame, −X in the left's; the ball's long axis along the hand
+    const half = (g ? g.size[0] : 0.02) * (h === 1 ? 1 : -1);
+    const at = (x: number): Vec3 => { const p = qrot(q, [c[0] + x, c[1], c[2]]); return [s.segPos[3 * k] + p[0], s.segPos[3 * k + 1] + p[1], s.segPos[3 * k + 2] + p[2]]; };
+    this.scene.placeProp(this.ballIndex, at(half + Math.sign(half) * (BALL.diameter / 2 + 0.008)), qmul(q, qaxis([1, 0, 0], Math.PI / 2)));
+    this.attachGrip(ai, h, { athlete: -1, seg: this.ballIndex }, at(half));
+    this.ballCarrier = ai;
+  }
+
+  /** Muscle output of an injured athlete: a limp arm gives nothing and a broken leg HOBBLE.legTone, at once; out of
+   *  play, the rest lose tone over INJURY.fade (the hit's own load is still met by muscles that were braced for it). */
   private limp(a: Athlete) {
-    const m = a.muscles, f = Math.min(1, a.injury.outFor / INJURY.fade), tone = 1 + ((a.injury.ko ? INJURY.koTone : INJURY.hurtTone) - 1) * f;
+    const m = a.muscles, inj = a.injury, f = Math.min(1, inj.outFor / INJURY.fade), tone = inj.out ? 1 + ((inj.ko ? INJURY.koTone : INJURY.hurtTone) - 1) * f : 1;
     for (let i = 0; i < m.n; i++) {
-      // a broken joint keeps its damping: the torn tissue still resists motion (and light limbs need it at 240 Hz)
-      m.torque[i] *= a.injury.limp.has(i) ? 0 : tone; m.damping[i] *= tone;
+      // a limp dof keeps its damping: the torn tissue still resists motion (and light limbs need it at 240 Hz)
+      m.torque[i] *= inj.tone[i] * tone; m.damping[i] *= tone;
     }
   }
 
-  /** Commands for an athlete out of play: none, except the ball stays tucked in an arm that is not broken. */
-  private outCommands(a: Athlete): Commands {
-    const c = neutralCommands(), arm = (sx: string) => [...a.injury.broken].some((j) => /^(sc|shoulder|elbow|wrist)/.test(j) && j.endsWith(sx));
-    c.carry = a.cmd.carry === 1 && !arm('L') ? 1 : a.cmd.carry === 2 && !arm('R') ? 2 : 0;
+  /** Commands as an injured body carries them out: out of play, none but the ball kept where it is; a broken arm
+   *  neither reaches nor grips, and the ball is carried in the other arm while that one is sound. */
+  private hurtCommands(a: Athlete, c: Commands): Commands {
+    const arm = a.injury.arm;
+    if (a.injury.out) c.carry = a.cmd.carry;
+    if (arm[0]) { c.armL = 0; c.gripL = false; }
+    if (arm[1]) { c.armR = 0; c.gripR = false; }
+    if (c.carry && arm[c.carry - 1]) c.carry = arm[2 - c.carry] ? 0 : c.carry === 1 ? 2 : 1;
     return c;
   }
 
@@ -531,7 +565,7 @@ export class World {
   }
 
   private updateGrips(a: Athlete, dt: number) {
-    const want = [a.cmd.gripL || a.cmd.wrap || a.cmd.carry === 1, a.cmd.gripR || a.cmd.wrap || a.cmd.carry === 2];
+    const want = [a.cmd.gripL || a.cmd.wrap || a.cmd.carry === 1, a.cmd.gripR || a.cmd.wrap || a.cmd.carry === 2].map((x, h) => x && !a.injury.arm[h]);
     for (const h of [0, 1] as const) {
       const g = a.grips[h];
       g.cooldown = Math.max(0, g.cooldown - dt);
@@ -683,8 +717,8 @@ const GRIP_ECC = 1.5;
 /** Hit power: combined speed along the push (m/s) above which the athlete pushed counts as driven back (a lean on a
  *  standing opponent does not), and the lift added per unit of horizontal boost. */
 const HIT = { minV: 0.3, lift: 0.5 };
-/** Muscle tone left to an athlete out of play (× all muscle output): knocked out (unconscious, assumption), or hurt
- *  and conscious (curled up on the turf, assumption), and how long the tone takes to go (s, assumption). */
+/** Muscle tone left to an athlete out of play (× all muscle output): knocked out (unconscious, assumption), or both
+ *  legs broken and conscious (curled up on the turf, assumption), and how long the tone takes to go (s, assumption). */
 const INJURY = { koTone: 0.2, hurtTone: 0.5, fade: 0.3 };
 /** Orientation from heading, forward pitch and left roll (same convention as the hand controller). */
 const orient = (heading: number, pitchFwd: number, rollLeft: number): Quat =>

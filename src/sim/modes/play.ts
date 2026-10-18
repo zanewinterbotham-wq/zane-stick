@@ -16,7 +16,7 @@ import { CarrierBrain } from '../brains/carrier';
 import { TacklerBrain } from '../brains/tackler';
 import type { Brain } from '../brains/types';
 import { makeController } from '../drills/controllers';
-import { qaxis, qmul, qrot, type Quat, type Vec3 } from '../math';
+import type { Vec3 } from '../math';
 import type { PhysicsEngine } from '../physics/engine';
 import { Rng } from '../rng';
 import { World, type AthleteSetup, type WorldSetup } from '../world';
@@ -87,7 +87,7 @@ export class Play {
       field: { halfWidth: r.halfWidth, goalZ: r.goal[team], dirZ: attackDir(team) },
       athletes: ps.players.map((s, i) => ({
         params: s.params ?? (i === 0 ? cfg.human : cfg.bot), pos: [s.pos[0], 0, s.pos[1]], yaw: s.yaw ?? (s.team === 0 ? 0 : Math.PI), team: s.team,
-        controller: ctl, brain: possess(i), hasBall: i === holder, ...(i > 0 && { toughness: cfg.toughness }),
+        controller: ctl, brain: possess(i), hasBall: i === holder, ...(i > 0 && { toughness: cfg.toughness }), boneStrength: i === 0 ? cfg.boneStrength : cfg.aiBoneStrength,
       })),
       // a held ball is parked under the field until its holder has tucked his arm (setup only)
       props: [{ name: 'ball', shape: 'ellipsoid', size: [BALL.diameter / 2, BALL.diameter / 2, BALL.length / 2], mass: BALL.mass,
@@ -134,28 +134,15 @@ export class Play {
   /** Put the ball in athlete ai's right hand and grip it (rep start, and a recovery). */
   private tuck(ai: number) {
     const w = this.world, a = w.athletes[ai], s = w.scene.athletes[ai].state;
-    if (a.grips[1].active) w.releaseGrip(ai, 1); // a recovering hand may be holding something else
-    const hi = a.handSegs[1], seg = a.plan.segments[hi];
-    const hq: Quat = [s.segQuat[4 * hi], s.segQuat[4 * hi + 1], s.segQuat[4 * hi + 2], s.segQuat[4 * hi + 3]];
-    // Ball against the palm (palm faces the body for the right hand: +X in hand frame), long axis along the hand,
-    // gripped at the palm surface. Placed overlapping the hand, the contact pushed it out against the grip with
-    // ~2 kN and broke the grip on the first steps of every rep. The gap clears the contact margin (5 mm), so the
-    // grip carries only the ball's own load, not a squeeze against the hand.
-    const g = seg.geoms.find((x) => x.role === 'hand' && x.type === 'box');
-    const centre: Vec3 = g ? [g.pos![0] - seg.origin[0], g.pos![1] - seg.origin[1], g.pos![2] - seg.origin[2]] : [0, -0.05, 0];
-    const half = g ? g.size[0] : 0.02;
-    const at = (x: number): Vec3 => { const p = qrot(hq, [centre[0] + x, centre[1], centre[2]]); return [s.segPos[3 * hi] + p[0], s.segPos[3 * hi + 1] + p[1], s.segPos[3 * hi + 2] + p[2]]; };
-    const ballQuat = qmul(hq, qaxis([1, 0, 0], Math.PI / 2));
+    // the right hand, or the left while the right arm is broken
+    const h = a.injury.arm[1] ? 0 : 1, hi = a.handSegs[h];
+    if (a.grips[h].active) w.releaseGrip(ai, h); // a recovering hand may be holding something else
     const from = this.ballPos()[2], T = a.setup.team;
     // a ball the opponents put in his own end zone is a touchback if it dies there
     this.touchback = this.impetus !== T && inOwnEndZone(this.rules, T, from);
-    // On a recovery this moves the ball from under the trunk to the palm: the possession rule standing in for a
-    // scoop the hands (no fingers) cannot do.
-    w.scene.placeProp(this.ball, at(half + BALL.diameter / 2 + 0.008), ballQuat);
+    w.tuckBall(ai, h);
     // moving with the hand: a ball put at rest in a hand swinging up to a catch is struck by it and torn out
     w.scene.launchProp(this.ball, [s.segVel[3 * hi], s.segVel[3 * hi + 1], s.segVel[3 * hi + 2]], [0, 0, 0]);
-    w.attachGrip(ai, 1, this.ballRef, at(half));
-    w.ballCarrier = ai;
     this.impetus = T;
     this.turfT = 0; this.offT = UP_TIME; this.touchedAt = -Infinity;
     w.setup.field = { halfWidth: this.rules.halfWidth, goalZ: this.rules.goal[T], dirZ: attackDir(T) };

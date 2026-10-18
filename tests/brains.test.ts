@@ -9,6 +9,8 @@ import type { Vec3 } from '../src/sim/math';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
 import { Rng } from '../src/sim/rng';
 import type { PhysicsSettings } from '../src/sim/world';
+import { BREAK } from '../src/sim/injury';
+import { juke } from './helpers/juke';
 
 const DT = 1 / 240;
 const view = (com: Vec3, vel: Vec3, hasBall = false, heading = 0): AthleteView => ({ com, comVel: vel, pelvis: com, head: [com[0], 1.8, com[2]], heading, down: false, hasBall, team: hasBall ? 1 : 0 });
@@ -170,5 +172,64 @@ describe('open field, headless', () => {
     expect(r.tackled).toBeGreaterThanOrEqual(2);
     expect(r.fallsNoContact).toBe(0);
     expect(r.instabilities).toBe(0);
+  });
+
+  it('TacklerBrain turns straight back on a carrier who jukes past it, and never runs on into the wall', async () => {
+    const rows: string[] = [];
+    for (const [at, seed] of [[4, 0], [6, 1]] as const) for (const angle of [0.8, -0.8, 1.2, -1.2, 1.6, -1.6]) {
+      const r = await juke(angle, PH, { at, seed, seconds: 6 });
+      rows.push(`cut ${angle} at ${at} m: ran away ${r.lost.toFixed(2)} s / ${r.overrun.toFixed(1)} m, wall gap ${r.wallGap.toFixed(1)} m${r.touched ? ', reached him' : ''}`);
+      expect(r.lost).toBeLessThan(0.6);
+      expect(r.overrun).toBeLessThan(4);
+      expect(r.wall).toBe(false);
+      expect(r.instabilities).toBe(0);
+    }
+    console.log('juke recovery:\n' + rows.join('\n'));
+  });
+
+  /** Break a joint of athlete ai the way the world does when a load breaks it. */
+  const hurt = (d: OpenFieldDrill, ai: number, joint: string) => {
+    const a = d.world.athletes[ai], [j, dof] = joint.split('.'), r = BREAK[`${j.slice(0, -1)}.${dof}`];
+    d.world.breakJoint(ai, j, a.muscles.index(joint), r.side < 0 ? -1 : 1, r.relax);
+  };
+
+  it('bots play on hurt: a hobbling carrier still runs for the goal, a one-armed or hobbling tackler still tackles', async () => {
+    const rows: string[] = [];
+    // the carrier bot on a broken knee, the human standing in his way (a hobbler gives a sound tackler a wide berth)
+    for (let rep = 0; rep < 2; rep++) {
+      const d = await OpenFieldDrill.create(mujocoEngine, { ...DEFAULT_OPEN_FIELD, physics: PH, timeLimit: 10 }, new ScriptBrain(() => {}), rep);
+      hurt(d, d.carrier, 'kneeL.flex');
+      const s = d.world.scene.athletes[d.carrier].state, z0 = s.com[2], x0 = s.com[0];
+      let hobble = 0, n = 0, path = 0;
+      while (!d.ended && d.repTime < 8) { d.step(); n++; path += Math.hypot(s.comVel[0], s.comVel[2]) * d.world.dt; hobble += +(d.world.athletes[d.carrier].controller.debug?.().clip === 'hobble'); }
+      rows.push(`hobbling carrier rep ${rep}: ${(z0 - s.com[2]).toFixed(1)} m toward his goal (${(s.com[0] - x0).toFixed(1)} m across, ${path.toFixed(1)} m run) in ${d.repTime.toFixed(1)} s, hobbling ${(hobble / n * 100).toFixed(0)} %, ended ${d.ended}`);
+      expect(path).toBeGreaterThan(8);
+      expect(z0 - s.com[2]).toBeGreaterThan(2);
+      expect(hobble / n).toBeGreaterThan(0.5);
+      expect(d.ended === null || d.ended === 'touchdown').toBe(true);
+      expect(d.world.scene.stats().instabilities).toBe(0);
+      d.destroy();
+    }
+    // the tackler bot with a broken arm or leg, against a carrier jogging straight at him
+    for (const joint of ['elbowR.flex', 'shoulderL.flex', 'kneeL.flex']) {
+      const straight = new ScriptBrain((t, p, c) => { if (!p.athletes[p.self].down && t > 0) { c.gait = 'jog'; c.move = { x: 0, z: 1 }; } });
+      const d = await OpenFieldDrill.create(mujocoEngine, { ...DEFAULT_OPEN_FIELD, physics: PH, mode: 'carry', timeLimit: 8 }, straight, 1);
+      const T = 1, a = d.world.athletes[T], bad = joint.includes('L.') ? 0 : 1;
+      hurt(d, T, joint);
+      const grips = [false, false];
+      let touched = false;
+      while (!d.ended && d.repTime < 6) {
+        d.step();
+        touched ||= a.playerContact;
+        a.grips.forEach((g, h) => { grips[h] ||= g.active && g.target?.athlete === d.human; });
+      }
+      rows.push(`tackler with a broken ${joint.split('.')[0]}: ${touched ? 'reached him' : 'missed'}, grips ${grips.map((g) => (g ? 'held' : '-')).join(' / ')} (L / R), rep ended ${d.ended}`);
+      expect(touched).toBe(true);
+      if (joint.startsWith('knee')) expect(grips[0] || grips[1]).toBe(true);
+      else { expect(grips[bad]).toBe(false); expect(grips[1 - bad]).toBe(true); }
+      expect(d.world.scene.stats().instabilities).toBe(0);
+      d.destroy();
+    }
+    console.log('bots hurt:\n' + rows.join('\n'));
   });
 });

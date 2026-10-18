@@ -234,7 +234,7 @@ class App {
     const s = this.settings;
     this.human.steerAssist = s.steerAssist;
     this.drill = await Play.create(mujocoEngine, {
-      physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), toughness: s.toughness, hitPower: s.hitPower, carrierGait: DEFAULT_OPEN_FIELD.carrierGait,
+      physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), toughness: s.toughness, hitPower: s.hitPower, boneStrength: s.boneStrength, aiBoneStrength: s.aiBoneStrength, carrierGait: DEFAULT_OPEN_FIELD.carrierGait,
       human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, bot: DEFAULT_OPEN_FIELD.carrier, traction: s.traction, gains: s.gains,
       support: { ...GAME_SUPPORT, ...s.support },
     }, this.mode, this.modeOpts, this.human, this.rep++);

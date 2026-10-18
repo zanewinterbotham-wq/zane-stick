@@ -45,3 +45,34 @@ test('a head is knocked out by physics; every effect style renders a break and a
   }
   expect(errors).toEqual([]);
 });
+
+test('a broken knee hobbles and a broken elbow hangs floppy (side views of the running carrier)', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?scenario=hit&hp=1&gfx=high');
+  await page.waitForFunction(() => (window as unknown as Zs).__zs);
+  const clips: string[] = [];
+  for (let k = 0; k < 4; k++) {
+    clips.push(await page.evaluate((k) => {
+      type W = Zs['__zs']['world'] & { breakJoint(ai: number, joint: string, dof: number, end: number, relax: number): void;
+        athletes: { muscles: { index(n: string): number }; controller: { debug?(): { clip?: string } } }[] };
+      const zs = (window as unknown as Zs).__zs, w = zs.world as W;
+      if (k === 0) {
+        zs.advance(0.3);
+        w.breakJoint(0, 'kneeL', w.athletes[0].muscles.index('kneeL.flex'), -1, 0.9);
+        w.breakJoint(0, 'elbowR', w.athletes[0].muscles.index('elbowR.flex'), -1, 1);
+        zs.advance(0.6);
+      } else zs.advance(0.12);
+      const s0 = w.scene.athletes[0].state, m = [0, 2].map((j) => s0.segPos[j]);
+      // his left side (the broken knee), then his right (the broken elbow)
+      zs.renderer.camera.position.set(m[0] + (k < 2 ? 3.2 : -3.2), 1.1, m[1] + 0.6);
+      zs.renderer.camera.lookAt(m[0], 0.8, m[1]);
+      zs.renderer.render(w);
+      return String(w.athletes[0].controller.debug?.().clip);
+    }, k));
+    await page.screenshot({ path: `test-results/injury-hobble-${k}.png` });
+  }
+  console.log('clips:', clips);
+  expect(clips.filter((c) => c === 'hobble').length).toBeGreaterThanOrEqual(3);
+  expect(errors).toEqual([]);
+});

@@ -15,6 +15,7 @@ import type { BodyPlan } from '../anatomy/body';
 import { FUSE_RANGE_TRANSFER } from '../anatomy/data';
 import { GAIT_SPEED } from '../control/hand';
 import { neutralCommands, type BodyView, type Commands } from '../control/types';
+import { HOBBLE } from '../injury';
 import { clamp, lerp, qconj, qrot, wrapAngle, type Quat, type Vec3 } from '../math';
 import type { MuscleSet } from '../muscles';
 import { legIK } from './ik';
@@ -110,7 +111,7 @@ export class ProceduralAnimator implements Animator {
   private lungeT = 0; private thrustT = 0; private prevThrust = false;
 
   // whole-body modes and cross-fades
-  private mode: Mode = 'loco'; private modeT = 0; private settleT = 0; private prevDive = false;
+  private mode: Mode = 'loco'; private modeT = 0; private settleT = 0; private standT = 0; private prevDive = false;
   private dv = { run: 0, vh: 0, dir: [0, 1] as [number, number], tL: 0.2, tP: 0.2, stage: 'load' as DiveStage, vy: 0 };
   private blendFrom: Float64Array; private blendRoot = { height: 0, pitch: 0, roll: 0 }; private blendW = 1; private blendDur = 0.2;
   private getup = { faceDown: true, heading: 0, h0: 0.2, p0: 0, r0: 0, keys: [] as Float64Array[], downT: 0 };
@@ -265,12 +266,16 @@ export class ProceduralAnimator implements Animator {
     const comSpeed = Math.hypot(s.comVel[0], s.comVel[1], s.comVel[2]);
     // ---- whole-body mode
     if (support.down && (this.mode === 'loco' || this.mode === 'dive')) this.enter('down', 0.15);
-    // injured or knocked out (design §6.6): he goes down where he stands and never gets up this rep
+    // out of play (knocked out, or both legs broken; design §6.6): he goes down where he stands and stays down this
+    // rep. One break he plays on with: down from the hit as physics decides, then up again like anyone.
     if (support.out && this.mode !== 'down') this.enter('down', 0.15);
     if (this.mode === 'down') {
       if (support.out) this.settleT = 0;
       else this.settleT = comSpeed < 1 ? this.settleT + dt : 0;
-      if (this.settleT > 0.25) this.startGetup(view);
+      // carried back up onto his feet (held up and shoved along in a pile): nothing to get up from, he plays on
+      this.standT = !support.out && !support.down && s.segPos[3 * this.pelvisSeg + 1] > 0.8 * this.standH ? this.standT + dt : 0;
+      if (this.standT > 0.3) this.enter('loco', 0.3);
+      else if (this.settleT > 0.25) this.startGetup(view);
     } else if (this.mode === 'getup') {
       if (comSpeed > 3) this.enter('down', 0.15);
       else if (this.modeT >= GETUP_T) {
@@ -323,7 +328,7 @@ export class ProceduralAnimator implements Animator {
     this.blendFrom.set(this.prevQ);
     this.blendRoot = { height: this.height, pitch: this.pitch, roll: this.roll };
     this.blendW = 0; this.blendDur = blend;
-    this.mode = mode; this.modeT = 0; this.settleT = 0; this.bend = 0; this.thrustT = 0;
+    this.mode = mode; this.modeT = 0; this.settleT = 0; this.standT = 0; this.bend = 0; this.thrustT = 0;
     if (mode === 'loco') this.resetFeet();
   }
 
@@ -339,13 +344,15 @@ export class ProceduralAnimator implements Animator {
 
   // ------------------------------------------------------------------ locomotion
   private loco(v: BodyView, cmd: Commands, hold: boolean, out: AnimFrame) {
-    const dt = v.dt, s = v.state, P = this.plan.params, lv = this.lv;
+    const dt = v.dt, s = v.state, lv = this.lv;
     const vx = s.comVel[0], vz = s.comVel[2];
+    // on a broken leg (design §6.6) he hobbles: slower, off the bad leg quickly and onto the good one
+    const bad = v.hurt ? v.hurt.leg.indexOf(true) : -1, speed = this.plan.params.speed * (bad >= 0 ? HOBBLE.speed : 1);
 
     // ---- commanded velocity and heading
     const mm = Math.hypot(cmd.move.x, cmd.move.z), mag = Math.min(1, mm);
     const dir: [number, number] = mm > 1e-6 ? [cmd.move.x / mm, cmd.move.z / mm] : [0, 0];
-    const gaitV = GAIT_SPEED[cmd.gait] * P.speed;
+    const gaitV = GAIT_SPEED[cmd.gait] * speed;
     if (cmd.plantCut !== 0 && this.prevCut === 0 && Math.hypot(this.vel[0], this.vel[2]) > 1) {
       const vh = Math.atan2(this.vel[0], this.vel[2]), mh = Math.atan2(dir[0], dir[1]);
       const nh = mag > 0.2 && Math.abs(wrapAngle(mh - vh)) > 0.5 ? mh : vh + cmd.plantCut * 1.2;
@@ -385,7 +392,7 @@ export class ProceduralAnimator implements Animator {
 
     // ---- root velocity: commanded, capped per direction, slewed at human acceleration
     let [tl, tf] = toH(dir[0] * mag * gaitV, dir[1] * mag * gaitV);
-    tf = Math.max(tf, -BACK_MAX * P.speed); tl = clamp(tl, -SIDE_MAX * P.speed, SIDE_MAX * P.speed);
+    tf = Math.max(tf, -BACK_MAX * speed); tl = clamp(tl, -SIDE_MAX * speed, SIDE_MAX * speed);
     let [tx, tz] = toW(tl, tf);
     // a plant-and-cut trades some speed for the new direction, once (taken at the plant: re-taken every step it
     // bled the run to a near stop over the cut)
@@ -468,7 +475,6 @@ export class ProceduralAnimator implements Animator {
     const T = 2 / f;
     let beta = lerp(WALK_DUTY, interp(CONTACT, sp) * f / 2, run);
     beta = lerp(beta, 0.45, Math.max(lv.chop, lv.drive) * (1 - run));
-    const Tc = beta * T;
     // running feet stay about under the hips: any narrower and the thighs (thick, padded) knock as they pass
     const w = 0.12 - 0.02 * gl - 0.01 * run * gl + 0.12 * lv.stance + 0.06 * lv.drive + 0.03 * shuffle;
     const zh = 0.17 * Math.sin(this.pitch);
@@ -530,16 +536,16 @@ export class ProceduralAnimator implements Animator {
     const hUp = Math.max(0, s.segPos[3 * this.pelvisSeg + 1] - this.height), hIK = this.height + hUp * clamp(this.dropV / 0.3, 0, 1) * (1 - gl);
     const pIK = this.pitch - this.bend - Math.max(0, this.pitch - this.bend - pPel) * clamp(this.pitchV / 0.5, 0, 1) * (1 - gl);
     for (const L of this.legs) {
-      const phi = this.legPhase(L);
+      const phi = this.legPhase(L), bL = bad < 0 ? beta : L === this.legs[bad] ? beta * HOBBLE.badStance : Math.min(0.9, beta * HOBBLE.goodStance);
       if (!hold) {
         if (!L.stance && phi < L.prevPhi - 0.5) { L.stance = true; L.F = [...L.tdF]; L.yaw = L.tdYaw; L.reachOK = true; }
         // lift at the end of stance, or early when moving sideways carries the planted foot under the body
-        else if (L.stance && !this.frozen && (phi >= beta || (L.side * L.F[0] < 0.03 && L.side * vl > 0.3))) this.lift(L, phi);
+        else if (L.stance && !this.frozen && (phi >= bL || (L.side * L.F[0] < 0.03 && L.side * vl > 0.3))) this.lift(L, phi);
       }
       L.prevPhi = phi;
       const home: [number, number] = [L.side * w, zh];
       if (!L.stance || hold) {
-        let tx = home[0] + vl * Tc * 0.5, tz = home[1] + vf * Tc * 0.5 - this.ball * run;
+        let tx = home[0] + vl * bL * T * 0.5, tz = home[1] + vf * bL * T * 0.5 - this.ball * run;
         if (L.side === -sgnO) tx += sgnO * 0.1 * this.turn;              // crossover: outside leg steps across
         if (L.side === -this.cutSide) tx += L.side * 0.2 * lv.cut;       // plant the outside foot wide
         const minW = L.side === -sgnO ? 0.04 - 0.1 * this.turn : 0.04;   // feet never cross, except a crossover
@@ -552,7 +558,7 @@ export class ProceduralAnimator implements Animator {
       if (hold) { L.stance = true; L.F = [...home]; L.yaw = L.side * 0.08; }
       let q: LegQ = L.q;
       if (L.stance) {
-        const u = clamp(phi / beta, 0, 1);
+        const u = clamp(phi / bL, 0, 1);
         const gw = 0.22 * (1 - s01(u / 0.15)) - 0.5 * s01((u - 0.55) / 0.45);
         const gr = -0.08 * (1 - s01(u / 0.3)) - 0.6 * s01((u - 0.35) / 0.65);
         // running, in contact or changing posture, a planted foot that has not found the turf (the body came down
@@ -641,7 +647,7 @@ export class ProceduralAnimator implements Animator {
     out.planted[0] = this.legs[0].stance; out.planted[1] = this.legs[1].stance;
     out.phase = this.phase - Math.floor(this.phase);
     this.clip = lv.cut > 0.5 ? 'cut' : lv.stance > 0.5 ? 'stance' : lv.chop > 0.5 ? 'chop' : lv.drive > 0.5 ? 'drive'
-      : gl < 0.5 ? 'idle' : bp > 0.5 ? 'backpedal' : shuffle > 0.5 ? 'shuffle' : sp < 2.2 ? 'walk' : 'run';
+      : gl < 0.5 ? 'idle' : bp > 0.5 ? 'backpedal' : shuffle > 0.5 ? 'shuffle' : bad >= 0 ? 'hobble' : sp < 2.2 ? 'walk' : 'run';
   }
 
   private head(pitch: number) { this.add('neckLow.flex', 0.6 * pitch); this.add('neckUp.flex', 0.4 * pitch); }

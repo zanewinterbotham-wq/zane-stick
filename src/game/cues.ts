@@ -20,7 +20,7 @@ const SLIDE_SPEED = 2;
 /** Contact must have been broken this long before touching again is a new fall (s): a body on the turf, or a
  *  rolling ball, flickers in and out of contact every few steps. */
 const FALL_GAP = 0.5, BALL_GAP = 0.1;
-/** An athlete out of play moans on the turf: first this long after the injury (s; a knockout comes round later),
+/** An injured athlete moans while on the turf: first this long after the injury (s; a knockout comes round later),
  *  then every MOAN.every s (range). */
 const MOAN = { after: 1.5, afterKo: 3, every: [2.5, 5] as const };
 
@@ -89,7 +89,7 @@ export class SoundCues {
         out.push({ cat: 'voice_exhale', loud: 0.7, pos: seg('head') });
         tr.breathIn = this.rng.range(1.2, 2.6);
       }
-      if (a.injury.out && down && t >= tr.moanAt) { out.push({ cat: 'pain_moan', loud: 0.8, pos: seg('head') }); tr.moanAt = t + this.rng.range(...MOAN.every); }
+      if ((a.injury.out || a.injury.broken.size > 0) && down && t >= tr.moanAt) { out.push({ cat: 'pain_moan', loud: 0.8, pos: seg('head') }); tr.moanAt = t + this.rng.range(...MOAN.every); }
       if (down) tr.downAt = t;
       Object.assign(tr, { clip, dive, thrust: a.cmd.thrustHips });
     });
