@@ -27,6 +27,8 @@ export interface Gains {
   dcmK: number; heightKp: number; heightKd: number;
   /** Foot-placement feedback on velocity error (s) and step width between the feet (m). */
   footK: number; stepWidth: number; footMargin: number;
+  /** Farthest foothold ahead of the COM (m) and narrowest step outward of the stance foot (m). */
+  stepMax: number; stepWidthMin: number;
   /** Trunk balance through the stance hip, in units of m·g·h per rad and per rad/s. */
   torsoKp: number; torsoKd: number;
   /** Gait shape: minimum walking step time (s), touchdown gate (fraction of step), swing clearance (m),
@@ -51,6 +53,7 @@ export const DEFAULT_GAINS: Gains = {
   pelvisAtt: 1.0, thoraxAtt: 1.0, headAtt: 1.0,
   dcmK: 2.5, heightKp: 60, heightKd: 15,
   footK: 0.1, stepWidth: 0.3, footMargin: 0.05,
+  stepMax: 0.3, stepWidthMin: 0.21,
   torsoKp: 1.5, torsoKd: 0.2,
   stepTMin: 0.4, touchFrac: 0.6, clearance: 0.09, stanceKneeBend: 0.12, armSwing: 0.6, vLead: 0.6,
   leanSpeed: 0.015, leanAccel: 0.04,
@@ -306,7 +309,10 @@ export class HandController implements MotorController {
       // (a toe scuff behind the body is not a step), or when the step has run long.
       const travel: Vec3 = speed > 0.2 ? [cv[0] / speed, 0, cv[2] / speed] : fwdD;
       const st = this.legs[this.stanceIdx];
-      const ahead = dot([ank[sw.k][0] - ank[st.k][0], 0, ank[sw.k][2] - ank[st.k][2]], travel) > -0.05;
+      // A swing foot that has taken most of the weight has landed wherever it is: a recovery step can end
+      // behind the stance foot, and treating that loaded foot as still swinging leaves the trunk uncontrolled.
+      const ahead = dot([ank[sw.k][0] - ank[st.k][0], 0, ank[sw.k][2] - ank[st.k][2]], travel) > -0.05
+        || (feet[sw.k].force > 0.5 * m * G && feet[sw.k].force > feet[st.k].force);
       // A toe scuff mid-swing is not a landing: the foot must take real weight, or the planned set-down must be due.
       const landed = feet[sw.k].touching && (feet[sw.k].force > 0.25 * m * G || this.walkT > 0.9 * stepT);
       if ((landed && this.walkT > clamp(g.touchFrac, 0.5, 0.9) * stepT && ahead) || this.walkT > 1.5 * stepT) {
@@ -430,15 +436,19 @@ export class HandController implements MotorController {
     const vS = dot(cv, fwdD), vL = dot(cv, outD), vdS = dot(vd, fwdD), vdL = dot(vd, outD);
     const legLen = sw.L1 + sw.L2;
     const b = 1 / (Math.exp(w0 * T) - 1);
-    // Aim a little short of the capture point (footMargin) so the stance ankle can finish the job.
-    const offS = clamp(vS / w0 + g.footK * (vS - vdS) - vdS * T * b - (vS > vdS ? g.footMargin : 0), -0.15, 1.0);
+    // Aim a little short of the capture point (footMargin) so the stance ankle can finish the job. No farther
+    // ahead than stepMax: from upright hips a straight leg only reaches the turf close under the body, so a
+    // foothold that chases a receding capture point keeps the foot in the air while the body falls; a big
+    // push is caught over several shorter steps instead (N-step capturability).
+    const offS = clamp(vS / w0 + g.footK * (vS - vdS) - vdS * T * b - (vS > vdS ? g.footMargin : 0), -0.15, g.stepMax);
     // Lateral: periodic capture-point gait (Englsberger 2015): land outside the capture point by
     // W / (1 + e^(ωT)) for a step width W. This is deadbeat: any sway error is gone after one step. Extra
     // feedback on top over-places the foot, and the error comes back e^(ωT) ≈ 4× larger the next step.
-    // The swing foot never lands closer than about the hip width to the stance foot: a crossover step
-    // drives the thighs and feet into each other (contacts of 1–2 kN that trap the swing leg).
+    // The swing foot never lands closer than about the hip width (stepWidthMin) to the stance foot: a crossover
+    // step drives the thighs and feet into each other (contacts of 1–2 kN that trap the swing leg), and a foot set
+    // down in line with the other leaves no lateral base.
     const offL = Math.max(clamp(vL / w0 + g.stepWidth / (1 + Math.exp(w0 * T)) - vdL * T * b, -0.12, 0.55),
-      dot([stAnkle[0] - c[0], 0, stAnkle[2] - c[2]], outD) + HandController.MIN_WIDTH);
+      dot([stAnkle[0] - c[0], 0, stAnkle[2] - c[2]], outD) + g.stepWidthMin);
     // Foothold from balance feedback; the foot travels there from where it lifted off along a clearance
     // arc (over the foothold by 80 % of the step, then sets down), solved by leg IK.
     const hold: Vec3 = [c[0] + fwdD[0] * offS + outD[0] * offL, 0, c[2] + fwdD[2] * offS + outD[2] * offL];
@@ -485,8 +495,9 @@ export class HandController implements MotorController {
     this.stiff(out, st.knee[0], g.stanceKneeBend + yieldK, g.stanceKnee);
     this.stiff(out, st.knee[1], 0, g.stanceKnee * 0.5);
     // Push-off: late in stance the heel rises and the ankle plantarflexes (toes stay down), which lengthens
-    // the trailing leg and drives the body forward, as in human walking and running.
-    const push = clamp((sPh - g.pushStart) / Math.max(0.05, 1 - g.pushStart), 0, 1);
+    // the trailing leg and drives the body forward, as in human walking and running. Push-off work grows with
+    // the speed the athlete wants (full from 1 m/s); stepping to stop after a shove it would drive the body on.
+    const push = clamp((sPh - g.pushStart) / Math.max(0.05, 1 - g.pushStart), 0, 1) * clamp(vdS, 0, 1);
     this.stiff(out, st.ankle[0], -g.pushAnkle * push, g.stanceAnkle * (1 + 3 * push));
     this.stiff(out, st.ankle[1], 0, g.stanceAnkle);
     this.stiff(out, st.toe, 0.5 * push, g.posture * (1 + 2 * push));
@@ -539,8 +550,6 @@ export class HandController implements MotorController {
   // TOE stops at the ball of the foot (~MTP): pressing further rolls the foot onto its toes, where
   // rotational grip is small and the foot spins.
   private static readonly HEEL = 0.05; private static readonly TOE = 0.13; private static readonly HALF_W = 0.04;
-  /** Closest the swing foot lands to the stance foot, sideways (m): about the hip-joint spacing (0.19 m). */
-  private static readonly MIN_WIDTH = 0.21;
 
   private clampToFeet(p: Vec3, ankles: Vec3[], fwds: Vec3[]): Vec3 {
     if (ankles.length === 0) return p;
@@ -678,9 +687,11 @@ export class HandController implements MotorController {
     this.dbg = { mode: 'run', stance: this.stanceIdx, t: this.walkT, Tc, Ts, speed, vd: Math.hypot(vd[0], vd[2]), legL: this.legs[0].phase, legR: this.legs[1].phase };
   }
 
+  /** Clamp into one foot with a custom toe limit; keeps the lateral range so push-off does not drop side balance. */
   private clampToFootRange(p: Vec3, ankle: Vec3, fwd: Vec3, toe: number): Vec3 {
-    const fw = clamp(dot([p[0] - ankle[0], 0, p[2] - ankle[2]], fwd), -HandController.HEEL, toe);
-    return [ankle[0] + fw * fwd[0], 0, ankle[2] + fw * fwd[2]];
+    const r: Vec3 = [fwd[2], 0, -fwd[0]], d: Vec3 = [p[0] - ankle[0], 0, p[2] - ankle[2]];
+    const fw = clamp(dot(d, fwd), -HandController.HEEL, toe), rt = clamp(dot(d, r), -HandController.HALF_W, HandController.HALF_W);
+    return [ankle[0] + fw * fwd[0] + rt * r[0], 0, ankle[2] + fw * fwd[2] + rt * r[2]];
   }
 
   /** Distance the point lies outside the support region (feet ± foot size), 0 if inside. */
