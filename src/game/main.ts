@@ -17,7 +17,8 @@ import { HitMeter, hitFeel, MPH } from './feel';
 import { InputManager, type InputFrame } from './input/input';
 import { PRESETS, type PresetName } from './presets';
 import { GameRenderer, RENDER_PRESETS } from './render/renderer';
-import { loadSettings, saveSettings, type Settings } from './settings';
+import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from './settings';
+import { skinById, unlockedSkins } from './render/skin';
 import { el, Hud, Layer, menu, moveFocus } from './ui';
 
 const params = new URLSearchParams(location.search);
@@ -32,6 +33,7 @@ async function devScenario(name: string) {
     : name === 'cut' ? runScenario(physics, 'jog', { assist, cutAt: 3 }) : standScenario(physics, assist);
   const world = await World.create(mujocoEngine, sc.setup);
   const r = new GameRenderer(canvas, RENDER_PRESETS[(params.get('gfx') as 'minimum' | 'high') ?? 'high']);
+  await r.setSkin(params.get('skin') ?? DEFAULT_SETTINGS.skin);
   r.setWorld(world);
   r.setXray(params.get('xray') === '1');
   const cam = new ChaseCamera();
@@ -41,7 +43,7 @@ async function devScenario(name: string) {
   document.getElementById('loading')?.remove();
   const stepOnce = () => { sc.onStep?.(world); world.step(); };
   (window as unknown as { __zs: unknown }).__zs = {
-    world,
+    world, renderer: r,
     advance(seconds: number) {
       for (let i = 0, n = Math.round(seconds / world.dt); i < n; i++) stepOnce();
       cam.update(r.camera, world, seconds, heading());
@@ -140,6 +142,7 @@ class App {
       { label: 'Controls', action: () => this.controls() },
       { label: 'Key test', action: () => this.keyTest() },
       { label: `Quality: ${this.preset.label}`, hint: 'next rep', action: () => { this.cyclePreset(); this.title(); } },
+      { label: `Skin: ${skinById(this.settings.skin).label}`, action: () => { this.cycleSkin(); this.title(); } },
       { label: 'Benchmark', action: () => this.benchmark() },
     ], 'Physics football. Every movement is muscles on a simulated body.'));
   }
@@ -173,6 +176,7 @@ class App {
       this.renderer = new GameRenderer(canvas, p.render);
       this.rendererPreset = p.name;
     }
+    await this.renderer.setSkin(s.skin);
     this.renderer.setWorld(this.drill.world);
     this.renderer.setXray(this.renderer.xray);
     this.renderer.effortShading = s.effortShading;
@@ -191,6 +195,7 @@ class App {
       { label: 'Resume', hint: 'Esc / Start', action: () => this.resume() },
       { label: 'Reset rep', hint: 'Enter', sfx: 'ui_confirm', action: () => { this.resume(); void this.newRep(); } },
       { label: `Quality: ${this.preset.label}`, hint: 'next rep', action: () => { this.cyclePreset(); this.pauseMenu(); } },
+      { label: `Skin: ${skinById(s.skin).label}`, action: () => { this.cycleSkin(); this.pauseMenu(); } },
       { label: `Anatomy view: ${this.renderer?.xray ? 'on' : 'off'}`, action: () => { this.renderer?.setXray(!this.renderer.xray); this.pauseMenu(); } },
       { label: `Effort shading (anatomy view): ${s.effortShading ? 'on' : 'off'}`, action: () => { s.effortShading = !s.effortShading; if (this.renderer) this.renderer.effortShading = s.effortShading; this.save(); this.pauseMenu(); } },
       { label: `Big-hit slow motion: ${s.slowMo ? 'on' : 'off'}`, action: () => { s.slowMo = !s.slowMo; this.save(); this.pauseMenu(); } },
@@ -343,6 +348,12 @@ class App {
 
   cyclePreset() { this.settings.preset = this.settings.preset === 'high' ? 'minimum' : 'high'; this.save(); this.hud.flash(`Quality: ${this.preset.label} (next rep)`); }
   toggleCamera() { this.cam.mode = this.cam.mode === 'chase' ? 'helmet' : 'chase'; this.settings.camera = this.cam.mode as Settings['camera']; this.save(); }
+  cycleSkin() {
+    const all = unlockedSkins(), i = all.findIndex((k) => k.id === this.settings.skin);
+    this.settings.skin = all[(i + 1) % all.length].id;
+    this.save();
+    void this.renderer?.setSkin(this.settings.skin);
+  }
   save() { saveSettings(this.settings); }
 
   // ---------------------------------------------------------------- input
@@ -512,7 +523,7 @@ if (params.get('bench') === '1') {
   void (async () => {
     await mujocoEngine.init();
     document.getElementById('loading')!.textContent = 'Benchmarking…';
-    const rs = await runBenchmark(canvas);
+    const rs = await runBenchmark(canvas, undefined, params.get('skin') ?? undefined);
     (window as unknown as { __bench: unknown }).__bench = { results: rs, report: reportText(rs) };
     document.getElementById('loading')!.textContent = reportText(rs);
   })().catch((e) => console.error(e));

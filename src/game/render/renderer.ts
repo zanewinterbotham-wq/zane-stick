@@ -4,6 +4,7 @@ import type { World } from '../../sim/world';
 import { AthleteMesh, TEAMS } from './athleteMesh';
 import { AnatomyOverlay } from './anatomy';
 import { buildField } from './field';
+import { CLASSIC, loadSkin, skinById, type Skin, type SkinTemplate } from './skin';
 
 export interface RenderQuality { scale: number; shadows: boolean; detail: 'low' | 'high'; antialias: boolean }
 export const RENDER_PRESETS: Record<'minimum' | 'high', RenderQuality> = {
@@ -22,6 +23,10 @@ export class GameRenderer {
   effortShading = true;
   private sun: THREE.DirectionalLight;
   private props: THREE.Object3D[] = [];
+  private world: World | null = null;
+  skin: Skin = CLASSIC;
+  private template: SkinTemplate | null = null;
+  private skinReq = 0;
   /** Render time of the last frame (ms) and the last frame's draw calls. */
   lastMs = 0;
 
@@ -37,6 +42,7 @@ export class GameRenderer {
     this.sun.position.set(-20, 40, 15);
     this.sun.castShadow = quality.shadows;
     this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.normalBias = 0.02; // no self-shadow acne on the skins' faceted and cel-shaded surfaces
     const sc = this.sun.shadow.camera as THREE.OrthographicCamera;
     sc.left = -12; sc.right = 12; sc.top = 12; sc.bottom = -12; sc.near = 1; sc.far = 100;
     this.scene.add(this.sun, this.sun.target);
@@ -44,12 +50,29 @@ export class GameRenderer {
     this.resize();
   }
 
-  setWorld(w: World) {
+  /** Load a skin (fetched once) and dress the athletes in it now; a locked, unknown or unloadable skin is Classic. */
+  async setSkin(id: string) {
+    const want = skinById(id), req = ++this.skinReq;
+    if (want === this.skin && (this.template || !want.file)) return;
+    let tpl: SkinTemplate | null = null;
+    try { tpl = await loadSkin(want); } catch (e) { console.warn(`skin ${want.id} failed to load; using Classic`, e); }
+    if (req !== this.skinReq) return; // a later choice won
+    this.skin = tpl ? want : CLASSIC;
+    this.template = tpl;
+    if (this.world) this.dress(this.world);
+  }
+
+  private dress(w: World) {
     for (const a of this.athletes) this.scene.remove(a.root);
+    this.athletes = w.athletes.map((a) => new AthleteMesh(a.plan, TEAMS[a.setup.team], this.quality.detail, this.template));
+    for (const a of this.athletes) { a.setXray(this.xray); this.scene.add(a.root); }
+  }
+
+  setWorld(w: World) {
+    this.world = w;
     for (const p of this.props) this.scene.remove(p);
     if (this.overlay) this.scene.remove(this.overlay.root);
-    this.athletes = w.athletes.map((a) => new AthleteMesh(a.plan, TEAMS[a.setup.team], this.quality.detail));
-    for (const a of this.athletes) this.scene.add(a.root);
+    this.dress(w);
     this.props = (w.setup.props ?? []).map((p) => {
       const geo = p.shape === 'box' ? new THREE.BoxGeometry(2 * p.size[0], 2 * p.size[1], 2 * p.size[2])
         : p.shape === 'capsule' ? new THREE.CapsuleGeometry(p.size[0], 2 * p.size[1], 4, 10)
@@ -80,6 +103,7 @@ export class GameRenderer {
   }
 
   render(w: World) {
+    if (w !== this.world) return; // a new rep whose skin is still loading
     const t0 = performance.now();
     w.athletes.forEach((a, i) => {
       const s = w.scene.athletes[i].state, mesh = this.athletes[i];

@@ -8,6 +8,7 @@ import { mujocoEngine } from '../sim/physics/mujoco';
 import { World } from '../sim/world';
 import { PRESETS, type Preset, type PresetName } from './presets';
 import { GameRenderer } from './render/renderer';
+import { DEFAULT_SETTINGS } from './settings';
 
 export interface BenchResult { preset: PresetName; physicsMsPerSimSecond: number; physicsRealtimeShare: number; renderMsPerFrame: number; fpsEstimate: number }
 
@@ -34,9 +35,10 @@ export async function benchPhysics(p: Preset, seconds = 1.5): Promise<number> {
   return ms / seconds;
 }
 
-export async function benchRender(canvas: HTMLCanvasElement, p: Preset, seconds = 1.5): Promise<number> {
+export async function benchRender(canvas: HTMLCanvasElement, p: Preset, seconds = 1.5, skin = DEFAULT_SETTINGS.skin): Promise<number> {
   const w = await physicsWorld(PRESETS.minimum);
   const r = new GameRenderer(canvas, p.render);
+  await r.setSkin(skin);
   r.setWorld(w);
   r.camera.position.set(-4, 2.5, -4); r.camera.lookAt(0, 1, 2);
   const frames: number[] = [];
@@ -57,12 +59,12 @@ export async function benchRender(canvas: HTMLCanvasElement, p: Preset, seconds 
   return frames[Math.floor(frames.length * 0.5)] ?? 16.7; // median frame interval
 }
 
-export async function runBenchmark(canvas: HTMLCanvasElement, presets: PresetName[] = ['minimum', 'high']): Promise<BenchResult[]> {
+export async function runBenchmark(canvas: HTMLCanvasElement, presets: PresetName[] = ['minimum', 'high'], skin = DEFAULT_SETTINGS.skin): Promise<BenchResult[]> {
   const out: BenchResult[] = [];
   for (const name of presets) {
     const p = PRESETS[name];
     const phys = await benchPhysics(p);
-    const frame = await benchRender(canvas, p);
+    const frame = await benchRender(canvas, p, 1.5, skin);
     out.push({ preset: name, physicsMsPerSimSecond: phys, physicsRealtimeShare: phys / 1000, renderMsPerFrame: frame, fpsEstimate: 1000 / Math.max(frame, (phys / 1000) * frame + frame * 0.1) });
   }
   return out;

@@ -1,13 +1,25 @@
 // Athlete meshes generated from the same geometry the physics uses, so what is seen is what is simulated.
 // Each segment is a Group posed from the physics state every frame; nothing here moves bodies.
+// A skin (art model, see skin.ts) can be worn over them; the classic shapes then show only in the anatomy view.
 import * as THREE from 'three';
-import type { BodyPlan, GeomPlan, SegmentPlan } from '../../sim/anatomy/body';
+import { buildBody, DEFAULT_ATHLETE, type BodyPlan, type GeomPlan, type SegmentPlan } from '../../sim/anatomy/body';
+import type { SkinTemplate } from './skin';
 
-export interface TeamColors { jersey: number; trim: number; pants: number; helmet: number; mask: number; skin: number; socks: number; cleats: number }
+export interface TeamColors { jersey: number; trim: number; pants: number; helmet: number; mask: number; skin: number; socks: number; cleats: number; glow: number }
 export const TEAMS: TeamColors[] = [
-  { jersey: 0x1f3a68, trim: 0xf2f2ec, pants: 0xe9e6dc, helmet: 0x1f3a68, mask: 0xd8d8d8, skin: 0x8d5a3b, socks: 0x1f3a68, cleats: 0x161616 }, // Harbor Gulls
-  { jersey: 0xd9631e, trim: 0x2b2b2b, pants: 0x2f2f33, helmet: 0xf07a2b, mask: 0x222222, skin: 0xd9a77e, socks: 0x2b2b2b, cleats: 0xf2f2f2 }, // Ridge Foxes
+  { jersey: 0x1f3a68, trim: 0xf2f2ec, pants: 0xe9e6dc, helmet: 0x1f3a68, mask: 0xd8d8d8, skin: 0x8d5a3b, socks: 0x1f3a68, cleats: 0x161616, glow: 0x6bdaff }, // Harbor Gulls
+  { jersey: 0xd9631e, trim: 0x2b2b2b, pants: 0x2f2f33, helmet: 0xf07a2b, mask: 0x222222, skin: 0xd9a77e, socks: 0x2b2b2b, cleats: 0xf2f2f2, glow: 0xffae38 }, // Ridge Foxes
 ];
+
+/** At minimum detail these segments are fused into a parent (toMinimum in sim/anatomy/body.ts); their skin
+ *  meshes ride on it rigidly. The fused neck+head keeps the neck's frame under the name 'head'. */
+const FUSED_INTO: Record<string, string> = {
+  clavicleL: 'trunk', clavicleR: 'trunk', lumbar: 'trunk', thorax: 'trunk', neck: 'head',
+  handL: 'forearmL', handR: 'forearmR', toesL: 'footL', toesR: 'footR',
+};
+
+/** One skin node: which physics segment carries it and its rest-frame offset from that segment's origin. */
+interface SkinPart { node: THREE.Group; seg: number; off: THREE.Vector3 }
 
 function colorFor(seg: SegmentPlan, g: GeomPlan, t: TeamColors): number {
   if (g.role === 'helmet') return t.helmet;
@@ -25,11 +37,16 @@ function colorFor(seg: SegmentPlan, g: GeomPlan, t: TeamColors): number {
 
 export class AthleteMesh {
   readonly root = new THREE.Group();
+  readonly classic = new THREE.Group();
+  readonly skin = new THREE.Group();
   readonly segs: THREE.Group[] = [];
+  readonly parts: SkinPart[] = [];
   readonly materials: THREE.MeshStandardMaterial[][] = [];
   private base: THREE.Color[][] = [];
 
-  constructor(plan: BodyPlan, team: TeamColors, quality: 'low' | 'high') {
+  constructor(plan: BodyPlan, team: TeamColors, quality: 'low' | 'high', skin: SkinTemplate | null = null) {
+    this.root.add(this.classic, this.skin);
+    if (skin) this.wear(plan, team, quality, skin);
     const caps = quality === 'high' ? [10, 6] : [7, 3];
     for (const s of plan.segments) {
       const grp = new THREE.Group();
@@ -59,19 +76,61 @@ export class AthleteMesh {
         mats.push(mat);
         bases.push(new THREE.Color(color));
       }
-      this.root.add(grp);
+      this.classic.add(grp);
       this.segs.push(grp);
       this.materials.push(mats);
       this.base.push(bases);
+    }
+    this.setXray(false);
+  }
+
+  /** Skin nodes go on the physics segments with the file's A-pose rotations dropped: the mesh data is in the rest
+   *  frame, so segment pose × rest offset is the whole transform. Materials are cloned per athlete for team colours. */
+  private wear(plan: BodyPlan, team: TeamColors, quality: 'low' | 'high', skin: SkinTemplate) {
+    const rest = new Map(buildBody(plan.params, 'standard').segments.map((s) => [s.name, s.origin]));
+    const index = new Map(plan.segments.map((s, i) => [s.name, i]));
+    const mats = new Map<THREE.Material, THREE.Material>();
+    const colours = team as unknown as Record<string, number | undefined>;
+    // the models are built for the reference athlete; scale them to this one's stature
+    const k = plan.params.height / DEFAULT_ATHLETE.height;
+    for (const [name, meshes] of skin.parts) {
+      const seg = index.get(plan.detail === 'minimum' ? FUSED_INTO[name] ?? name : name)!;
+      const o = rest.get(name)!, so = plan.segments[seg].origin;
+      const node = new THREE.Group();
+      node.scale.setScalar(k);
+      for (const m of meshes) {
+        let mat = mats.get(m.material as THREE.Material);
+        if (!mat) {
+          mat = (m.material as THREE.Material).clone();
+          const hex = colours[mat.name];
+          if (hex !== undefined) {
+            const c = mat as THREE.MeshStandardMaterial;
+            c.color.setHex(hex);
+            if (mat.name === 'glow') c.emissive.setHex(hex);
+          }
+          mats.set(m.material as THREE.Material, mat);
+        }
+        const mesh = new THREE.Mesh(m.geometry, mat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = quality === 'high';
+        node.add(mesh);
+      }
+      this.skin.add(node);
+      this.parts.push({ node, seg, off: new THREE.Vector3(o[0] - so[0], o[1] - so[1], o[2] - so[2]) });
     }
   }
 
   /** Pose every segment from physics arrays (positions 3·n, quaternions x y z w 4·n). */
   pose(segPos: ArrayLike<number>, segQuat: ArrayLike<number>) {
-    this.segs.forEach((g, i) => {
+    if (this.classic.visible) this.segs.forEach((g, i) => {
       g.position.set(segPos[3 * i], segPos[3 * i + 1], segPos[3 * i + 2]);
       g.quaternion.set(segQuat[4 * i], segQuat[4 * i + 1], segQuat[4 * i + 2], segQuat[4 * i + 3]);
     });
+    if (this.skin.visible) for (const { node, seg: i, off } of this.parts) {
+      node.quaternion.set(segQuat[4 * i], segQuat[4 * i + 1], segQuat[4 * i + 2], segQuat[4 * i + 3]);
+      node.position.copy(off).applyQuaternion(node.quaternion);
+      node.position.x += segPos[3 * i]; node.position.y += segPos[3 * i + 1]; node.position.z += segPos[3 * i + 2];
+    }
   }
 
   /** Effort shading: tint each segment toward hot orange as its muscles near their limit (0..1). */
@@ -83,7 +142,11 @@ export class AthleteMesh {
     }));
   }
 
+  /** The anatomy view shows the classic shapes (they are the physics bodies; the skins' big heads are not), so a
+   *  skin is hidden there rather than made translucent. */
   setXray(on: boolean) {
     for (const mats of this.materials) for (const m of mats) { m.transparent = on; m.opacity = on ? 0.22 : 1; m.depthWrite = !on; }
+    this.skin.visible = !on && this.parts.length > 0;
+    this.classic.visible = !this.skin.visible;
   }
 }
