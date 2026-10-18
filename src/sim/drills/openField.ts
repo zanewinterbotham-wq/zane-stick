@@ -1,6 +1,7 @@
 // Open-field 1-on-1: the human tackles a bot ball carrier. Rep rules: the rep ends only when whoever holds the
 // ball is down (any segment but hands/feet on the ground) or reaches the end zone he attacks. A ball knocked
-// loose stays live: any athlete recovers it by touching it with his trunk (diving on it), then attacks his own way.
+// loose stays live: any athlete recovers it by touching it with his trunk (diving on it) or with a raised hand
+// (picking it up), then attacks his own way.
 import { DEFAULT_ATHLETE, type AthleteParams } from '../anatomy/body';
 import { BALL } from '../anatomy/equipment';
 import { DEFAULT_SUPPORT, type SupportSettings } from '../anim/types';
@@ -53,6 +54,9 @@ export const GOAL_LINE = 50 * 0.9144;
 const attackDir = (team: 0 | 1): 1 | -1 => (team === 1 ? -1 : 1);
 /** Segments that recover a loose ball: the trunk ('trunk' is the minimum body's fused one). */
 const TORSO = /^(pelvis|lumbar|thorax|trunk)$/;
+/** A raised hand this close to the loose ball (m, hand surface to ball tip) picks it up: the fingers the hand model lacks
+ *  close the last few cm (the rig stoops to about 0.35 m above the turf, a ball lying on it is ~0.3 m below that). */
+const HAND_NEAR = 0.1;
 /** Off the turf this long counts as up (s): a body lying on the turf flickers out of contact for a few steps. */
 const UP_TIME = 0.5;
 
@@ -118,6 +122,7 @@ export class OpenFieldDrill {
   /** Put the ball in athlete ai's right hand and grip it (rep start, and a fumble recovery). */
   private tuck(ai: number) {
     const w = this.world, a = w.athletes[ai], s = w.scene.athletes[ai].state;
+    if (a.grips[1].active) w.releaseGrip(ai, 1); // a recovering hand may be holding something else
     const hi = a.handSegs[1], seg = a.plan.segments[hi];
     const hq: Quat = [s.segQuat[4 * hi], s.segQuat[4 * hi + 1], s.segQuat[4 * hi + 2], s.segQuat[4 * hi + 3]];
     // Ball against the palm (palm faces the body for the right hand: +X in hand frame), long axis along the hand,
@@ -162,16 +167,29 @@ export class OpenFieldDrill {
     if (ai === this.carrier) this.brains[this.carrier] = makeTackler(this.rng, this.cfg.difficulty);
   }
 
-  /** Loose ball: hands cannot pick it up; the first trunk to touch it recovers it. */
+  /** Loose ball: the first athlete to get it recovers it, with a trunk touching it (diving on it) or a raised hand
+   *  that touches it or is within HAND_NEAR of it (picking it up). */
   private loose() {
-    const w = this.world;
-    // grips form after the physics step, so one formed on the ball this step has not pulled on it yet
-    w.athletes.forEach((_, i) => { const h = w.gripping(i, this.ballRef); if (h >= 0) w.releaseGrip(i, h as 0 | 1); });
+    const w = this.world, bp = w.scene.propPose(this.ball).pos;
     let by = -1, fumblerTouch = false;
+    const take = (i: number) => {
+      if (i === this.fumbler) fumblerTouch = true;
+      return i !== this.fumbler || this.clear;
+    };
+    w.athletes.forEach((a, i) => {
+      for (const h of [0, 1] as const) {
+        const hp = w.handPoint(a, h), near = Math.hypot(hp[0] - bp[0], hp[1] - bp[1], hp[2] - bp[2]) - a.handGeoms[h].half - BALL.length / 2 < HAND_NEAR;
+        // grips form after the physics step, so one formed on the ball this step has not pulled on it yet
+        const held = w.gripping(i, this.ballRef) === h;
+        if (held) w.releaseGrip(i, h);
+        if ((near || held) && take(i) && by < 0 && w.raised(a, h)) by = i;
+      }
+    });
     for (const c of w.scene.contacts()) for (const [p, o] of [[c.a, c.b], [c.b, c.a]] as const) {
       if (p.athlete >= 0 || p.seg !== this.ball || o.athlete < 0) continue;
-      if (o.athlete === this.fumbler) fumblerTouch = true;
-      if (by < 0 && TORSO.test(w.athletes[o.athlete].plan.segments[o.seg].name) && (o.athlete !== this.fumbler || this.clear)) by = o.athlete;
+      const a = w.athletes[o.athlete];
+      if (TORSO.test(a.plan.segments[o.seg].name) && take(o.athlete) && by < 0) by = o.athlete;
+      else if (o.athlete === this.fumbler) fumblerTouch = true;
     }
     this.clear ||= !fumblerTouch;
     if (by < 0) return;

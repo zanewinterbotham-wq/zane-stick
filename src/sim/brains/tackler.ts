@@ -1,7 +1,7 @@
 // Bot tackler: pursues the ball carrier on an intercept course (leading him and staying on his goal side), breaks
 // down near contact (sinks and chops the feet so a cut can be mirrored), then strikes: drives through with both
 // arms wrapping and gripping and rolls the hips at contact, and dives when the carrier is slipping just out of
-// reach. With nobody holding the ball it recovers it by diving on it. Reads the world through a reaction delay;
+// reach. With nobody holding the ball it runs to it and picks it up by hand. Reads the world through a reaction delay;
 // difficulty is only that delay, how far ahead it leads, and aim noise. Same Commands as a human.
 import { GAIT_SPEED } from '../control/hand';
 import { neutralCommands, type Commands } from '../control/types';
@@ -23,8 +23,9 @@ const STRIKE = 1.9, WRAP = 1.3, THRUST = 0.8, MISS = 4.5;
  *  0.3 s on) when, DIVE_T s ahead with both running on, he would be DIVE_D m ahead along the run (the dive follows
  *  the run, faster than DIVE_RUN m/s, and lays the body out about that far) and within DIVE_SIDE m of its line. */
 const DIVE_D: [number, number] = [0.3, 2.2], DIVE_T = 0.4, DIVE_SIDE = 0.8, DIVE_CLOSE = 1.5, DIVE_MISS = 1.5, DIVE_RUN = 2;
-/** Closer to a loose ball than this (m, horizontal), drop the chest onto it rather than dive. */
-const BALL_DROP = 1;
+/** Loose ball: longest lead on a rolling ball (s), the deceleration the run is planned to stop on it with (m/s²), the
+ *  slowest approach (m/s), the distance inside which the hands reach for it, and how far short of it the run stops (m). */
+const BALL_LEAD = 0.5, BALL_BRAKE = 5, BALL_V = 1.2, BALL_REACH = 1.6, BALL_SHORT = 0.25;
 /** Closing speed while breaking down and while striking (m/s); the move command's filter time (s). */
 const BREAK_V = 3, STRIKE_V = 6, MOVE_TAU = 0.08;
 const FULL = GAIT_SPEED.sprint;
@@ -75,7 +76,7 @@ export class TacklerBrain implements Brain {
       const t = predict(seen.athletes[ti], p.time - seen.time);
       if (t.down) this.touch(me, t, dt, c); else this.tackle(p, me, t, dt, c);
     }
-    else if (seen.ball) this.recover(me, seen.ball, dt, c);
+    else if (seen.ball) this.recover(me, seen.ball, p.time - seen.time, dt, c);
     return c;
   }
 
@@ -145,20 +146,31 @@ export class TacklerBrain implements Brain {
     }
   }
 
-  /** Run to a loose ball and dive on it (the torso landing on it is what recovers it). */
-  private recover(me: AthleteView, ball: { pos: Vec3; vel: Vec3 }, dt: number, c: Commands) {
-    const aim: [number, number] = [ball.pos[0] + ball.vel[0] * 0.2, ball.pos[2] + ball.vel[2] * 0.2];
-    const dx = aim[0] - me.com[0], dz = aim[1] - me.com[2], d = Math.hypot(dx, dz) || 1e-6;
+  /** Run to a loose ball and pick it up by hand: flat out only while the way is clear, slowing so the run can still
+   *  turn onto the ball (a sprint cannot: it orbits it) and stop on it, then sink and reach down for it. Dives only
+   *  when it cannot stop short of the ball. */
+  private recover(me: AthleteView, ball: { pos: Vec3; vel: Vec3 }, age: number, dt: number, c: Commands) {
+    const bx = ball.pos[0] + ball.vel[0] * age, bz = ball.pos[2] + ball.vel[2] * age;
     const sp = Math.hypot(me.comVel[0], me.comVel[2]);
+    // a rolling ball is met where it will be on arrival (it stops soon: the lead is short)
+    const t = Math.min(BALL_LEAD, Math.hypot(bx - me.com[0], bz - me.com[2]) / Math.max(sp, 3));
+    const dx = bx + ball.vel[0] * t - me.com[0], dz = bz + ball.vel[2] * t - me.com[2], d = Math.hypot(dx, dz) || 1e-6;
     this.phase = 'pursue';
-    c.gait = 'sprint';
-    c.armL = c.armR = d < 3 ? 1 : 0; c.gripL = c.gripR = d < 2;
-    c.aim = [ball.pos[0], ball.pos[1], ball.pos[2]];
-    const v = d < BALL_DROP ? 1.5 : d < 4 ? 5 : FULL;
+    // sine of the angle between the run and the ball (a right angle at most): the arc that meets it has radius d / (2 sin)
+    const cos = sp > 1 ? (me.comVel[0] * dx + me.comVel[2] * dz) / (sp * d) : 1, sin = cos < 0 ? 1 : Math.sqrt(1 - cos * cos);
+    // stop BALL_SHORT short of it (the stoop reaches that far); on the way slow only as far as needed
+    const ds = Math.max(d - BALL_SHORT, 0);
+    const v = ds < 0.05 ? 0 : clamp(Math.min(FULL, Math.sqrt(2 * BALL_BRAKE * ds), Math.sqrt(LAT_ACCEL * d / Math.max(2 * sin, 0.3))), ds > 0.8 ? BALL_V : 0.3, FULL);
     this.run(me, dx / d * v, dz / d * v, dt, c);
-    if (d < BALL_DROP) { c.sink = 1; c.lean.fwd = 1; return; }
+    c.gait = v > 6 ? 'sprint' : 'jog';
+    if (d < BALL_REACH) {
+      // hands to the ball, hips down: the world aims each hand at it and closes on it
+      const k = clamp((BALL_REACH - d) / 0.6, 0, 1);
+      c.armL = c.armR = 1; c.gripL = c.gripR = true; c.aim = [ball.pos[0], ball.pos[1], ball.pos[2]];
+      c.sink = 0.5 * k; c.lean.fwd = k;
+    }
     const x = dx + (ball.vel[0] - me.comVel[0]) * DIVE_T, z = dz + (ball.vel[2] - me.comVel[2]) * DIVE_T;
-    if (!this.dived && sp > 1 && this.onLine(me, x, z, sp)) { c.dive = true; this.dived = true; }
+    if (!this.dived && sp > 4 && sp * sp > 2 * (BALL_BRAKE - 1) * d && this.onLine(me, x, z, sp)) { c.dive = true; this.dived = true; }
   }
 
   /** Whether a point (relative x, z) lies DIVE_D ahead along the current run and within DIVE_SIDE of its line. */

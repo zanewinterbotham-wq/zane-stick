@@ -26,6 +26,8 @@ const AIM_DIST = 1.5, CHEST_BELOW_HEAD = 0.3;
 /** Steer assist: farthest target it turns toward (m), and the cosine of the widest angle between the stick and the
  *  target it acts within (~60°). */
 const STEER = { range: 10, cone: 0.5 };
+/** A loose ball this close (m, along the ground) and no higher than this (m) draws both arms to it and a stoop. */
+const LOOSE_REACH = 2, LOOSE_HIGH = 1;
 
 export class HumanBrain implements Brain {
   latest: HumanInput | null = null;
@@ -68,6 +70,7 @@ export class HumanBrain implements Brain {
       c.driveLegs = i.sprint;
       if (c.driveLegs > 0.5) c.gait = 'sprint';
     }
+    this.reachLoose(p, c);
     return c;
   }
 
@@ -87,6 +90,17 @@ export class HumanBrain implements Brain {
     if (w <= 0) return [mx, mz];
     const sx = mx / m + (dx / d - mx / m) * w, sz = mz / m + (dz / d - mz / m) * w, s = Math.hypot(sx, sz) || 1;
     return [sx / s * m, sz / s * m];
+  }
+
+  /** A loose ball within reach: the hands go for it and the body stoops, so walking over it picks it up. */
+  private reachLoose(p: Perception, c: Commands) {
+    const me = p.athletes[p.self], b = p.ball;
+    if (!b || p.athletes.some((a) => a.hasBall) || b.pos[1] > LOOSE_HIGH) return;
+    const d = Math.hypot(b.pos[0] - me.com[0], b.pos[2] - me.com[2]);
+    if (d > LOOSE_REACH) return;
+    const k = Math.min(1, (LOOSE_REACH - d) / 0.6);
+    c.armL = c.armR = 1; c.gripL = c.gripR = true; c.aim = [b.pos[0], b.pos[1], b.pos[2]];
+    c.sink = Math.max(c.sink, 0.5 * k); c.lean.fwd = Math.max(c.lean.fwd, k);
   }
 
   /** Whether an athlete who can be tackled is near and roughly ahead (with hysteresis). */

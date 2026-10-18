@@ -1,8 +1,9 @@
 // Open-field rep rules: the rep ends only on the ball carrier going down or scoring; a loose ball is live and is
-// recovered by the trunk, never by a hand. Scripted, headless and deterministic.
+// recovered by the trunk (a dive) or by a raised hand (a pickup). Scripted, headless and deterministic.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BALL } from '../src/sim/anatomy/equipment';
 import { CarrierBrain } from '../src/sim/brains/carrier';
+import { HumanBrain } from '../src/sim/brains/human';
 import { ScriptBrain } from '../src/sim/brains/script';
 import type { Commands } from '../src/sim/control/types';
 import { DEFAULT_OPEN_FIELD, GOAL_LINE, OpenFieldDrill } from '../src/sim/drills/openField';
@@ -86,7 +87,7 @@ describe('open-field rep end', () => {
 });
 
 describe('fumble recovery', () => {
-  it('a loose ball touched by a hand is not recovered', async () => {
+  it('a loose ball touched by a raised hand is picked up, gripped and tucked', async () => {
     const d = await drill(script((_t, c) => { c.armR = 1; c.gripR = true; }));
     strip(d, still(), () => ballAhead(d, d.carrier, -3));
     run(d, 0.6); // the arm comes up
@@ -94,13 +95,31 @@ describe('fumble recovery', () => {
     const hand: Vec3 = [s.segPos[3 * h], s.segPos[3 * h + 1], s.segPos[3 * h + 2]];
     w.scene.placeProp(d.ball, [hand[0], hand[1] + 0.12, hand[2]], [0, 0, 0, 1]);
     const touched = new Set<string>();
-    run(d, 1, () => { for (const n of ballTouches(d, d.human)) touched.add(n); });
-    console.log('hand test: human segments that touched the ball', [...touched]);
-    expect([...touched].some((n) => /hand|forearm/.test(n))).toBe(true);
+    run(d, 1, () => { for (const n of ballTouches(d, d.human)) touched.add(n); return w.ballCarrier >= 0; });
+    console.log('hand pickup: human segments that touched the ball', [...touched]);
     expect([...touched].some((n) => /pelvis|lumbar|thorax|trunk/.test(n))).toBe(false);
-    expect(w.ballCarrier).toBe(-1);
-    expect(w.gripping(d.human, ball(d))).toBe(-1);
+    expect(d.recoveredBy).toBe(d.human);
+    expect(w.ballCarrier).toBe(d.human);
+    expect(w.gripping(d.human, ball(d))).toBe(1);
     expect(d.ended).toBe(null);
+    d.destroy();
+  });
+
+  it('a walking human with the arms on auto picks up a ball in his path without diving', async () => {
+    const human = new HumanBrain();
+    human.latest = { move: { x: 0, y: 0.5 }, torso: 0, sprint: 0, sink: 0, armL: 0, armR: 0, held: new Set(), cameraYaw: 0, aimPitch: 0 };
+    let dived = false;
+    const d = await OpenFieldDrill.create(mujocoEngine, { ...DEFAULT_OPEN_FIELD, physics: STD }, { think: (p) => { const c = human.think(p); dived ||= c.dive; return c; } }, 0);
+    d.brains[d.carrier] = still();
+    d.world.releaseGrip(d.carrier, 1);
+    ballAhead(d, d.human, 3);
+    // the ball is in the human's path and far from the bot (who stands still, 10 m on)
+    const t0 = d.world.time;
+    run(d, 8, () => d.world.ballCarrier >= 0);
+    console.log('walk-over pickup: recovered by', d.recoveredBy, 'after', (d.world.time - t0).toFixed(2), 's, dived', dived);
+    expect(d.recoveredBy).toBe(d.human);
+    expect(dived).toBe(false);
+    expect(d.world.scene.stats().instabilities).toBe(0);
     d.destroy();
   });
 
@@ -160,4 +179,40 @@ describe('fumble recovery', () => {
     expect(d.world.perception(d.human).field.dirZ).toBe(-1);
     d.destroy();
   });
+});
+
+/** Bot jogs 1.2 s, then loses the ball: it is put `off` (x, z) m from him, at rest. Returns the time to his
+ *  recovery (s; Infinity when he has not after 7 s), how far he ran (m) and the straight line to the ball (m). */
+async function botChases(off: [number, number], rep = 0) {
+  const d = await drill(still(), rep);
+  run(d, 1.2);
+  const w = d.world, s = w.scene.athletes[d.carrier].state, from: Vec3 = [s.com[0], 0, s.com[2]];
+  w.releaseGrip(d.carrier, 1);
+  w.scene.placeProp(d.ball, [from[0] + off[0], BALL.diameter / 2 + 0.01, from[2] + off[1]], [0, 0, 0, 1]);
+  d.step();
+  const t0 = d.repTime;
+  let path = 0, last = from, top = 0, dives = 0;
+  run(d, 7, () => {
+    path += Math.hypot(s.com[0] - last[0], s.com[2] - last[2]); last = [s.com[0], 0, s.com[2]];
+    top = Math.max(top, Math.hypot(s.comVel[0], s.comVel[2]));
+    if (w.athletes[d.carrier].cmd.dive) dives++;
+    return d.recoveredBy === d.carrier;
+  });
+  const out = { time: d.recoveredBy === d.carrier ? d.repTime - t0 : Infinity, path, line: Math.hypot(off[0], off[1]), top, dives, bad: w.scene.stats().instabilities };
+  d.destroy();
+  return out;
+}
+
+describe('bot chasing a loose ball', () => {
+  const CASES: [number, number][] = [[0, 3], [0, -4], [4, 0], [-3, -3], [2, 7]];
+  it('goes straight to it and picks it up by hand, without diving', async () => {
+    for (const off of CASES) {
+      const r = await botChases(off);
+      console.log('loose ball', off.join(','), ': recovered in', r.time.toFixed(2), 's, ran', r.path.toFixed(1), 'm for a', r.line.toFixed(1), 'm line (', (r.path / r.line).toFixed(2), 'x ), top speed', r.top.toFixed(1), ', dive commands', r.dives);
+      expect(r.time).toBeLessThan(5);
+      expect(r.path / r.line).toBeLessThan(2);
+      if (r.line < 5) expect(r.dives).toBe(0); // a sprint at a ball it cannot stop short of may still dive
+      expect(r.bad).toBe(0);
+    }
+  }, 120000);
 });

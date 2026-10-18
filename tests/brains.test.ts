@@ -100,6 +100,22 @@ describe('TacklerBrain', () => {
     expect(cs.filter((x) => x.dive).length).toBe(1);
     expect(cs.at(-1)!.carry).toBe(0);
   });
+
+  it('slows for a loose ball it cannot turn onto at speed, then reaches both hands down to it', () => {
+    const b = new TacklerBrain(new Rng(1), DIFFICULTY.normal);
+    // running at 9 m/s along +X, the ball 4 m off to the side: a sprint would orbit it
+    const side = (time: number): Perception => ({ time, self: 0, athletes: [view([0, 1, 0], [9, 0, 0], false, Math.PI / 2), view([30, 1, 30], [0, 0, 0])], field, ball: { pos: [0, 0.1, 4], vel: [0, 0, 0] } });
+    const c = run(b, side, 0.5);
+    expect(Math.hypot(c.move.x, c.move.z) * 10).toBeLessThan(4);
+    expect(c.dive).toBe(false);
+    // standing over it: stoops, both arms and grips on the ball
+    const near = (time: number): Perception => ({ time, self: 0, athletes: [view([0, 1, 0], [0, 0, 0]), view([30, 1, 30], [0, 0, 0])], field, ball: { pos: [0, 0.1, 0.5], vel: [0, 0, 0] } });
+    const d = run(new TacklerBrain(new Rng(1), DIFFICULTY.normal), near, 0.5);
+    expect([d.armL, d.armR, d.gripL, d.gripR]).toEqual([1, 1, true, true]);
+    expect(d.aim).toEqual([0, 0.1, 0.5]);
+    expect(d.sink).toBeGreaterThan(0);
+    expect(d.lean.fwd).toBeGreaterThan(0.5);
+  });
 });
 
 describe('open field, headless', () => {

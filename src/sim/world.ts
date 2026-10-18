@@ -137,12 +137,13 @@ export class World {
   /** Athlete-on-athlete contacts this step, one per segment pair (sound, feel, replays). */
   hits: HitEvent[] = [];
   ballCarrier = -1;
-  /** Prop index of the ball, or -1. */
-  private get ballProp() { return this.setup.props?.findIndex((p) => p.name === 'ball') ?? -1; }
+  /** Index of the ball among the props (a prop named 'ball'), or −1. */
+  readonly ballIndex: number;
 
   private constructor(readonly scene: PhysicsScene, readonly setup: WorldSetup) {
     this.rng = new Rng(setup.seed);
     this.assist = setup.assist;
+    this.ballIndex = setup.props?.findIndex((p) => p.name === 'ball') ?? -1;
   }
 
   static async create(engine: PhysicsEngine, setup: WorldSetup): Promise<World> {
@@ -187,7 +188,7 @@ export class World {
         heading: headingOf(fwd), down: a.downBy !== null, hasBall: a.index === this.ballCarrier,
       };
     });
-    const bi = this.setup.props?.findIndex((p) => p.name === 'ball') ?? -1;
+    const bi = this.ballIndex;
     const ball = bi >= 0 ? { pos: this.scene.propPose(bi).pos, vel: this.scene.propVel(bi) } : undefined;
     return { time: this.time, self, athletes, field: this.setup.field ?? { halfWidth: 24.38, goalZ: 50, dirZ: 1 }, ball };
   }
@@ -348,7 +349,7 @@ export class World {
     // arm takes it part way, two all the way), so the tackler's weight and pull bring him down unless he breaks free.
     let held = 0;
     // a hand on the ball he carries holds him as much as a hand on his jersey
-    const onHim = (t: LinkRef | null) => !!t && (t.athlete === a.index || (t.athlete < 0 && this.ballCarrier === a.index && t.seg === this.ballProp));
+    const onHim = (t: LinkRef | null) => !!t && (t.athlete === a.index || (t.athlete < 0 && this.ballCarrier === a.index && t.seg === this.ballIndex));
     for (const o of this.athletes) if (o !== a) for (const g of o.grips) if (g.active && onHim(g.target)) held++;
     a.heldT = held > 0 ? a.heldT + dt : Math.max(0, a.heldT - 2 * dt);
     const knockHeld = clamp((a.heldT - HELD.start * T) / (HELD.full * T), 0, 1) * (held >= 2 ? 1 : HELD.oneArm);
@@ -520,10 +521,10 @@ export class World {
   }
 
   /** The arm is raised to grab (reach button or wrap), so the hand may close on what it nearly touches. */
-  private raised(a: Athlete, h: 0 | 1) { return a.cmd.wrap || (h === 0 ? a.cmd.armL : a.cmd.armR) > 0.3; }
+  raised(a: Athlete, h: 0 | 1) { return a.cmd.wrap || (h === 0 ? a.cmd.armL : a.cmd.armR) > 0.3; }
 
   /** Centre of a hand's geom (world). */
-  private handPoint(a: Athlete, h: 0 | 1): Vec3 {
+  handPoint(a: Athlete, h: 0 | 1): Vec3 {
     const s = this.scene.athletes[a.index].state, { seg, off } = a.handGeoms[h];
     const p = qrot(quatAt(s.segQuat, seg), off);
     return [s.segPos[3 * seg] + p[0], s.segPos[3 * seg + 1] + p[1], s.segPos[3 * seg + 2] + p[2]];
@@ -536,6 +537,12 @@ export class World {
     if (k < 0) return null;
     const s = this.scene.athletes[a.index].state, sp: Vec3 = [s.segPos[3 * k], s.segPos[3 * k + 1], s.segPos[3 * k + 2]];
     const n = this.nearestBody(a, sp, REACH.aim);
+    // a loose ball nearer than any opponent is what the hand goes for
+    const bi = this.ballIndex;
+    if (bi >= 0 && this.ballCarrier < 0) {
+      const b = this.scene.propPose(bi).pos, gap = Math.hypot(b[0] - sp[0], b[1] - sp[1], b[2] - sp[2]) - REACH.ballR;
+      if (gap < REACH.ball && (!n || gap < Math.hypot(n.pt[0] - sp[0], n.pt[1] - sp[1], n.pt[2] - sp[2]))) return [b[0], b[1], b[2]];
+    }
     if (!n) return null;
     const d: Vec3 = [n.pt[0] - sp[0], n.pt[1] - sp[1], n.pt[2] - sp[2]], m = Math.hypot(...d) || 1;
     return [n.pt[0] + d[0] * REACH.into / m, n.pt[1] + d[1] * REACH.into / m, n.pt[2] + d[2] * REACH.into / m];
@@ -616,8 +623,9 @@ const G = 9.81;
 /** Reaching (design §6.5): gap between a raised hand's surface and an opponent's body (m) under which the hand
  *  closes on it (a fistful of jersey stands off the body by a few cm); distance from the shoulder within which
  *  the arm aims at the nearest part of that body (an arm's length and a lean: the eyes guide the hand), and how
- *  far inside its surface the aim point lies. */
-const REACH = { grab: 0.07, aim: 0.9, into: 0.03 };
+ *  far inside its surface the aim point lies. A loose ball is aimed at from further (the body bends to it): its
+ *  surface within `ball` m of the shoulder, taken as a sphere of radius `ballR`. */
+const REACH = { grab: 0.07, aim: 0.9, into: 0.03, ball: 1.3, ballR: 0.1 };
 const quatAt = (a: Float64Array, k: number): Quat => [a[4 * k], a[4 * k + 1], a[4 * k + 2], a[4 * k + 3]];
 /** Pad level (design §6.5): pelvis drop below standing (m) at which an athlete counts as fully low, how much
  *  more impulse a fully low athlete takes for the same knock (assumption: a sunk, wide base), and the upward force
