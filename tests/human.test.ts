@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_SUPPORT } from '../src/sim/anim/types';
 import { HumanBrain, type HumanInput } from '../src/sim/brains/human';
 import type { AthleteView, Perception } from '../src/sim/brains/types';
+import { DEFAULT_OPEN_FIELD, OpenFieldDrill } from '../src/sim/drills/openField';
+import { mujocoEngine } from '../src/sim/physics/mujoco';
+import { STD } from './helpers/scenario';
 
 const view = (x: number, z: number, heading = 0): AthleteView => ({ com: [x, 1, z], comVel: [0, 0, 0], pelvis: [x, 1, z], head: [x, 1.8, z], heading, down: false, hasBall: false });
 const perceive = (carrier: AthleteView): Perception => ({ time: 0, self: 0, athletes: [view(0, 0), { ...carrier, hasBall: true }], field: { halfWidth: 24, goalZ: 50, dirZ: 1 } });
@@ -29,5 +33,43 @@ describe('HumanBrain', () => {
     expect([c.armL, c.gripL, c.armR, c.gripR]).toEqual([1, true, 0, false]);
     expect(c.aim![0]).toBeGreaterThan(1);                              // camera looks along +X
     expect(c.aim![1]).toBeGreaterThan(1.5);                            // aimed above level
+  });
+
+  it('shift lock faces the camera way and moves camera-relative; off, it faces the move direction', () => {
+    const b = new HumanBrain();
+    b.latest = input({ move: { x: 1, y: 0 }, cameraYaw: Math.PI / 2, shiftLock: true });
+    let c = b.think(perceive(view(0, 20)));
+    expect(c.face!.x).toBeCloseTo(1); expect(c.face!.z).toBeCloseTo(0);  // camera looks along +X
+    expect(c.move.x).toBeCloseTo(0); expect(c.move.z).toBeCloseTo(1);   // D = the camera's right
+    b.latest = { ...b.latest, shiftLock: false };
+    c = b.think(perceive(view(0, 20)));
+    expect(c.face).toBeNull();
+  });
+
+  it('with shift lock, holding D shuffles sideways without turning the body (headless)', async () => {
+    await mujocoEngine.init();
+    const run = async (shiftLock: boolean) => {
+      const h = new HumanBrain();
+      const d = await OpenFieldDrill.create(mujocoEngine, { ...DEFAULT_OPEN_FIELD, physics: STD, seed: 1, support: { ...DEFAULT_SUPPORT } }, h);
+      const w = d.world, h0 = w.perception(0).athletes[0].heading;
+      h.latest = input({ move: { x: 1, y: 0 }, cameraYaw: h0, shiftLock });
+      let turn = 0;
+      for (let i = 0, n = Math.round(1.5 / w.dt); i < n; i++) {
+        d.step();
+        const me = w.perception(0).athletes[0];
+        turn = Math.max(turn, Math.abs(Math.atan2(Math.sin(me.heading - h0), Math.cos(me.heading - h0))));
+      }
+      // velocity along the camera's right (-cos, sin) of the start heading
+      const v = w.scene.athletes[0].state.comVel, side = -v[0] * Math.cos(h0) + v[2] * Math.sin(h0);
+      const out = { turnDeg: turn * 180 / Math.PI, side, instabilities: w.scene.stats().instabilities };
+      d.destroy();
+      return out;
+    };
+    const on = await run(true), off = await run(false);
+    console.log(`shift lock on: turned ${on.turnDeg.toFixed(1)}°, side speed ${on.side.toFixed(2)} m/s; off: turned ${off.turnDeg.toFixed(1)}°, side speed ${off.side.toFixed(2)} m/s`);
+    expect(on.turnDeg).toBeLessThan(20);
+    expect(on.side).toBeGreaterThan(0.8);
+    expect(off.turnDeg).toBeGreaterThan(60);
+    expect(on.instabilities + off.instabilities).toBe(0);
   });
 });

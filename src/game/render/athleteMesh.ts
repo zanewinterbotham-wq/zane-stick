@@ -44,7 +44,7 @@ export class AthleteMesh {
   readonly materials: THREE.MeshStandardMaterial[][] = [];
   private base: THREE.Color[][] = [];
 
-  constructor(plan: BodyPlan, team: TeamColors, quality: 'low' | 'high', skin: SkinTemplate | null = null) {
+  constructor(private plan: BodyPlan, team: TeamColors, quality: 'low' | 'high', skin: SkinTemplate | null = null) {
     this.root.add(this.classic, this.skin);
     if (skin) this.wear(plan, team, quality, skin);
     const caps = quality === 'high' ? [10, 6] : [7, 3];
@@ -131,6 +131,13 @@ export class AthleteMesh {
       node.position.copy(off).applyQuaternion(node.quaternion);
       node.position.x += segPos[3 * i]; node.position.y += segPos[3 * i + 1]; node.position.z += segPos[3 * i + 2];
     }
+  }
+
+  /** Show or hide the head, neck, helmet and facemask (classic and skin): the helmet camera sits inside them. */
+  setHeadVisible(on: boolean) {
+    const head = (i: number) => /^(head|neck)$/.test(this.plan.segments[i].name);
+    this.segs.forEach((g, i) => { if (head(i)) g.visible = on; });
+    for (const p of this.parts) if (head(p.seg)) p.node.visible = on;
   }
 
   /** Effort shading: tint each segment toward hot orange as its muscles near their limit (0..1). */

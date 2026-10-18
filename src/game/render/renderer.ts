@@ -27,6 +27,8 @@ export class GameRenderer {
   skin: Skin = CLASSIC;
   private template: SkinTemplate | null = null;
   private skinReq = 0;
+  /** Athlete whose head is not drawn (the helmet camera looks out from inside it), or -1. */
+  hideHeadOf = -1;
   /** Render time of the last frame (ms) and the last frame's draw calls. */
   lastMs = 0;
 
@@ -108,6 +110,7 @@ export class GameRenderer {
     w.athletes.forEach((a, i) => {
       const s = w.scene.athletes[i].state, mesh = this.athletes[i];
       mesh.pose(s.segPos, s.segQuat);
+      mesh.setHeadVisible(i !== this.hideHeadOf);
       mesh.shade(this.xray && this.effortShading ? segmentEffort(a) : null);
     });
     (w.setup.props ?? []).forEach((p, i) => {

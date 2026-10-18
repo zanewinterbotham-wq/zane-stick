@@ -1,5 +1,6 @@
 // Over-the-shoulder chase camera: orbits a pivot that follows the pelvis (never the head, so it never shakes
-// with the head). Yaw and pitch come from the mouse, or trail the athlete's heading in automatic mode.
+// with the head); the helmet view is pinned to the eyes instead. Yaw and pitch come from the mouse, or trail the
+// athlete's heading in automatic mode.
 // Shake and a punch toward the hit are added on top and decay.
 import * as THREE from 'three';
 import type { World } from '../sim/world';
@@ -9,6 +10,8 @@ export const PITCH0 = 0.22;
 const PITCH_MIN = -0.25, PITCH_MAX = 1.0;
 /** Distance behind the pivot, pivot height above the pelvis and shoulder offset to the right (m). */
 const DIST = 3.0, PIVOT_UP = 0.75, SHOULDER = 0.55;
+/** Helmet view: eyes below and ahead of the helmet centre (head frame, m), and how far the look turns off the body. */
+const EYE = [0, -0.02, 0.07], HELMET_YAW = 1.3;
 
 export class ChaseCamera {
   private pivot = new THREE.Vector3(0, 1.6, 0);
@@ -55,9 +58,15 @@ export class ChaseCamera {
     const dir = new THREE.Vector3(Math.sin(this.yaw) * cp, -Math.sin(this.pitch), Math.cos(this.yaw) * cp);
     const right = new THREE.Vector3(-Math.cos(this.yaw), 0, Math.sin(this.yaw));
     if (this.mode === 'helmet') {
-      const hi = a.segIndex.get('head')!;
-      const fwd = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
-      spring(this.pos, this.vel, new THREE.Vector3(s.segPos[3 * hi], s.segPos[3 * hi + 1] + 0.12, s.segPos[3 * hi + 2]).addScaledVector(fwd, 0.05), 40, dt);
+      // pinned to the eyes every frame (no spring: any lag lets the view drift out of the head); the look turns
+      // at most HELMET_YAW off the body's heading, as a neck would
+      const hi = a.segIndex.get('head')!, h = a.plan.segments[hi], c = h.geoms.find((g) => g.role === 'helmet')?.pos ?? h.com;
+      const eye = new THREE.Vector3(c[0] - h.origin[0], c[1] - h.origin[1] + EYE[1], c[2] - h.origin[2] + EYE[2])
+        .applyQuaternion(new THREE.Quaternion(s.segQuat[4 * hi], s.segQuat[4 * hi + 1], s.segQuat[4 * hi + 2], s.segQuat[4 * hi + 3]));
+      this.pos.set(s.segPos[3 * hi], s.segPos[3 * hi + 1], s.segPos[3 * hi + 2]).add(eye);
+      this.vel.set(0, 0, 0);
+      const off = Math.atan2(Math.sin(this.yaw - heading), Math.cos(this.yaw - heading));
+      this.yaw = heading + Math.max(-HELMET_YAW, Math.min(HELMET_YAW, off));
       cam.position.copy(this.pos);
       cam.lookAt(this.pos.clone().add(new THREE.Vector3(Math.sin(this.yaw) * cp, -Math.sin(this.pitch - PITCH0 + 0.08), Math.cos(this.yaw) * cp)));
     } else if (this.mode === 'side') {
@@ -72,11 +81,12 @@ export class ChaseCamera {
       cam.position.y = Math.max(0.3, cam.position.y);
       cam.lookAt(at.addScaledVector(dir, 4));
     }
-    cam.position.add(this.punchOff);
+    const k = this.mode === 'helmet' ? 0.25 : 1; // the helmet view stays near the eyes even on a big hit
+    cam.position.addScaledVector(this.punchOff, k);
     this.punchOff.multiplyScalar(Math.exp(-dt * 10));
     if (this.shake > 0.001) {
-      cam.position.x += (Math.random() - 0.5) * this.shake;
-      cam.position.y += (Math.random() - 0.5) * this.shake;
+      cam.position.x += (Math.random() - 0.5) * this.shake * k;
+      cam.position.y += (Math.random() - 0.5) * this.shake * k;
       this.shake *= Math.exp(-dt * 9);
     }
   }

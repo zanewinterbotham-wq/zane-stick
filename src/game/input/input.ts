@@ -3,7 +3,7 @@
 import defaults from './bindings.json';
 
 export interface Bindings {
-  keyboard: Record<string, string[]>; autoCamera: Record<string, string[]>; gamepad: Record<string, string[]>;
+  keyboard: Record<string, string[]>; gamepad: Record<string, string[]>;
   options: { deadzone: number; sinkRampPerSecond: number; mouseSensitivity: number; padLookRate: number; wheelPerFullTorso: number; torsoRatePerSecond: number };
 }
 
@@ -12,8 +12,10 @@ export interface InputFrame {
   move: { x: number; y: number };     // stick/keys: x right, y forward
   /** Camera turn this frame (rad): x = turn right, y = look down. Mouse (pointer locked) or right stick. */
   look: { x: number; y: number };
-  /** Torso angle −1 (up) .. 1 (down), set by the wheel or I/K and eased. */
+  /** Torso angle −1 (up) .. 1 (down: trunk level with the ground), set by the wheel or I/K and eased. */
   torso: number;
+  /** Side shuffle (shift lock): face the camera's way and strafe. Toggled by its bind. */
+  shiftLock: boolean;
   sprint: number; sink: number;
   armL: number; armR: number;
   held: Set<string>;                  // digital actions held this frame
@@ -21,7 +23,24 @@ export interface InputFrame {
   device: 'keyboard' | 'gamepad';
 }
 
-const DIGITAL = ['sprint', 'sink', 'thrust', 'dive', 'armL', 'armR', 'torsoUp', 'torsoDown', 'reset', 'pause', 'overlay', 'tuning', 'moveUp', 'moveDown', 'moveLeft', 'moveRight'];
+const DIGITAL = ['sprint', 'sink', 'thrust', 'dive', 'armL', 'armR', 'torsoUp', 'torsoDown', 'shiftLock', 'reset', 'pause', 'overlay', 'tuning', 'moveUp', 'moveDown', 'moveLeft', 'moveRight'];
+
+/** Keys the player may not bind: the OS and browser need them (Alt+Tab, the Windows key, Esc frees the mouse). */
+export const RESERVED = /^(Escape|Alt|Tab|Meta|OS|ContextMenu)/;
+
+const NAMES: Record<string, string> = {
+  Mouse0: 'Left click', Mouse1: 'Middle click', Mouse2: 'Right click', Mouse3: 'Mouse back', Mouse4: 'Mouse forward',
+  Semicolon: ';', Quote: "'", Backquote: '`', Comma: ',', Period: '.', Slash: '/', Backslash: '\\', BracketLeft: '[',
+  BracketRight: ']', Minus: '-', Equal: '=', Escape: 'Esc',
+};
+/** Display name of a key code: KeyW → W, ShiftLeft → Shift, ControlLeft → Ctrl, Mouse0 → Left click. */
+export function keyName(code: string): string {
+  return NAMES[code] ?? code.replace(/^(Key|Digit|Arrow)/, '').replace(/^(Shift|Control|Alt|Meta)(Left|Right)$/, '$1').replace('Control', 'Ctrl');
+}
+/** Every key of an action by display name, without duplicates (ShiftLeft and ShiftRight are one Shift). */
+export function keysText(codes: readonly string[], sep = ' / '): string {
+  return [...new Set(codes.map(keyName))].join(sep) || '—';
+}
 
 export class InputManager {
   bindings: Bindings = JSON.parse(JSON.stringify(defaults));
@@ -35,6 +54,7 @@ export class InputManager {
   private torso = [0, 0];
   private mouse = { x: 0, y: 0, wheel: 0 };
   private auto = false;
+  private shiftLock = [false, false];
   /** While false (menus open), bound keys keep their normal browser behaviour (Tab moves focus, etc.). */
   capture = true;
   /** Which source drives each player: player 0 = keyboard and mouse (or the first gamepad once it is used), player 1 = first gamepad. */
@@ -45,8 +65,9 @@ export class InputManager {
   constructor(target: Window = window) {
     this.rebuildKeySet();
     target.addEventListener('keydown', (e) => {
-      // Ctrl is the sink key: also stop Ctrl+D, Ctrl+S, … (Ctrl+W only yields to keyboard lock)
-      if (this.capture && (this.keyCodes.has(e.code) || e.ctrlKey)) e.preventDefault();
+      // Ctrl is the sink key: also stop Ctrl+D, Ctrl+S, … (Ctrl+W only yields to keyboard lock). Alt, Tab and the
+      // Windows key always pass, so Alt+Tab switches windows.
+      if (this.capture && !RESERVED.test(e.code) && (this.keyCodes.has(e.code) || e.ctrlKey)) e.preventDefault();
       if (!e.repeat) this.tapped.add(e.code);
       this.keys.add(e.code);
       this.lastDevice = 'keyboard';
@@ -74,16 +95,24 @@ export class InputManager {
     }, { passive: false });
   }
 
-  /** Automatic camera: arms and torso move from the mouse to J/L and I/K. Rebinds immediately. */
+  /** Automatic camera: the mouse no longer turns the view (the camera follows). Every key stays bound. */
   get autoCamera() { return this.auto; }
-  set autoCamera(on: boolean) {
-    this.auto = on;
-    this.bindings.keyboard = { ...this.bindings.keyboard, ...(on ? defaults.autoCamera : { armL: defaults.keyboard.armL, armR: defaults.keyboard.armR, torsoUp: [], torsoDown: [] }) };
+  set autoCamera(on: boolean) { this.auto = on; }
+
+  /** Apply the player's keyboard and mouse rebinds over the defaults, live. */
+  setKeyboard(overrides: Record<string, string[]>) {
+    // stored settings may be stale or hand-edited: known actions only, never a reserved key, Esc always pauses
+    const ok = Object.entries(overrides ?? {}).filter(([a, v]) => a in defaults.keyboard && a !== 'pause' && Array.isArray(v))
+      .map(([a, v]) => [a, v.filter((c) => typeof c === 'string' && !RESERVED.test(c))]);
+    this.bindings.keyboard = { ...defaults.keyboard, ...Object.fromEntries(ok) };
     this.keys.clear();
     this.rebuildKeySet();
   }
 
   rebuildKeySet() { this.keyCodes = new Set(Object.values(this.bindings.keyboard).flat()); }
+
+  /** Keyboard lock list for fullscreen: only the bound keys, so Alt+Tab, the Windows key and Esc keep working. */
+  lockKeys(): string[] { return [...this.keyCodes].filter((k) => !k.startsWith('Mouse') && !RESERVED.test(k)); }
 
   resetTorso() { this.torso = [0, 0]; this.torsoTarget = [0, 0]; this.mouse.wheel = 0; }
 
@@ -129,9 +158,10 @@ export class InputManager {
     if (!usePad) {
       move = { x: val('moveRight') - val('moveLeft'), y: val('moveUp') - val('moveDown') };
       look = this.auto ? { x: 0, y: 0 } : { x: this.mouse.x * o.mouseSensitivity, y: this.mouse.y * o.mouseSensitivity };
-      if (!this.auto) torsoStep += this.mouse.wheel / o.wheelPerFullTorso;
+      torsoStep -= this.mouse.wheel / o.wheelPerFullTorso; // owner's choice: scrolling up angles the torso down
     }
     this.mouse.x = this.mouse.y = this.mouse.wheel = 0;
+    if (pressed.has('shiftLock')) this.shiftLock[player] = !this.shiftLock[player];
     // torso: an accumulated angle, eased so a wheel notch does not jerk the trunk
     this.torsoTarget[player] = Math.max(-1, Math.min(1, this.torsoTarget[player] + torsoStep));
     this.torso[player] += (this.torsoTarget[player] - this.torso[player]) * Math.min(1, dt / 0.12);
@@ -143,7 +173,7 @@ export class InputManager {
       sink = this.sinkRamp[player];
     }
     return {
-      move, look, torso: this.torso[player], sprint: usePad ? val('sprint') : held.has('sprint') ? 1 : 0, sink,
+      move, look, torso: this.torso[player], shiftLock: this.shiftLock[player], sprint: usePad ? val('sprint') : held.has('sprint') ? 1 : 0, sink,
       armL: val('armL'), armR: val('armR'), held, pressed,
       device: usePad ? 'gamepad' : 'keyboard',
     };

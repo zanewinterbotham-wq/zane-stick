@@ -14,12 +14,30 @@ import { chooseBest, reportText, runBenchmark } from './benchmark';
 import { ChaseCamera } from './camera';
 import { SoundCues } from './cues';
 import { HitMeter, hitFeel, MPH } from './feel';
-import { InputManager, type InputFrame } from './input/input';
+import { InputManager, keyName, keysText, RESERVED, type InputFrame } from './input/input';
 import { PRESETS, type PresetName } from './presets';
 import { GameRenderer, RENDER_PRESETS } from './render/renderer';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from './settings';
 import { skinById, unlockedSkins } from './render/skin';
 import { el, Hud, Layer, menu, moveFocus } from './ui';
+
+/** Rebindable actions on the Controls screen: binding name, what it does, controller button. */
+const REBIND: [string, string, string][] = [
+  ['moveUp', 'Move forward (relative to the camera)', 'Left stick'], ['moveLeft', 'Move left', 'Left stick'],
+  ['moveDown', 'Move back', 'Left stick'], ['moveRight', 'Move right', 'Left stick'],
+  ['sprint', 'Sprint (drives the legs in contact)', 'RT'],
+  ['sink', 'Sink the hips (hold longer = lower)', 'LT (depth)'],
+  ['thrust', 'Thrust the hips forward (overrides sink and torso)', 'A'],
+  ['dive', 'Dive forward (one press: launch, fly, land)', 'B'],
+  ['armL', 'Left arm: raise toward the aim, grab what it touches', 'LB'],
+  ['armR', 'Right arm: raise toward the aim, grab what it touches', 'RB'],
+  ['torsoDown', 'Angle the torso down, to level (also scroll up)', 'D-pad down'],
+  ['torsoUp', 'Angle the torso up (also scroll down)', 'D-pad up'],
+  ['shiftLock', 'Side shuffle on / off: face the camera way, A / D shuffle', 'L3 (stick click)'],
+  ['reset', 'Reset rep', 'Start (tap)'], ['tuning', 'Tuning panel', 'menu'], ['overlay', 'Performance overlay', 'menu'],
+];
+/** Controls that are not rebindable. */
+const FIXED: string[][] = [['Torso angle', 'Scroll (up = lower the shoulders)', '—'], ['Look (aims the arms)', 'Mouse', 'Right stick'], ['Pause', 'Esc', 'Start (hold)']];
 
 const params = new URLSearchParams(location.search);
 const canvas = document.getElementById('view') as HTMLCanvasElement;
@@ -38,6 +56,7 @@ async function devScenario(name: string) {
   r.setXray(params.get('xray') === '1');
   const cam = new ChaseCamera();
   cam.mode = (params.get('cam') as ChaseCamera['mode']) ?? 'chase';
+  r.hideHeadOf = cam.mode === 'helmet' ? 0 : -1;
   const heading = () => { const q = world.scene.athletes[0].state.segQuat; return headingOf(qrot([q[0], q[1], q[2], q[3]], [0, 0, 1])); };
   cam.snap(r.camera, world, heading());
   document.getElementById('loading')?.remove();
@@ -91,7 +110,10 @@ class App {
     this.input.capture = false;
     this.cam.mode = this.settings.camera;
     this.cam.follow = this.input.autoCamera = this.settings.autoCamera;
+    this.input.setKeyboard(this.settings.bindings);
     this.audio.muted = this.settings.mute;
+    // Alt+Tab (or any switch away): pause, which frees the mouse; Resume or a click on the field captures it again
+    window.addEventListener('blur', () => this.lostFocus());
     canvas.addEventListener('click', () => { if (!this.paused) this.lockPointer(); });
     document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement) this.lostFocus(); });
     document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) { this.kbLocked = false; this.lostFocus(); } });
@@ -200,7 +222,7 @@ class App {
       { label: `Effort shading (anatomy view): ${s.effortShading ? 'on' : 'off'}`, action: () => { s.effortShading = !s.effortShading; if (this.renderer) this.renderer.effortShading = s.effortShading; this.save(); this.pauseMenu(); } },
       { label: `Big-hit slow motion: ${s.slowMo ? 'on' : 'off'}`, action: () => { s.slowMo = !s.slowMo; this.save(); this.pauseMenu(); } },
       { label: `Camera: ${this.cam.mode}`, action: () => { this.toggleCamera(); this.pauseMenu(); } },
-      { label: `Automatic camera: ${s.autoCamera ? 'on (arms J / L, torso I / K)' : 'off (mouse look)'}`, action: () => { this.setAutoCamera(!s.autoCamera); this.pauseMenu(); } },
+      { label: `Automatic camera: ${s.autoCamera ? 'on (follows the athlete)' : 'off (mouse look)'}`, action: () => { this.setAutoCamera(!s.autoCamera); this.pauseMenu(); } },
       { label: `Sound: ${s.mute ? 'off' : 'on'}`, action: () => { s.mute = !s.mute; this.audio.muted = s.mute; this.save(); this.pauseMenu(); } },
       { label: 'Tuning panel', hint: 'T', action: () => this.tuning() },
       { label: 'Controls', action: () => this.controls(() => this.pauseMenu()) },
@@ -215,11 +237,15 @@ class App {
    *  close the tab. Each can be refused (no user gesture, headless, unsupported); the game works without them. */
   enterPlay() {
     this.lockPointer();
-    const kb = (navigator as Navigator & { keyboard?: { lock?: () => Promise<void> } }).keyboard;
-    if (document.fullscreenElement || !document.documentElement.requestFullscreen) return;
-    document.documentElement.requestFullscreen()
-      .then(() => { this.lockPointer(); return kb?.lock ? kb.lock().then(() => { this.kbLocked = !!document.fullscreenElement; }) : undefined; })
-      .catch(() => {});
+    if (document.fullscreenElement) { void this.lockKeys(); return; } // bindings may have changed while paused
+    if (!document.documentElement.requestFullscreen) return;
+    document.documentElement.requestFullscreen().then(() => { this.lockPointer(); return this.lockKeys(); }).catch(() => {});
+  }
+
+  /** Lock only the bound keys: a bare lock() would also take Alt+Tab and the Windows key from the system. */
+  lockKeys() {
+    const kb = (navigator as Navigator & { keyboard?: { lock?: (keys?: string[]) => Promise<void> } }).keyboard;
+    return kb?.lock?.(this.input.lockKeys()).then(() => { this.kbLocked = !!document.fullscreenElement; }).catch(() => {});
   }
 
   lockPointer() {
@@ -236,37 +262,82 @@ class App {
     if (on) document.exitPointerLock?.();
   }
 
-  /** Gameplay controls: HUD label, controls-screen action, keyboard and mouse, controller. */
-  controlRows(): [string, string, string, string][] {
-    const auto = this.settings.autoCamera;
+  /** Gameplay controls from the live bindings: HUD label, keyboard and mouse. */
+  controlRows(): [string, string][] {
+    const k = this.input.bindings.keyboard, t = (a: string) => keysText(k[a] ?? []);
+    const move = ['moveUp', 'moveLeft', 'moveDown', 'moveRight'].map((a) => k[a]?.[0] ? keyName(k[a][0]) : '—').join(' ');
     return [
-      ['Move', 'Move (relative to the camera)', 'W A S D', 'Left stick'],
-      ['Sprint', 'Sprint (drives the legs in contact)', 'Shift', 'RT'],
-      ['Sink', 'Sink the hips (hold longer = lower)', this.kbLocked ? 'Ctrl' : 'Ctrl / C', 'LT (depth)'],
-      ['Thrust', 'Thrust the hips (overrides sink and torso)', 'Space', 'A'],
-      ['Dive', 'Dive forward (one press: launch, fly, land)', 'E', 'B'],
-      ['Left arm, grab', 'Raise the left arm toward the aim; grabs what it touches until released', auto ? 'J' : 'Left click', 'LB'],
-      ['Right arm, grab', 'Raise the right arm toward the aim; grabs what it touches until released', auto ? 'L' : 'Right click', 'RB'],
-      ['Torso up / down', 'Angle the torso up / down', auto ? 'I / K' : 'Scroll', 'D-pad up / down'],
-      ...(auto ? [] : [['Look', 'Camera (aims the arms)', 'Mouse', 'Right stick'] as [string, string, string, string]]),
+      ['Move', move], ['Sprint', t('sprint')], ['Sink', t('sink')], ['Thrust', t('thrust')], ['Dive', t('dive')],
+      ['Left arm, grab', t('armL')], ['Right arm, grab', t('armR')],
+      ['Torso down / up (scroll up = down)', `Scroll, ${t('torsoDown')} / ${t('torsoUp')}`],
+      ['Side shuffle (toggle)', t('shiftLock')],
+      ...(this.settings.autoCamera ? [] : [['Look', 'Mouse'] as [string, string]]),
     ];
   }
 
+  /** Controls screen: every rebindable action with its keys; Replace or Add listens for the next key or mouse button. */
   controls(back = () => this.title()) {
-    const table = (head: string[], rows: string[][]) => el('table', { class: 'controls' }, el('tr', {}, ...head.map((h) => el('th', { text: h }))),
-      ...rows.map((r) => el('tr', {}, ...r.map((c) => el('td', { text: c })))));
-    const play = table(['Action', this.settings.autoCamera ? 'Keyboard' : 'Keyboard and mouse', 'Controller'], this.controlRows().map(([, a, k, g]) => [a, k, g]));
-    const meta = table(['Game', 'Keyboard', 'Controller'], [
-      ['Reset rep', 'Enter', 'Start (tap)'], ['Pause', 'Esc', 'Start (hold)'], ['Tuning panel', 'T', 'menu'], ['Performance overlay', '`', 'menu'],
-      ['Anatomy view, camera view, quality, automatic camera', 'pause menu', 'pause menu'],
-    ]);
-    const box = el('div', { class: 'panel menu wide' }, el('h1', { text: 'Controls' }),
-      el('p', { class: 'sub', text: 'Contact mode is automatic: within about 4 m of the ball carrier your athlete settles into a ready stance with the arms up. No control is needed for balance; once you make contact, physics decides who stays up.' }),
-      play, el('p', { class: 'sub' }), meta);
+    const k = () => this.input.bindings.keyboard;
+    const status = el('p', { class: 'sub', role: 'status', text: 'Replace or Add, then press a key or mouse button. Esc, Alt, Tab and the Windows key stay with the browser and system.' });
+    const table = el('table', { class: 'controls' });
+    const render = () => table.replaceChildren(
+      el('tr', {}, ...['Action', 'Keyboard and mouse', 'Controller', ''].map((h) => el('th', { text: h }))),
+      ...REBIND.map(([a, label, pad]) => {
+        const rep = el('button', { class: 'bind', type: 'button', 'aria-label': `Replace ${label}` }, 'Replace');
+        const add = el('button', { class: 'bind', type: 'button', 'aria-label': `Add a key to ${label}` }, 'Add');
+        rep.addEventListener('click', () => this.listenForBind(a, label, false, status, render));
+        add.addEventListener('click', () => this.listenForBind(a, label, true, status, render));
+        return el('tr', { 'data-action': a }, el('td', { text: label }), el('td', { class: 'keys-cell', text: keysText(k()[a] ?? []) }), el('td', { text: pad }), el('td', {}, rep, add));
+      }),
+      ...FIXED.map((r) => el('tr', {}, ...r.map((c) => el('td', { text: c })), el('td'))));
+    render();
+    const reset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset controls to defaults');
+    reset.addEventListener('click', () => { this.settings.bindings = {}; this.input.setKeyboard({}); this.save(); render(); status.textContent = 'Controls reset to the defaults.'; });
     const b = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back');
     b.addEventListener('click', back);
-    box.append(el('p', { class: 'sub', text: this.settings.autoCamera ? 'Automatic camera is on: no mouse is needed.' : 'Click the field to capture the mouse; Esc frees it and pauses. Ctrl+W can close the tab unless the browser grants keyboard lock in fullscreen, so C also sinks.' }), b);
+    const box = el('div', { class: 'panel menu wide' }, el('h1', { text: 'Controls' }),
+      el('p', { class: 'sub', text: 'Contact mode is automatic: within about 4 m of the ball carrier your athlete settles into a ready stance with the arms up. No control is needed for balance; once you make contact, physics decides who stays up. J / L and I / K always work alongside the mouse, so a touchpad is enough.' }),
+      status, table,
+      el('p', { class: 'sub', text: 'Click the field to capture the mouse; Esc frees it and pauses. Ctrl+W can close the tab unless the browser grants keyboard lock in fullscreen, so C also sinks. Anatomy view, camera view, quality and automatic camera are in the pause menu.' }),
+      reset, b);
     this.layer.show(box);
+  }
+
+  /** Wait for the next key or mouse button and bind it to the action (Esc cancels). A key taken from another action
+   *  leaves it, so one key never does two things. */
+  listenForBind(action: string, label: string, add: boolean, status: HTMLElement, done: () => void) {
+    status.textContent = `Press a key or mouse button for "${label}"… (Esc cancels)`;
+    (document.activeElement as HTMLElement | null)?.blur(); // a Space press must not re-click the button
+    const swallow = (e: Event) => { e.preventDefault(); e.stopImmediatePropagation(); };
+    const finish = (code: string | null) => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('mousedown', onMouse, true);
+      // the click and context menu that follow a bound mouse press must not reach the menu
+      setTimeout(() => { window.removeEventListener('click', swallow, true); window.removeEventListener('contextmenu', swallow, true); }, code?.startsWith('Mouse') ? 400 : 0);
+      if (code) {
+        const k = this.input.bindings.keyboard, next: Record<string, string[]> = {};
+        for (const [a, codes] of Object.entries(k)) if (a !== action && codes.includes(code)) next[a] = codes.filter((c) => c !== code);
+        next[action] = add ? [...new Set([...(k[action] ?? []), code])] : [code];
+        this.settings.bindings = { ...this.settings.bindings, ...next };
+        this.input.setKeyboard(this.settings.bindings);
+        this.save();
+        this.audio.play('ui_confirm', 1);
+        status.textContent = `"${label}": ${keysText(this.input.bindings.keyboard[action])}`;
+      } else status.textContent = 'Cancelled.';
+      done();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (!status.isConnected) { finish(null); return; } // the screen was left (controller B): stop listening
+      swallow(e);
+      if (e.code === 'Escape') finish(null);
+      else if (RESERVED.test(e.code)) status.textContent = `${keyName(e.code)} stays with the browser and system: press another key (Esc cancels)`;
+      else finish(e.code);
+    };
+    const onMouse = (e: MouseEvent) => { if (!status.isConnected) { finish(null); return; } swallow(e); finish(`Mouse${e.button}`); };
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('mousedown', onMouse, true);
+    window.addEventListener('click', swallow, true);
+    window.addEventListener('contextmenu', swallow, true);
   }
 
   keyTest(back = () => this.title()) {
@@ -412,7 +483,8 @@ class App {
       if (!this.paused) {
         const f: InputFrame = this.input.read(0, dtReal);
         if (!this.cam.follow) this.cam.look(f.look.x, f.look.y);
-        this.human.latest = { move: f.move, torso: f.torso, sprint: f.sprint, sink: f.sink, armL: f.armL, armR: f.armR, held: f.held, cameraYaw: this.cam.yaw, aimPitch: this.cam.aimPitch };
+        this.human.latest = { move: f.move, torso: f.torso, sprint: f.sprint, sink: f.sink, armL: f.armL, armR: f.armR, held: f.held, cameraYaw: this.cam.yaw, aimPitch: this.cam.aimPitch, shiftLock: f.shiftLock };
+        if (f.pressed.has('shiftLock')) this.hud.flash(`Side shuffle ${f.shiftLock ? 'on' : 'off'}`);
         if (now / 1000 > this.slowUntil) this.timeScale = 1;
         // hit-stop freezes wall time only: the same fixed steps run afterwards, none are skipped mid-step
         if (now >= this.freezeUntil) this.acc += dtReal * this.timeScale;
@@ -426,6 +498,7 @@ class App {
         this.physMs += (performance.now() - t0 - this.physMs) * 0.1;
       }
       this.cam.update(r.camera, w, dtReal, this.humanHeading());
+      r.hideHeadOf = this.cam.mode === 'helmet' ? this.cam.target : -1;
       const m = r.camera.matrixWorld.elements; // column 0: the camera's right axis
       this.audio.listen([r.camera.position.x, r.camera.position.y, r.camera.position.z], [m[0], m[1], m[2]]);
       const v = w.scene.athletes[0].state.comVel;
@@ -480,12 +553,12 @@ class App {
     const mode = this.human.contact ? 'CONTACT (auto)' : 'MOVEMENT';
     this.hud.setStatus([
       `OPEN FIELD  ·  Rep ${d.rep + 1}  ·  ${Math.min(d.repTime, d.cfg.timeLimit).toFixed(1)} s`,
-      `Ball: ${w.ballCarrier === d.human ? 'YOU HAVE IT — score at the far end zone' : w.ballCarrier < 0 ? 'LOOSE — dive on it' : 'carrier'}   ·   Mode: ${mode}${this.timeScale < 1 ? '   SLOW MOTION' : ''}`,
+      `Ball: ${w.ballCarrier === d.human ? 'YOU HAVE IT — score at the far end zone' : w.ballCarrier < 0 ? 'LOOSE — dive on it' : 'carrier'}   ·   Mode: ${mode}${this.human.latest?.shiftLock ? '  ·  SIDE SHUFFLE' : ''}${this.timeScale < 1 ? '   SLOW MOTION' : ''}`,
       sup ? `Support ${((d.cfg.support?.strength ?? 1) * 100).toFixed(0)}%  ·  posture ${(sup.posture * 100).toFixed(0)}%  ·  carry ${(sup.carry * 100).toFixed(0)}%${sup.down ? '  ·  DOWN' : ''}`
         : `Balance assist ${(this.settings.assist * 100).toFixed(0)}%${me.assistLevel < 1 ? ` (fading ${(me.assistLevel * 100).toFixed(0)}%)` : ''}`,
     ]);
     this.hud.setSpeed(this.speed, this.speed * MPH);
-    this.hud.setControls(this.controlRows().map(([h, , k]) => [k, h]), this.kbLocked ? '' : 'Ctrl+W can close the tab here: C also sinks');
+    this.hud.setControls(this.controlRows().map(([h, k]) => [k, h]),this.kbLocked ? '' : 'Ctrl+W can close the tab here: C also sinks');
     if (this.settings.overlay) {
       const st = w.scene.stats();
       this.hud.setOverlay([

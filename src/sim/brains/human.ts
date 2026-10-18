@@ -11,6 +11,8 @@ export interface HumanInput {
   held: ReadonlySet<string>;
   cameraYaw: number;                // heading the camera looks along (rad, 0 = +Z)
   aimPitch: number;                 // elevation of the camera's aim above the horizontal (rad)
+  /** Side shuffle (Roblox-style shift lock): face the camera's way, so A / D shuffle and S backpedals. */
+  shiftLock?: boolean;
 }
 
 /** Contact mode switches on when a tackle target is this close and roughly ahead, and off past the wider
@@ -38,6 +40,7 @@ export class HumanBrain implements Brain {
     const m = Math.hypot(mx, mz);
     if (m > 1) { mx /= m; mz /= m; }
     c.move = { x: mx, z: mz };
+    if (i.shiftLock) c.face = { x: fwd[0], z: fwd[1] };
     c.contactMode = this.contact;
     c.gait = i.sprint > 0.5 ? 'sprint' : m > 0.6 ? 'jog' : 'walk';
     if (c.gait === 'walk' && m > 0) c.move = { x: mx / (m || 1), z: mz / (m || 1) }; // walk at walking speed

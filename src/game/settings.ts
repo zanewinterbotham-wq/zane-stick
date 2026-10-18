@@ -14,15 +14,16 @@ export interface Settings {
   mute: boolean;
   effortShading: boolean;
   slowMo: boolean;
-  autoCamera: boolean;            // camera follows the athlete; arms and torso on J/L and I/K (no mouse)
+  autoCamera: boolean;            // camera follows the athlete (no mouse look needed)
   camera: 'chase' | 'helmet';
+  bindings: Record<string, string[]>; // the player's keyboard / mouse rebinds, per action, over bindings.json
   overlay: boolean;
   skin: string;                  // character skin id (src/game/skins.json, or 'classic')
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   preset: null, assist: 0.2, support: DEFAULT_SUPPORT, strength: 1, speed: 1, traction: 1.2, gains: {}, mute: false, effortShading: true,
-  slowMo: true, autoCamera: false, camera: 'chase', overlay: false, skin: 'voxel',
+  slowMo: true, autoCamera: false, camera: 'chase', bindings: {}, overlay: false, skin: 'voxel',
 };
 
 const KEY = 'zane-stick-settings-v1';
