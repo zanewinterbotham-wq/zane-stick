@@ -35,7 +35,8 @@ Engine comparison: `docs/physics-benchmark.md`.
 - Layers: Brain → `Commands` → MotorController → activations → Muscles → PhysicsEngine.
 
 ## Commands
-- `npm run dev` — Vite dev server (`?scenario=stand|push|walk|jog|sprint|cut` for headless-style views,
+- `npm run dev` — Vite dev server (`?scenario=stand|push|walk|jog|sprint|cut|hit` for headless-style views,
+  `&hp=2.5` sets the hit scenario's hit power,
   `?bench=1` runs the in-game benchmark)
 - `npm test` — Vitest unit + fast physics tests (CI gate for deploys)
 - `npm run test:realism` — the realism contract (balance, pushes, determinism, preset consistency; slow)

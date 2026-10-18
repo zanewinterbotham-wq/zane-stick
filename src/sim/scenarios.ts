@@ -76,7 +76,7 @@ export function supportRunScenario(physics: PhysicsSettings, gait: Gait | null, 
 
 /** Ball carrier sprinting straight for the goal at +Z against a tackler who sprints at him and hits low and hard
  *  (a collision for physics tests: the CarrierBrain jukes a straight-line tackler, so it would not give one). */
-export function carrierVsTacklerScenario(physics: PhysicsSettings, opts: { carrier?: AthleteParams; tackler?: AthleteParams; seed?: number; gap?: number; support?: SupportSettings } = {}): Scenario {
+export function carrierVsTacklerScenario(physics: PhysicsSettings, opts: { carrier?: AthleteParams; tackler?: AthleteParams; seed?: number; gap?: number; support?: SupportSettings; hitPower?: number } = {}): Scenario {
   const seed = opts.seed ?? 1, gap = opts.gap ?? 14;
   const tackler = new ScriptBrain((t, p, c) => {
     const me = p.athletes[p.self], ball = p.athletes[1 - p.self];
@@ -87,7 +87,7 @@ export function carrierVsTacklerScenario(physics: PhysicsSettings, opts: { carri
   });
   return {
     setup: {
-      physics, seed, assist: 0, support: opts.support ?? { ...DEFAULT_SUPPORT },
+      physics, seed, assist: 0, support: opts.support ?? { ...DEFAULT_SUPPORT }, hitPower: opts.hitPower,
       field: { halfWidth: 24.38, goalZ: 50, dirZ: 1 },
       athletes: [
         { params: opts.carrier ?? DEFAULT_ATHLETE, pos: [0, 0, 0], yaw: 0, team: 0, controller: tracked, brain: new ScriptBrain((_t, _p, c) => { c.gait = 'sprint'; c.move = { x: 0, z: 1 }; c.carry = 2; }), hasBall: true },
