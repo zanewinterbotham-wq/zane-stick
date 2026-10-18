@@ -7,8 +7,11 @@ export interface Settings {
   preset: PresetName | null;     // null = not chosen yet (run the first-launch benchmark)
   assist: number;                // balance assist 0..1 (hand controller without support)
   support: SupportSettings;      // active-ragdoll support (tuning)
-  strength: number;              // muscle strength scale (tuning)
-  speed: number;                 // max joint speed scale (tuning)
+  strength: number;              // the player's muscle strength scale (difficulty)
+  speed: number;                 // the player's max joint speed scale (difficulty)
+  toughness: number;             // AI toughness: the bot's support thresholds × (difficulty; 1 = the player's)
+  juking: number;                // AI juking skill 0..1 (difficulty)
+  hitPower: number;              // arcade hit power, 1 = pure physics
   traction: number;              // cleat–turf friction (tuning)
   gains: Record<string, number>; // controller gain overrides (tuning)
   mute: boolean;
@@ -24,9 +27,20 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  preset: null, assist: 0.2, support: DEFAULT_SUPPORT, strength: 1, speed: 1, traction: 1.2, gains: {}, mute: false, effortShading: true,
+  preset: null, assist: 0.2, support: DEFAULT_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, hitPower: 1.5, traction: 1.2, gains: {}, mute: false, effortShading: true,
   slowMo: true, autoCamera: false, sprintToggle: false, sinkToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: 'voxel',
 };
+
+/** Difficulty presets: each axis moves on its own (AI toughness, AI juking, the player's strength and speed). */
+export const DIFFICULTY_PRESETS = {
+  easy: { toughness: 0.6, juking: 0, strength: 1.2, speed: 1.1 },
+  normal: { toughness: 1, juking: 0.5, strength: 1, speed: 1 },
+  hard: { toughness: 1.6, juking: 1, strength: 1, speed: 1 },
+};
+export type DifficultyName = keyof typeof DIFFICULTY_PRESETS | 'custom';
+/** The preset the settings match, or 'custom'. */
+export const difficultyOf = (s: Settings): DifficultyName =>
+  (Object.keys(DIFFICULTY_PRESETS) as (keyof typeof DIFFICULTY_PRESETS)[]).find((k) => Object.entries(DIFFICULTY_PRESETS[k]).every(([f, v]) => s[f as keyof typeof DIFFICULTY_PRESETS.easy] === v)) ?? 'custom';
 
 const KEY = 'zane-stick-settings-v1';
 

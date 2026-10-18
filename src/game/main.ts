@@ -2,7 +2,7 @@
 // timestep; slow motion only changes how fast real time feeds the fixed steps.
 import { DEFAULT_SUPPORT, type SupportSettings } from '../sim/anim/types';
 import { HumanBrain } from '../sim/brains/human';
-import { DIFFICULTY } from '../sim/brains/carrier';
+import { carrierSkill } from '../sim/brains/carrier';
 import { DEFAULT_GAINS } from '../sim/control/hand';
 import { DEFAULT_OPEN_FIELD, OpenFieldDrill } from '../sim/drills/openField';
 import { headingOf, qrot } from '../sim/math';
@@ -17,7 +17,7 @@ import { HitMeter, hitFeel, MPH } from './feel';
 import { InputManager, keyName, keysText, RESERVED, type InputFrame } from './input/input';
 import { PRESETS, type PresetName } from './presets';
 import { GameRenderer, RENDER_PRESETS } from './render/renderer';
-import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from './settings';
+import { DEFAULT_SETTINGS, DIFFICULTY_PRESETS, difficultyOf, loadSettings, saveSettings, type Settings } from './settings';
 import { skinById, unlockedSkins } from './render/skin';
 import { el, Hud, Layer, menu, moveFocus } from './ui';
 
@@ -39,6 +39,15 @@ const REBIND: [string, string, string][] = [
 /** Controls that are not rebindable. */
 const FIXED: string[][] = [['Torso angle', 'Scroll (up = lower the shoulders)', '—'], ['Look (aims the arms)', 'Mouse', 'Right stick'], ['Pause', 'Esc', 'Start (hold)']];
 
+const DIFF_LABEL = { easy: 'Easy', normal: 'Normal', hard: 'Hard', custom: 'Custom' };
+/** A labelled range slider row in a .grid2 panel; `changed` runs after every edit. */
+const sliderRow = (grid: HTMLElement, changed: () => void) =>
+  (label: string, value: number, min: number, max: number, step: number, set: (v: number) => void, fmt = (v: number) => v.toFixed(3)) => {
+    const out = el('span', { class: 'mono', text: fmt(value) });
+    const r = el('input', { type: 'range', min: String(min), max: String(max), step: String(step), value: String(value), 'aria-label': label });
+    r.addEventListener('input', () => { const v = +r.value; out.textContent = fmt(v); set(v); changed(); });
+    grid.append(el('label', { text: label }), r, out);
+  };
 const params = new URLSearchParams(location.search);
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 
@@ -162,6 +171,7 @@ class App {
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
     this.layer.show(menu('ZANE STICK', [
       { label: 'Open field: tackle the carrier', hint: 'Enter / A', action: () => this.startDrill() },
+      { label: `Difficulty: ${DIFF_LABEL[difficultyOf(this.settings)]}`, hint: 'next rep', action: () => this.difficulty() },
       { label: 'Controls', action: () => this.controls() },
       { label: 'Key test', action: () => this.keyTest() },
       { label: `Quality: ${this.preset.label}`, hint: 'next rep', action: () => { this.cyclePreset(); this.title(); } },
@@ -195,7 +205,7 @@ class App {
     const p = this.preset;
     const s = this.settings;
     this.drill = await OpenFieldDrill.create(mujocoEngine, {
-      ...DEFAULT_OPEN_FIELD, physics: p.physics, assist: s.assist, seed: 1, difficulty: DIFFICULTY.normal,
+      ...DEFAULT_OPEN_FIELD, physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), toughness: s.toughness, hitPower: s.hitPower,
       human: { ...DEFAULT_OPEN_FIELD.human, strength: s.strength, speed: s.speed }, traction: s.traction, gains: s.gains,
       support: { ...DEFAULT_SUPPORT, ...s.support },
     }, this.human, this.rep++);
@@ -223,6 +233,7 @@ class App {
     this.layer.show(menu('Paused', [
       { label: 'Resume', hint: 'Esc / Start', action: () => this.resume() },
       { label: 'Reset rep', hint: 'Enter', sfx: 'ui_confirm', action: () => { this.resume(); void this.newRep(); } },
+      { label: `Difficulty: ${DIFF_LABEL[difficultyOf(s)]}`, hint: 'next rep', action: () => this.difficulty(() => this.pauseMenu()) },
       { label: `Quality: ${this.preset.label}`, hint: 'next rep', action: () => { this.cyclePreset(); this.pauseMenu(); } },
       { label: `Skin: ${skinById(s.skin).label}`, action: () => { this.cycleSkin(); this.pauseMenu(); } },
       { label: `Anatomy view: ${this.renderer?.xray ? 'on' : 'off'}`, action: () => { this.renderer?.setXray(!this.renderer.xray); this.pauseMenu(); } },
@@ -365,16 +376,42 @@ class App {
     this.layer.show(box);
   }
 
+  /** Difficulty: presets and the independent axes (AI toughness, AI juking, the player's strength and speed), and
+   *  hit power. Applies from the next rep. */
+  difficulty(back = () => this.title()) {
+    const s = this.settings;
+    const status = el('p', { class: 'sub', role: 'status' });
+    const presets = el('div', { class: 'items' });
+    const grid = el('div', { class: 'grid2' });
+    const render = () => {
+      const now = difficultyOf(s);
+      status.textContent = `Difficulty: ${DIFF_LABEL[now]}. Each slider moves on its own; changes apply from the next rep.`;
+      presets.replaceChildren(...(Object.keys(DIFFICULTY_PRESETS) as (keyof typeof DIFFICULTY_PRESETS)[]).map((k) => {
+        const b = el('button', { class: 'item', type: 'button', 'aria-pressed': String(now === k), 'data-sfx': 'ui_confirm' }, DIFF_LABEL[k] + (now === k ? ' ✓' : ''));
+        b.addEventListener('click', () => { Object.assign(s, DIFFICULTY_PRESETS[k]); this.save(); this.difficulty(back); });
+        return b;
+      }));
+    };
+    const x = (v: number) => `${v.toFixed(2)}×`, pct = (v: number) => `${(v * 100).toFixed(0)} %`;
+    const row = sliderRow(grid, () => { this.save(); render(); });
+    row('AI toughness (force needed to tackle the bot)', s.toughness, 0.4, 2.5, 0.05, (v) => (s.toughness = v), x);
+    row('AI juking', s.juking, 0, 1, 0.05, (v) => (s.juking = v), pct);
+    row('Player strength', s.strength, 0.5, 1.5, 0.01, (v) => (s.strength = v), x);
+    row('Player speed', s.speed, 0.7, 1.5, 0.01, (v) => (s.speed = v), x);
+    row('Hit power', s.hitPower, 1, 3, 0.1, (v) => (s.hitPower = v), (v) => (v <= 1 ? '1.0 (pure physics)' : `${v.toFixed(1)}×`));
+    render();
+    const b = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back');
+    b.addEventListener('click', back);
+    this.layer.show(el('div', { class: 'panel menu wide', role: 'dialog', 'aria-label': 'Difficulty' }, el('h1', { text: 'Difficulty' }), status, presets, grid,
+      el('p', { class: 'sub', text: 'AI toughness: how hard the bot is to knock off balance (its hit, stun and wrap-up thresholds). AI juking: how well the bot carrier reads you, times his cuts and bursts away. Hit power above 1 adds an arcade push to whoever a hit drives back (the bot can blow you back too); 1 is pure physics.' }),
+      b));
+  }
+
   tuning() {
     const s = this.settings;
     const gainKeys: (keyof typeof DEFAULT_GAINS)[] = ['torsoKp', 'torsoKd', 'footK', 'stepWidth', 'swingWn', 'stanceKnee', 'stanceHip', 'dcmK', 'heightKp', 'heightKd', 'spine'];
     const grid = el('div', { class: 'grid2' });
-    const row = (label: string, value: number, min: number, max: number, step: number, set: (v: number) => void, fmt = (v: number) => v.toFixed(3)) => {
-      const out = el('span', { class: 'mono', text: fmt(value) });
-      const r = el('input', { type: 'range', min: String(min), max: String(max), step: String(step), value: String(value), 'aria-label': label });
-      r.addEventListener('input', () => { const v = +r.value; out.textContent = fmt(v); set(v); this.save(); });
-      grid.append(el('label', { text: label }), r, out);
-    };
+    const row = sliderRow(grid, () => this.save());
     const pct = (v: number) => `${(v * 100).toFixed(0)} %`, deg = (v: number) => `${(v * 180 / Math.PI).toFixed(0)}°`;
     const sup = s.support;
     const supportRow = (label: string, k: keyof SupportSettings, min: number, max: number, step: number, fmt?: (v: number) => string) =>
@@ -401,7 +438,7 @@ class App {
     const copy = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Copy values');
     copy.addEventListener('click', () => { void navigator.clipboard?.writeText(exp.value).then(() => this.hud.flash('Copied'), () => { exp.select(); }); });
     const reset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset to defaults');
-    reset.addEventListener('click', () => { s.gains = {}; s.assist = 0.2; s.strength = 1; s.speed = 1; s.traction = 1.2; s.support = { ...DEFAULT_SUPPORT }; this.save(); this.tuning(); });
+    reset.addEventListener('click', () => { s.gains = {}; s.assist = 0.2; s.traction = 1.2; s.support = { ...DEFAULT_SUPPORT }; this.save(); this.tuning(); });
     const back = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back');
     back.addEventListener('click', () => (this.drill ? this.pauseMenu() : this.title()));
     this.layer.show(el('div', { class: 'panel menu wide' }, el('h1', { text: 'Tuning' }), el('p', { class: 'sub', text: 'Changes apply from the next rep (physics settings never change mid-rep).' }), grid, exp, copy, reset, back));

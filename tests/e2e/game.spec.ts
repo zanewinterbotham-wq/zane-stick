@@ -315,6 +315,36 @@ test('tuning panel shows the support, speed and strength sliders; HUD shows spee
   expect(errors).toEqual([]);
 });
 
+test('difficulty screen: presets, the independent sliders and hit power, remembered; reachable from the pause menu', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.addInitScript(() => { if (!localStorage.getItem('zane-stick-settings-v1')) localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })); });
+  await page.goto('/');
+  await page.getByRole('button', { name: /^Difficulty: Normal/ }).click();
+  await expect(page.locator('.menu h1')).toHaveText('Difficulty');
+  for (const label of ['AI toughness (force needed to tackle the bot)', 'AI juking', 'Player strength', 'Player speed', 'Hit power']) await expect(page.getByRole('slider', { name: label })).toBeVisible();
+  await expect(page.getByRole('slider', { name: 'Hit power' })).toHaveValue('1.5');
+  await page.getByRole('button', { name: 'Easy' }).click();
+  await expect(page.getByRole('status')).toContainText('Difficulty: Easy');
+  await expect(page.getByRole('slider', { name: 'AI toughness (force needed to tackle the bot)' })).toHaveValue('0.6');
+  await expect(page.getByRole('slider', { name: 'AI juking' })).toHaveValue('0');
+  await page.getByRole('slider', { name: 'Hit power' }).fill('2.5');
+  await page.getByRole('slider', { name: 'AI juking' }).fill('0.3');
+  await expect(page.getByRole('status')).toContainText('Difficulty: Custom');
+  await page.screenshot({ path: 'test-results/14-difficulty.png', fullPage: true });
+  await page.reload();
+  await expect(page.getByRole('button', { name: /^Difficulty: Custom/ })).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
+  await page.waitForTimeout(500);
+  if (await page.evaluate(() => !!document.pointerLockElement)) await page.evaluate(() => document.exitPointerLock());
+  else await page.keyboard.press('Escape');
+  await expect(page.locator('.menu h1')).toHaveText('Paused');
+  await page.getByRole('button', { name: /^Difficulty: Custom/ }).click();
+  await expect(page.getByRole('slider', { name: 'Hit power' })).toHaveValue('2.5');
+  await expect(page.getByRole('slider', { name: 'AI juking' })).toHaveValue('0.3');
+  expect(errors).toEqual([]);
+});
+
 test('key test screen shows held keys', async ({ page }) => {
   const errors = watchErrors(page);
   await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
