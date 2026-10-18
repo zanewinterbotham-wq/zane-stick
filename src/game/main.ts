@@ -186,6 +186,11 @@ class App {
     this.peakShown = false;
     this.endWhistled = false;
     this.input.resetTorso();
+    // The rep's pre-roll steps the human brain with the last input: a camera still turned from the previous rep
+    // (e.g. running back after a fumble) and a held key would turn the athlete around before the rep starts.
+    // Start from the spawn heading (+Z) with no movement.
+    this.cam.yaw = 0;
+    this.human.latest = null;
     const p = this.preset;
     const s = this.settings;
     this.drill = await OpenFieldDrill.create(mujocoEngine, {
@@ -203,6 +208,7 @@ class App {
     this.renderer.setXray(this.renderer.xray);
     this.renderer.effortShading = s.effortShading;
     this.cam.snap(this.renderer.camera, this.drill.world, this.humanHeading());
+    this.input.clearLook(); // mouse movement during loading must not spin the fresh camera
     this.acc = 0;
     this.audio.play('game_whistle_start', 1);
   }

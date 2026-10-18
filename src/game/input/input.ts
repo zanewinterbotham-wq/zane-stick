@@ -85,6 +85,8 @@ export class InputManager {
     target.addEventListener('contextmenu', (e) => { if (this.capture) e.preventDefault(); });
     target.addEventListener('mousemove', (e) => {
       if (!this.capture || !document.pointerLockElement) return;
+      // Chrome can report one huge jump right after the pointer locks; no real flick moves this far in one event
+      if (Math.abs(e.movementX) > 400 || Math.abs(e.movementY) > 400) return;
       this.mouse.x += e.movementX; this.mouse.y += e.movementY;
     });
     // not passive: Ctrl+wheel would zoom the page
@@ -114,6 +116,7 @@ export class InputManager {
   /** Keyboard lock list for fullscreen: only the bound keys, so Alt+Tab, the Windows key and Esc keep working. */
   lockKeys(): string[] { return [...this.keyCodes].filter((k) => !k.startsWith('Mouse') && !RESERVED.test(k)); }
 
+  clearLook() { this.mouse.x = this.mouse.y = 0; }
   resetTorso() { this.torso = [0, 0]; this.torsoTarget = [0, 0]; this.mouse.wheel = 0; }
 
   /** Read one player's input. Call once per render frame. */
