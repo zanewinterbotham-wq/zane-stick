@@ -231,6 +231,13 @@ class MujocoScene implements PhysicsScene {
     const b = this.propBody[pi], d = this.d;
     return { pos: [d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]] as Vec3, quat: [d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3], d.xquat[4 * b]] as Quat };
   }
+  setJointAngles(ai: number, q: ArrayLike<number>) {
+    const qp = this.d.qpos, qv = this.d.qvel, dq = this.dofQ[ai], dv = this.dofV[ai];
+    for (let i = 0; i < dq.length; i++) { qp[dq[i]] = q[i]; qv[dv[i]] = 0; }
+    mj.mj_forward(this.m, this.d);
+    this.views();
+    this.read();
+  }
   placeProp(pi: number, pos: Vec3, quat: Quat) {
     const b = this.propBody[pi], m = this.m, d = this.d;
     const qa = m.jnt_qposadr[m.body_jntadr[b]], va = m.jnt_dofadr[m.body_jntadr[b]];

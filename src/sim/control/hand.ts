@@ -25,8 +25,8 @@ export interface Gains {
   pelvisAtt: number; thoraxAtt: number; headAtt: number;
   /** Capture-point convergence rate (1/s) and COM height PD (1/s², 1/s). */
   dcmK: number; heightKp: number; heightKd: number;
-  /** Foot-placement feedback on velocity error (s) and nominal step width (m). */
-  footK: number; stepWidth: number; footMargin: number;
+  /** Foot-placement feedback on velocity error (s) and step width between the feet (m). */
+  footK: number; stepWidth: number; footMargin: number; latK: number;
   /** Trunk balance through the stance hip, in units of m·g·h per rad and per rad/s. */
   torsoKp: number; torsoKd: number;
   /** Gait shape: minimum walking step time (s), touchdown gate (fraction of step), swing clearance (m),
@@ -34,6 +34,10 @@ export interface Gains {
   stepTMin: number; touchFrac: number; clearance: number; stanceKneeBend: number; armSwing: number; vLead: number;
   /** Trunk lean with speed (rad per m/s) and with the speed still to gain (rad per m/s). */
   leanSpeed: number; leanAccel: number;
+  /** Push-off: start (fraction of the step) and ankle plantarflexion depth (rad). */
+  pushStart: number; pushAnkle: number;
+  /** Pelvis yaw control strength relative to pitch/roll (capped by cleat rotational traction). */
+  yawGain: number;
 }
 export const DEFAULT_GAINS: Gains = {
   // Tuned by bench/tune (CMA-ES over stand, walk, jog and four push directions), 2026-10-17.
@@ -53,7 +57,8 @@ export const DEFAULT_GAINS: Gains = {
   heightKp: 107,
   heightKd: 18.4,
   footK: 0.0296,
-  stepWidth: 0.0822,
+  stepWidth: 0.2,
+  latK: 0.3,
   footMargin: 0.0546,
   torsoKp: 0.617,
   torsoKd: 0.309,
@@ -61,9 +66,11 @@ export const DEFAULT_GAINS: Gains = {
   touchFrac: 0.6,
   clearance: 0.09,
   stanceKneeBend: 0.326,
-  armSwing: 0.151,
+  armSwing: 0.6,
   vLead: 0.539,
   leanSpeed: 0.015, leanAccel: 0.04,
+  pushStart: 0.55, pushAnkle: 0.35,
+  yawGain: 0.6,
 };
 
 /** Target speeds (m/s) for the reference athlete; the body's own limits decide what is reached. */
@@ -72,6 +79,9 @@ export const GAIT_SPEED = { walk: 1.6, jog: 4.2, sprint: 10.5 };
 export const GAIT_ACCEL = { walk: 1.5, jog: 3, sprint: 6 };
 
 const G = 9.81;
+/** Gains are capped for stability at the slowest supported physics rate (240 Hz) and NOT re-scaled at
+ *  faster rates, so the same athlete behaves the same on every preset. */
+const DT_REF = 1 / 240;
 
 type Leg = {
   k: 0 | 1; side: 1 | -1;
@@ -81,7 +91,7 @@ type Leg = {
   L1: number; L2: number;        // thigh and shank length (m)
   hipOff: Vec3;                  // hip joint centre relative to pelvis origin, pelvis frame
   ankleH: number;                // ankle height above the ground at rest (m)
-  phase: 'stance' | 'swing'; t: number; liftPos: Vec3; target: Vec3;
+  phase: 'stance' | 'swing'; t: number; liftPos: Vec3; target: Vec3; ankT?: Vec3;
 };
 
 export class HandController implements MotorController {
@@ -97,7 +107,6 @@ export class HandController implements MotorController {
   private standing = true;
   private dbg: Record<string, number | string> = {};
   private thrustT = 0; private diveT = 0;
-  private dt = 1 / 240;
   private headingHold: number | null = null;
   private stanceIdx: 0 | 1 = 0;
   private walkT = 0;
@@ -162,7 +171,7 @@ export class HandController implements MotorController {
   /** Stiffness-style PD: kp = s·T0 (N·m/rad), capped for numerical stability on the lightest segment. */
   private stiff(out: MuscleTargets, i: number, q: number, s: number) {
     if (i < 0) return;
-    const ms = this.muscles, kpMax = 0.5 * ms.ilocal[i] / (this.dt * this.dt);
+    const ms = this.muscles, kpMax = 0.5 * ms.ilocal[i] / (DT_REF * DT_REF);
     const kp = Math.min(s * this.T0[i], kpMax);
     out.q[i] = clamp(q, ms.lo[i], ms.hi[i]);
     out.kp[i] = kp;
@@ -172,7 +181,7 @@ export class HandController implements MotorController {
   /** Natural-frequency PD with the distal inertia (free limbs). */
   private freq(out: MuscleTargets, i: number, q: number, wn: number) {
     if (i < 0) return;
-    const ms = this.muscles, I = ms.ieff[i], kpMax = 0.5 * ms.ilocal[i] / (this.dt * this.dt);
+    const ms = this.muscles, I = ms.ieff[i], kpMax = 0.5 * ms.ilocal[i] / (DT_REF * DT_REF);
     const kp = Math.min(I * wn * wn, kpMax);
     out.q[i] = clamp(q, ms.lo[i], ms.hi[i]);
     out.kp[i] = kp;
@@ -215,7 +224,7 @@ export class HandController implements MotorController {
 
   // ---------------------------------------------------------------- main
   compute(v: BodyView, cmd: Commands, out: MuscleTargets) {
-    this.dt = v.dt;
+
     const g = this.gains, s = v.state, m = this.mass;
     out.tff.fill(0);
     for (let i = 0; i < this.muscles.n; i++) this.stiff(out, i, 0, g.posture);
@@ -254,6 +263,7 @@ export class HandController implements MotorController {
     const running = vRef > 2.6;
     // Recovery steps are quicker: shorten the step as the capture point leaves the base of support.
     if (vRef < 2.6) stepT = clamp(stepT, Math.max(0.36, g.stepTMin), 0.6); // ~0.5 s steps at a brisk walk, like people
+    if (cmd.chopFeet) stepT = 0.22; // chopping steps (~4.5 steps/s, short and quick)
 
     // ---- posture intent: COM height, trunk lean
     const sink = clamp(cmd.sink, 0, 1);
@@ -276,7 +286,8 @@ export class HandController implements MotorController {
     const cpOut = this.outsideSupport(xi, ank, headingD);
 
     // ---- mode: quiet standing (capture-point balance) or stepping (SIMBICON-style cycle)
-    const wantMove = vdMag > 0.15 || speed > 0.45 || cpOut > 0.03;
+    // chop feet: quick short steps in place (breaking down on approach); also keeps stepping while held
+    const wantMove = vdMag > 0.15 || speed > 0.45 || cpOut > 0.03 || cmd.chopFeet;
     if (this.standing && wantMove) {
       this.standing = false;
       // first swing: the leg on the side the capture point is leaving through, else the less loaded one
@@ -295,7 +306,7 @@ export class HandController implements MotorController {
       const ahead = dot([ank[sw.k][0] - ank[st.k][0], 0, ank[sw.k][2] - ank[st.k][2]], travel) > -0.05;
       if ((feet[sw.k].touching && this.walkT > clamp(g.touchFrac, 0.5, 0.9) * stepT && ahead) || this.walkT > 1.5 * stepT) {
         // step complete: stop if nothing is pushing us on, otherwise the other leg swings next
-        if (vdMag < 0.1 && speed < 0.35 && cpOut === 0) this.standing = true;
+        if (vdMag < 0.1 && speed < 0.35 && cpOut === 0 && !cmd.chopFeet) this.standing = true;
         else { this.stanceIdx = sw.k; this.walkT = 0; this.legs[1 - sw.k].liftPos = ank[1 - sw.k]; }
       }
     }
@@ -374,14 +385,20 @@ export class HandController implements MotorController {
     const b = 1 / (Math.exp(w0 * T) - 1);
     // Aim a little short of the capture point (footMargin) so the stance ankle can finish the job.
     const offS = clamp(vS / w0 + g.footK * (vS - vdS) - vdS * T * b - (vS > vdS ? g.footMargin : 0), -0.15, 1.0);
-    const offL = clamp(g.stepWidth + vL / w0 + g.footK * (vL - vdL), -0.12, 0.55);
+    // Lateral: periodic capture-point gait (Englsberger 2015): land outside the capture point by
+    // W / (1 + e^(ωT)) for a step width W, which makes the side-to-side sway settle instead of grow.
+    // Drift correction: if the COM has moved farther than half a step width from the stance foot toward the
+    // swing side, land wider still (SIMBICON-style position feedback).
+    const dLat = dot([c[0] - stAnkle[0], 0, c[2] - stAnkle[2]], outD);
+    const offL = clamp(vL / w0 + g.stepWidth / (1 + Math.exp(w0 * T)) + g.footK * (vL - vdL) + g.latK * (dLat - g.stepWidth / 2), -0.12, 0.55);
     // Foothold from balance feedback; the foot travels there from where it lifted off along a clearance
     // arc (over the foothold by 80 % of the step, then sets down), solved by leg IK.
     const hold: Vec3 = [c[0] + fwdD[0] * offS + outD[0] * offL, 0, c[2] + fwdD[2] * offS + outD[2] * offL];
     sw.target = hold;
     const u = Math.min(1, sPh / 0.8), ease = u * u * (3 - 2 * u);
     const clear = running ? g.clearance + 0.02 + 0.02 * Math.hypot(cv[0], cv[2]) : g.clearance;
-    const ankT: Vec3 = [lerp(sw.liftPos[0], hold[0], ease), sw.ankleH + clear * Math.sin(Math.PI * Math.min(1, sPh / 0.9)), lerp(sw.liftPos[2], hold[2], ease)];
+    const ankT: Vec3 = [lerp(sw.liftPos[0], hold[0], ease), sw.ankleH + clear * Math.sin(Math.PI * Math.min(1, sPh / 0.9)) ** 2, lerp(sw.liftPos[2], hold[2], ease)];
+    sw.ankT = ankT;
     const pelvisPos = this.segVec(s.segPos, this.pelvisSeg);
     const hoff = qrot(pq, sw.hipOff);
     const rel = qrot(qconj(pq), [ankT[0] - pelvisPos[0] - hoff[0], ankT[1] - pelvisPos[1] - hoff[1], ankT[2] - pelvisPos[2] - hoff[2]]);
@@ -407,15 +424,19 @@ export class HandController implements MotorController {
     // --- stance knee and ankle: posture + gravity compensation through J-transpose at the mid-foot
     this.stiff(out, st.knee[0], g.stanceKneeBend, g.stanceKnee);
     this.stiff(out, st.knee[1], 0, g.stanceKnee * 0.5);
-    this.stiff(out, st.ankle[0], 0, g.stanceAnkle);
+    // Push-off: late in stance the heel rises and the ankle plantarflexes (toes stay down), which lengthens
+    // the trailing leg and drives the body forward, as in human walking and running.
+    const push = clamp((sPh - g.pushStart) / Math.max(0.05, 1 - g.pushStart), 0, 1);
+    this.stiff(out, st.ankle[0], -g.pushAnkle * push, g.stanceAnkle * (1 + 3 * push));
     this.stiff(out, st.ankle[1], 0, g.stanceAnkle);
-    this.stiff(out, st.toe, 0, g.posture);
+    this.stiff(out, st.toe, 0.5 * push, g.posture * (1 + 2 * push));
     // In-stance balance: the capture-point law picks the centre of pressure inside the stance foot and
     // the matching ground force (ankle strategy), as in quiet standing.
     const xi: Vec3 = [c[0] + cv[0] / w0, 0, c[2] + cv[2] / w0];
     const xiD: Vec3 = [xi[0] + (vd[0] - cv[0]) / w0, 0, xi[2] + (vd[2] - cv[2]) / w0];
     const pDes: Vec3 = [xi[0] + (g.dcmK / w0) * (xi[0] - xiD[0]), 0, xi[2] + (g.dcmK / w0) * (xi[2] - xiD[2])];
-    const pf = this.clampToFeet(pDes, [stAnkle], [stFwd]);
+    // during push-off the pressure may move out to the ball of the foot
+    const pf = push > 0 ? this.clampToFootRange(pDes, stAnkle, stFwd, HandController.TOE + 0.06 * push) : this.clampToFeet(pDes, [stAnkle], [stFwd]);
     const h = Math.max(0.4, c[1]);
     // The knee pushes for the height-regulating vertical force (keeps the hips up so the next foot lands
     // on a nearly straight leg). The ankle is scaled by the load this foot actually carries: asking it for
@@ -431,8 +452,11 @@ export class HandController implements MotorController {
     // --- stance hip: trunk balance torque on the pelvis, plus cancel the swing hip's reaction on it
     const e = this.err(this.orient(headingD, clamp(0.3 * pitchD, -0.1, 0.25), 0.3 * rollD), pq);
     const mgh = m * G * this.standCom;
-    const yaw = clamp(e[1], -0.2, 0.2) * 0.3;
-    const Ttorso: Vec3 = [mgh * (g.torsoKp * e[0] - g.torsoKd * pw[0]), mgh * (g.torsoKp * yaw - g.torsoKd * 0.3 * pw[1]), mgh * (g.torsoKp * e[2] - g.torsoKd * pw[2])];
+    // Yaw: full trunk control, but the yaw torque is capped at what the stance foot can transmit through
+    // cleat rotational traction (~50 N·m per kN of load [S5]); more would just spin the foot.
+    const yawCap = 0.8 * 0.05 * Math.max(0, v.feet[st.k].force);
+    const yawT = clamp(mgh * (g.torsoKp * g.yawGain * e[1] - g.torsoKd * g.yawGain * pw[1]), -yawCap, yawCap);
+    const Ttorso: Vec3 = [mgh * (g.torsoKp * e[0] - g.torsoKd * pw[0]), yawT, mgh * (g.torsoKp * e[2] - g.torsoKd * pw[2])];
     const R: Vec3 = [0, 0, 0];
     for (const i of sw.hip) {
       const tau = out.kp[i] * (out.q[i] - s.q[i]) + out.kd[i] * (out.qd[i] - s.qd[i]);
@@ -474,6 +498,11 @@ export class HandController implements MotorController {
       if (d < bd) { bd = d; best = q; }
     });
     return best;
+  }
+
+  private clampToFootRange(p: Vec3, ankle: Vec3, fwd: Vec3, toe: number): Vec3 {
+    const fw = clamp(dot([p[0] - ankle[0], 0, p[2] - ankle[2]], fwd), -HandController.HEEL, toe);
+    return [ankle[0] + fw * fwd[0], 0, ankle[2] + fw * fwd[2]];
   }
 
   /** Distance the point lies outside the support region (feet ± foot size), 0 if inside. */

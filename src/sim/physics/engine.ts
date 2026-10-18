@@ -55,6 +55,8 @@ export interface PhysicsScene {
   gripForce(athlete: number, hand: 0 | 1): number;
   propPose(prop: number): { pos: Vec3; quat: Quat };
   propVel(prop: number): Vec3;
+  /** Setup only: set an athlete's joint angles (plan dof order) at rest and refresh kinematics. */
+  setJointAngles(athlete: number, q: ArrayLike<number>): void;
   /** Setup only (before a rep starts): place a dynamic prop at rest. Never used during play. */
   placeProp(prop: number, pos: Vec3, quat: Quat): void;
   /** Counts for the overlay and tests. `instabilities` = times the solver diverged and auto-reset (must stay 0). */

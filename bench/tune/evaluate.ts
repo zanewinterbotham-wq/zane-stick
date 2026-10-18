@@ -4,6 +4,7 @@ import { HandController, type Gains } from '../../src/sim/control/hand';
 import { mujocoEngine } from '../../src/sim/physics/mujoco';
 import { pushScenario, runScenario, standScenario, type Scenario } from '../../src/sim/scenarios';
 import { World, type PhysicsSettings } from '../../src/sim/world';
+import { ScriptBrain } from '../../src/sim/brains/script';
 
 const PHYS: PhysicsSettings = { hz: 240, iterations: 30, detail: 'standard' };
 
@@ -56,10 +57,22 @@ export async function evaluate(gains: Partial<Gains>): Promise<{ score: number; 
     // speed error weighted so that standing still always scores worse than trying and falling late
     parts[gait] = fall(r) + (gait === 'walk' ? 25 : 12) * Math.abs(mean(late) - v) + 3 * rms(lat) + 3 * r.tilt + 10 * sag;
   }
+  // chopping the feet in place: must stay up and stay put
+  {
+    const sc = withGains(standScenario(PHYS, 0), gains);
+    sc.setup.athletes[0].brain = new ScriptBrain((t, _p, c) => { if (t > 0.3) c.chopFeet = true; });
+    const r = await run(sc, 4);
+    parts.chop = fall(r) + 10 * r.excursion + 2 * r.tilt;
+  }
   // push recovery from four directions
   for (const [dir, imp] of [[0, 80], [180, 60], [90, 50], [-90, 50]] as const) {
     const r = await run(withGains(pushScenario(PHYS, dir, imp, 0), gains), 3.5);
     parts[`push${dir}`] = fall(r) + 2 * r.tilt;
+  }
+  // consistency: the same push at the High (480 Hz) and Minimum (merged segments) presets
+  for (const [name, phys] of [['pushHigh', { hz: 480, iterations: 40, detail: 'standard' }], ['pushMin', { hz: 240, iterations: 20, detail: 'minimum' }]] as const) {
+    const r = await run(withGains(pushScenario(phys as PhysicsSettings, 0, 60, 0), gains), 3.5);
+    parts[name] = fall(r) + 2 * r.tilt;
   }
   const score = Object.values(parts).reduce((a, b) => a + b, 0);
   return { score, parts };
