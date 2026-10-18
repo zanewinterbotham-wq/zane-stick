@@ -42,9 +42,9 @@ const HELD = { start: 0.3, full: 0.9, oneArm: 0.6 };
  *  where the knock starts and where it is full (m/s), and how long that hit is remembered (s); and a dive
  *  take-off's velocity gain (1/s) and largest acceleration (m/s², about the ~1.5 g net a standing long-jump
  *  take-off reaches), and the largest horizontal acceleration of a hip-thrust lunge (m/s², ~1 body weight of
- *  horizontal ground force, a sprint start's). */
+ *  horizontal ground force, a sprint start's); and the knock's rise time (s), a big hit's (about two steps at 240 Hz). */
 const SUP = { kv: 6, stable: 0.3, fadeIn: 0.3, window: 0.2, flight: 0.15, decay: 1, getup: 1, hKp: 36, hKd: 10, kUp: 1.5, cUp: 6, yaw: 0.3,
-  stunStart: 1, stunFull: 2, stunTime: 0.5, drivenStart: 0.5, drivenFull: 2, drivenTime: 1.5, launchKv: 20, launch: 15, lunge: 12 };
+  stunStart: 1, stunFull: 2, stunTime: 0.5, drivenStart: 0.5, drivenFull: 2, drivenTime: 1.5, launchKv: 20, launch: 15, lunge: 12, rise: 0.02, bigRise: 0.008 };
 
 /** One body-part-on-body-part contact between two athletes this step (summed over its contact points). */
 export interface HitEvent {
@@ -250,19 +250,22 @@ export class World {
    *  him), plus a lift so a big hit takes him off the turf. The hitter driving through gets nothing. */
   private applyHitPower(a: Athlete, hp: number) {
     const f = a.hitForce, fh = Math.hypot(f[0], f[2]);
-    if (fh < 1e-6 || a.downBy) return;
-    // Driven back: he and whoever he touches move, together, along the push he gets. For the hitter that
-    // combined momentum is against his push, so only the one hit qualifies; equal momenta head on, neither.
-    const s = this.scene.athletes[a.index].state;
-    let m = a.mass, px = m * s.comVel[0], pz = m * s.comVel[2];
-    for (const k of a.touching) {
-      const o = this.athletes[k], so = this.scene.athletes[k].state, mo = o.mass;
-      px += mo * so.comVel[0]; pz += mo * so.comVel[2]; m += mo;
-    }
-    if ((px * f[0] + pz * f[2]) / (fh * m) < HIT.minV) return;
+    if (fh < 1e-6 || a.downBy || this.commonSpeed(a, f[0] / fh, f[2] / fh) < HIT.minV) return;
     const k = 0.5 * (hp - 1), F: Vec3 = [k * f[0], k * HIT.lift * fh, k * f[2]];
     this.scene.applyWrench(a.index, a.segIndex.get('pelvis')!, F, [0, 0, 0]);
     this.scene.applyWrench(a.index, a.segIndex.get('thorax') ?? a.segIndex.get('trunk')!, F, [0, 0, 0]);
+  }
+
+  /** Speed along a horizontal direction (m/s) of this athlete and whoever he touches, together: positive along the
+   *  push he gets means that push drives him back. For the hitter it is against his push; equal momenta head on, 0. */
+  private commonSpeed(a: Athlete, dx: number, dz: number) {
+    const s = this.scene.athletes[a.index].state;
+    let m = a.mass, p = m * (s.comVel[0] * dx + s.comVel[2] * dz);
+    for (const k of a.touching) {
+      const o = this.athletes[k], so = this.scene.athletes[k].state, mo = o.mass;
+      p += mo * (so.comVel[0] * dx + so.comVel[2] * dz); m += mo;
+    }
+    return p / m;
   }
 
   /** Knock, carry and posture levels from what happened this step (design §6.5). */
@@ -312,8 +315,8 @@ export class World {
     a.heldT = held > 0 ? a.heldT + dt : Math.max(0, a.heldT - 2 * dt);
     const knockHeld = clamp((a.heldT - HELD.start * T) / (HELD.full * T), 0, 1) * (held >= 2 ? 1 : HELD.oneArm);
     const target = Math.min(1, Math.max(knockHit, knockTilt, knockAir, knockDriven, knockLift, knockHeld));
-    // rises fast, decays slowly
-    a.knock = target > a.knock ? a.knock + (target - a.knock) * Math.min(1, dt / 0.02) : Math.max(target, a.knock - dt * SUP.decay);
+    // rises fast, within a couple of steps on a big hit (the body goes as its impulse lands), decays slowly
+    a.knock = target > a.knock ? a.knock + (target - a.knock) * Math.min(1, dt / (knockHit >= 1 ? SUP.bigRise : SUP.rise)) : Math.max(target, a.knock - dt * SUP.decay);
     const down = a.downBy !== null, clip = a.controller.debug?.().clip;
     if (clip === 'getup') {
       // posture support ramps back in with the get-up, while the body is actually rising (not falling back)

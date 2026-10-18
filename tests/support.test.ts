@@ -143,7 +143,7 @@ describe('support in contact', () => {
     expect(r.aDown).toBeLessThan(r.bDown);
   });
   it('rates move with speed: a faster hit downs the athlete hit more often', async () => {
-    const slow = await rates(drive(3), upright(4), 10), fast = await rates(drive(9), upright(4), 10);
+    const slow = await rates(drive(3), upright(4), 20), fast = await rates(drive(9), upright(4), 20);
     console.log('B down: hitter at 3 m/s', slow.bDown, 'at 9 m/s', fast.bDown);
     expect(fast.bDown).toBeGreaterThan(slow.bDown + 0.2);
     expect(slow.instabilities + fast.instabilities).toBe(0);
@@ -171,7 +171,7 @@ describe('support in contact', () => {
     expect(heldKnock).toBeGreaterThan(0);
   });
   it('rates move with mass: a light athlete is downed more often than a heavy one by the same hit', async () => {
-    const light = await rates(drive(5), upright(3, 65), 12), heavy = await rates(drive(5), upright(3, 130), 12);
+    const light = await rates(drive(5), upright(3, 65), 24), heavy = await rates(drive(5), upright(3, 130), 24);
     console.log('B down: 65 kg', light.bDown, '130 kg', heavy.bDown, 'driven back', light.bBack.toFixed(2), heavy.bBack.toFixed(2));
     // the light athlete is downed more often and driven back much farther (down rates fell once the jogger ran on
     // straighter legs: ~17 % vs 0 %, was ~58 % vs 0 %)

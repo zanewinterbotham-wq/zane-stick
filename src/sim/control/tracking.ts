@@ -19,6 +19,8 @@ const WN = { leg: 35, arm: 20, trunk: 25 };
 const NO_SUPPORT: SupportState = { posture: 0, carry: 0, down: false };
 /** Share of muscle output a full stun takes away. */
 const STUN_LOOSE = 0.6;
+/** Stun gained in one step that marks the jolt of a big hit (an impact's impulse lands in a few steps). */
+const JOLT = 0.05;
 /** Forward drive of a full hip thrust, × body weight: a near-maximal leg extension, about the ~1 body weight of
  *  horizontal force a sprint start puts into the turf [S4], for the explosive first `burst` s; held longer, the
  *  legs keep driving at `held` (a maximal effort is brief). */
@@ -38,6 +40,7 @@ export class TrackingController implements MotorController {
   supportSettings: SupportSettings = DEFAULT_SUPPORT;
   /** 0..1 stun from the world (a big hit received): scales all muscle output down by up to STUN_LOOSE. */
   stun = 0;
+  private prevStun = 0;
   readonly frame: AnimFrame;
   readonly hand: HandController;
   private animator: Animator;
@@ -109,9 +112,12 @@ export class TrackingController implements MotorController {
     // A held hip thrust has priority: the muscles drive the thrust pose, in contact too, while the athlete still
     // has his posture. Dive flight has nothing to balance: the muscles hold the dive pose until the landing.
     want = r.dive === 'flight' ? 0 : Math.min(want, 1 - sup.posture * r.thrust);
-    // in quickly (a hit), out slowly (the animation takes over again once the support is back), except a thrust
-    const tOut = r.thrust > 0.05 ? 0.08 : 0.3;
-    this.blend = this.blend < 0 ? want : this.blend + clamp(want - this.blend, -v.dt / tOut, v.dt / 0.08);
+    // in quickly (a hit; at once on the jolt of a big one, so the body reacts the step it lands, not to a shove's
+    // slowly growing stun), out slowly (the animation takes over again once the support is back), except a thrust
+    const jolt = this.stun - this.prevStun > JOLT;
+    this.prevStun = this.stun;
+    const tOut = r.thrust > 0.05 ? 0.08 : 0.3, tIn = jolt ? v.dt : 0.08;
+    this.blend = this.blend < 0 ? want : this.blend + clamp(want - this.blend, -v.dt / tOut, v.dt / tIn);
     const b = this.blend;
     // share of body weight the legs carry: what the posture support does not
     const legShare = clamp(1 - set.weightShare * sup.posture * set.strength * weightSupport(r), 0, 1);
