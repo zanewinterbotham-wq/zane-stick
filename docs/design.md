@@ -1,0 +1,476 @@
+# Zane Stick — Design
+
+A 3D football hitting and tackling simulator. Every movement is physically simulated: simulated
+muscles act on a simulated skeleton. Nothing is animated, scripted, or rolled.
+
+Status of this document: living. Sections marked **(Phase N)** are designed now and built later.
+
+---
+
+## 1. Pillars
+
+1. **Physics is the referee.** A tackle works or fails only because of momentum, leverage, grip,
+   balance and contact forces. There is no success roll anywhere in the code.
+2. **Honest bodies.** Segment masses, lengths, inertias, joint ranges and strengths come from
+   published human data (see `docs/realism-sources.md`). What you see is what is simulated.
+3. **Readable, athletic control.** The athlete is strong, fast and balanced. When something goes
+   wrong it is a whiff, a glancing blow or a tangle of limbs, never jelly. Wobble is a bug.
+4. **Runs on a school Chromebook.** A plain WebGL2 page, small download, real-time physics with
+   three athletes on a Celeron-class CPU. The same code scales up to a gaming PC.
+
+Priority order when they conflict: anatomy and physical realism → controls and feel → performance
+→ graphics.
+
+## 2. Non-negotiable rules (summary)
+
+- No animation clips, keyframes or mocap playback. Ever.
+- No scripted outcomes, success rolls, canned reactions or forced ragdoll switches.
+- Bots use the same body, muscles and command vocabulary as humans. Difficulty changes reaction
+  time, decision quality and precision only.
+- The simulation core (`src/sim`) imports nothing from rendering, DOM or input. Fixed timestep.
+  Same start state + same inputs → same result on the same machine.
+- SI units everywhere (m, kg, s, N, N·m, rad).
+- No penalties, no injury modeling.
+
+## 3. Architecture
+
+```
+            ┌────────────── brains ──────────────┐
+ input ──►  HumanBrain        BotBrain (AI)       │  issue Commands (shared vocabulary)
+            └──────────────┬─────────────────────┘
+                           ▼
+                   MotorController  (body state + Commands → muscle activations, every step)
+                           ▼
+                   Muscles (torque limits, torque-velocity) → joint torques
+                           ▼
+                   PhysicsEngine (thin interface; MuJoCo/Rapier/Jolt adapters)
+                           ▼
+                   World state ──► renderer (Three.js), audio, camera, HUD, replay
+```
+
+Folders:
+
+| Folder | Contents | May import |
+|---|---|---|
+| `src/sim/` | anatomy, muscles, controller, brains, drills, physics adapter, world loop | nothing outside `src/sim` |
+| `src/game/` | browser shell: input, renderer, audio, camera, HUD, presets, panels | `src/sim`, three |
+| `bench/` | engine comparison and preset benchmarks (Node + Playwright) | anything |
+| `tests/` | Vitest unit and headless physics tests, Playwright e2e | anything |
+
+The simulation can run on the main thread, in a Web Worker, or headless in Node. Phase 1 runs it on
+the main thread with a fixed-step accumulator; moving it into a Worker is a Phase 4 optimisation and
+needs no sim changes.
+
+### 3.1 Fixed timestep and time scale
+
+`World.step()` always advances exactly `dt = 1 / stepRate`. The game loop accumulates
+`realElapsed × timeScale` and runs whole steps. Slow motion lowers `timeScale`; it never changes
+`dt`. Physics settings (step rate, solver iterations, body detail) are applied only when a rep is
+reset.
+
+### 3.2 Determinism
+
+All randomness inside the sim comes from a seeded PRNG owned by the world (`sim/rng.ts`). No
+`Math.random`, no wall-clock reads inside the sim. Input is sampled once per physics step into a
+`Commands` struct. The determinism test runs a scenario twice and compares a hash of every body
+transform.
+
+## 4. Physics engine
+
+Chosen by benchmark — see `docs/physics-benchmark.md` for numbers. The engine sits behind
+`src/sim/physics/engine.ts`, a thin interface: build a model from body/joint/geom descriptions,
+apply joint torques and external forces, step, read transforms, velocities, joint angles and
+contact forces. Grips are runtime constraints with a force readout so they can break.
+
+## 5. Anatomy model
+
+### 5.1 Source data
+
+Segment mass fractions, center-of-mass locations and radii of gyration from de Leva (1996),
+male table (adjustments of Zatsiorsky–Seluyanov). Segment lengths are scaled from de Leva's
+reference stature (1.741 m) to the athlete's height. Body widths (shoulders, hips, chest depth)
+use ratios from ANSUR II (2012) male means. Joint ranges from AAOS norms and Soucie et al. (2011).
+Joint strengths from published isokinetic/isometric data for young athletic males, scaled to body
+mass. Every number and its source lives in `docs/realism-sources.md` and in code in
+`src/sim/anatomy/data.ts`, which cites the same sources.
+
+### 5.2 Segments
+
+**Standard detail (19 segments):** pelvis, lumbar (abdomen), thorax, neck, head; per side: clavicle
+(shoulder girdle incl. scapula), upper arm, forearm, hand, thigh, shank, foot, toes.
+
+**Minimum detail (13 segments):** pelvis, trunk (lumbar+thorax+clavicles merged), head (neck+head
+merged); per side: upper arm, forearm (forearm+hand merged), thigh, shank, foot (foot+toes merged).
+
+**Ultra (Phase 4):** adds thoracic spine segments and finger groups for grip.
+
+Merging rule: merged segment mass = sum of masses; COM = mass-weighted COM; inertia via the
+parallel-axis theorem about the merged COM. Joint ranges of a merged joint chain are the sum of the
+member ranges; strengths are kept at the joint that remains. Unit tests assert total mass, COM
+height and total inertia about the whole-body COM match within 0.5 % between detail levels.
+
+### 5.3 Joints
+
+| Joint | Type | DOF (axes) | Notes |
+|---|---|---|---|
+| hip | ball | flex/ext, ab/ad, int/ext rot | |
+| knee | hinge + limited twist | flex, axial rot (±10°) | |
+| ankle | 2-axis | dorsi/plantar, inv/ev (subtalar) | |
+| toe (MTP) | hinge | flex/ext | |
+| lumbar (pelvis→lumbar) | ball | flex/ext, lateral, rot | |
+| thoracic (lumbar→thorax) | ball | flex/ext, lateral, rot | |
+| lower neck (thorax→neck) | ball | flex/ext, lateral, rot | |
+| upper neck (neck→head) | ball | flex/ext, lateral, rot | |
+| sternoclavicular (thorax→clavicle) | 2-axis | elevation/depression, protraction/retraction | the moving shoulder girdle |
+| shoulder (clavicle→upper arm) | ball | flex/ext, ab/ad, int/ext rot | glenohumeral share of range |
+| elbow | hinge + forearm rotation | flex, pron/sup | |
+| wrist | 2-axis | flex/ext, radial/ulnar dev | |
+
+Ball joints are built as three hinge axes (an Euler sequence) so each axis has its own range,
+actuator and soft limit. Limits are soft: a stiff but compliant limit spring engages over the last
+~5° of range, the way connective tissue stiffens, instead of a hard stop.
+
+### 5.4 Muscles
+
+One actuator per joint axis, each direction with its own peak torque (e.g. hip extension is
+stronger than flexion). Available torque:
+
+```
+T_avail(ω) = T0 × f_v(ω / ω_max)
+f_v(x) = (1 − x) / (1 + x / k)      concentric (x ≥ 0), k ≈ 0.25 (Hill curvature)
+f_v(x) = 1.3 − 0.3 × (1 + x) …      eccentric (x < 0), capped at 1.4 × T0
+```
+
+The controller outputs an **activation** a ∈ [−1, 1] per actuator; torque = a × T_avail in that
+direction. Hand-built and learned controllers use exactly the same mapping, so neither can exceed
+the body's strength. Strength and speed sliders scale `T0` and `ω_max`; they never touch physics.
+**Effort** per segment = max |a| of the actuators driving it, used for effort shading.
+
+### 5.5 Equipment
+
+| Item | Mass | Shape | Attached to |
+|---|---|---|---|
+| helmet + facemask | 2.0 kg | sphere shell + facemask capsule, soft contact | head |
+| shoulder pads | 2.5 kg | box shell wider than thorax, soft contact | thorax (+ clavicles at Standard) |
+| jersey | 0.3 kg | no collision; grab points on thorax with stretch and tear strength | thorax |
+| cleats | 0.35 kg each | adds to foot/toe mass; studs give turf traction | feet |
+
+Equipment mass is added on top of body mass at its segment. Pads and helmet use softer contact
+parameters than bare body segments (compliant on contact). Jersey grabs are a grip on a jersey
+point that has its own slack (stretch) and breaking strength.
+
+### 5.6 Ground and ball
+
+Turf: cleat-on-turf translational friction μ ≈ 1.2 (shoe–surface studies, see sources), torsional
+friction from stud engagement. Ball **(Phase 2 for carrying physics; Phase 1 the carrier holds it
+with grip constraints)**: regulation prolate spheroid, 0.41 kg, 0.28 m long, 0.17 m wide. The ball
+is held only by hand/arm grip constraints with grip-strength limits, so a hard enough hit breaks the
+grip and the ball comes out physically.
+
+### 5.7 Player presets (Phase 3; Phase 1 has two defaults)
+
+Position × level tables (height, mass, strength scale, speed scale) live in
+`src/sim/anatomy/presets.ts`. Target top speeds (pro): WR/CB 9.6–10 m/s, RB/S 9.3–9.6, LB 9.0,
+TE 8.8, QB 8.6, OL/DL 7.5–8.2. College ≈ −3 %, high school ≈ −10 %. Speed comes from the body;
+the sliders only scale muscle limits.
+
+### 5.8 Anatomy view
+
+An x-ray toggle: bodies render translucent, with bones (segment axes), joint centers, whole-body
+COM, its ground projection, base-of-support polygon, and contact force arrows (length ∝ force).
+
+## 6. Motor control
+
+### 6.1 Layers
+
+1. **Brain** — `HumanBrain` (reads input) or `BotBrain` (AI). Outputs `Commands` once per step.
+2. **Motor controller** — `MotorController.compute(state: BodyState, cmd: Commands, dt):
+   Activations`. Interface only; the hand-built `HandController` is the first implementation and a
+   learned network can replace it per player.
+3. **Body** — muscles + physics.
+
+### 6.2 Commands (shared vocabulary)
+
+```ts
+interface Commands {
+  move: { x, z };          // desired ground velocity direction × magnitude 0..1 (world frame)
+  face: { x, z } | null;   // desired facing; null = face move direction
+  speed: 'walk'|'jog'|'sprint';  // from stick magnitude / sprint button
+  contactMode: boolean;
+  armL, armR: number;      // reach 0..1 (both = both arms)
+  gripL, gripR: boolean;
+  wrap: boolean;
+  shoot: boolean;
+  sink: number;            // hip sink depth 0..1
+  thrustHips: boolean;
+  driveLegs: number;       // 0..1
+  chopFeet: boolean;
+  lean: { fwd, side };     // −1..1
+  headTuck: boolean;
+  plantCut: -1|0|1;
+  dive: boolean;
+  aim: Vec3 | null;        // optional reach target (bots, lock-on)
+}
+```
+
+### 6.3 Hand-built controller
+
+- **Posture**: per-joint PD toward a target pose, converted to activations by dividing by
+  available torque (so saturation is real).
+- **Balance**: SIMBICON-style. Torso orientation is held by the stance hip(s) (virtual torque on the
+  pelvis realised through hip actuators), COM velocity is regulated by foot placement:
+  `foot target = COM + v·T_step·c_v + d`, plus a capture-point check for push recovery. Stance-leg
+  virtual forces (Jacobian-transpose) supply body-weight support and propulsion through the ground.
+- **Gait**: a phase oscillator per leg drives stance/swing timing; step frequency and length grow
+  with commanded speed. Sprint: forward lean, higher hip-extension effort, toe push-off.
+- **Cut**: plant the outside foot ahead of the COM, rotate the torso into the new direction, push.
+- **Contact behaviours**: each body-part command becomes posture targets + effort levels (arm reach
+  targets, wrap = shoulder adduction + elbow flexion + grips, sink = hip/knee flexion, thrust = hip
+  extension burst, drive legs = sprint gait with forward lean, dive = hip extension + forward lean
+  while releasing balance).
+
+### 6.4 Balance assist
+
+An invisible force/torque on pelvis and thorax that only steadies posture and supports body weight:
+
+- Vertical force on the pelvis up to `assist × m × g × w` where w is a support fraction based on how
+  far the pelvis is below its commanded height, and only while at least one foot is on the ground.
+- Orientation torque on pelvis and thorax toward upright (tilting allowed by lean commands).
+- **Never horizontal force.** Horizontal acceleration comes only from feet on turf.
+- Fades to 0 in 0.15 s when contact with another player begins; stays 0 until players separate
+  and the athlete has had stable footing (a foot down, COM over base of support) for 0.3 s.
+- Strength 0–100 %, default chosen as low as possible (Phase 1 report gives the measured value).
+
+If leg-driven running cannot reach believable speeds under these limits, the project stops and
+reports instead of adding a propulsion force.
+
+## 7. Controls
+
+Two modes, switched with one input (toggle or hold, a setting).
+
+- **Movement mode**: left stick/WASD walk–jog, sprint button, turn by steering. The full body stays
+  live, so you can stumble and be knocked down.
+- **Contact mode**: movement keeps working; action inputs become body-part controls.
+
+### 7.1 Default bindings
+
+Keyboard (Chromebook-safe: no F-keys, Caps Lock, Home/End/Delete, numpad, top-row keys, or
+Ctrl/Alt/Search combos). Left hand: movement; right hand: body parts.
+
+| Action | Keyboard | Controller (standard mapping) |
+|---|---|---|
+| Move | W A S D | Left stick |
+| Sprint (movement) / drive legs (contact) | Shift (left) | RT (analog) |
+| Toggle/hold Contact mode | Tab | View/Back |
+| Left arm reach | J | LB |
+| Right arm reach | L | RB |
+| Both arms | J+L | LB+RB |
+| Grip left / right | U / O | X / B |
+| Wrap & squeeze | K | A |
+| Shoot hands | I | Y |
+| Sink hips (hold = deeper) | Space | LT (pull depth = sink depth) |
+| Thrust hips | H | RS click (R3) |
+| Lean fwd/back/left/right | Arrow keys | Right stick |
+| Chop feet | C | LS click (L3) |
+| Head tuck (hold; default is head up) | N | D-pad down |
+| Plant to cut (left / right) | Q / E | D-pad left / right |
+| Dive (whole-body move) | B | D-pad up |
+| Reset rep | Enter | Start (tap) |
+| Pause / menu | Escape | Start (hold 0.6 s) |
+| Performance overlay | ` (Backquote) | menu |
+| Anatomy view | X | menu |
+| Camera (chase/helmet) | V | menu |
+| Tuning panel | T | menu |
+| Change quality preset | = | menu |
+| Key test screen | menu | menu |
+
+Bindings are data (`src/game/input/bindings.json`); the rebinding screen is Phase 2.
+
+Mouse is never required. Bindings avoid combos that ghost on cheap keyboards: the left hand uses
+W A S D Shift Tab Space Q E C B, the right hand J K L U I O H N and arrows; no single-row
+4-key chords are needed for any technique.
+
+### 7.2 Local two player (Phase 2)
+
+Keyboard + controller or two controllers. Shared camera framing both athletes; split screen on
+High and above.
+
+## 8. Technique catalog
+
+Every technique is a pattern of the commands above. The motor controller turns them into muscle
+activations; physics decides the result. "Whole-body move" marks a single input that issues a
+coordinated command pattern (still muscles only).
+
+### 8.1 Tackler
+
+| Technique | How it's performed |
+|---|---|
+| Break down, chop feet | Sink (partial) + chop feet while closing |
+| Near foot / near shoulder | Move to aim the near hip; lean side toward the carrier |
+| Sink hips | Sink |
+| Shoot hands | Shoot (arms extend fast to the aim point) |
+| Wrap up | Wrap: both arms adduct and flex; hands grip where they touch; grip breaks if overpowered |
+| Head up, out of contact | Head up (default) + lean side |
+| Shoulder strike | Lean fwd + side, thrust hips, arms back |
+| Drive legs through contact | Drive legs + lean fwd after contact |
+| Rugby roll tackle | Wrap + lean side + plant cut (rotates the pair) |
+| Diving tackle | Dive (whole-body) + arms reach + wrap |
+| Ankle tackle | Dive low + reach both arms at the feet |
+| Low tackle at the thighs | Full sink + shoot + wrap |
+| Strip / punch the ball | Grip on the ball arm + pull, or arm reach strike at the ball |
+| Jersey drag | Grip on jersey (hand touches thorax back) + lean back + sink |
+| Gang tackle | Multiple tacklers (Phase 2+) |
+| Big hit through the hips | Sink → thrust hips at contact + drive legs |
+| Lift and drive back | Wrap + thrust hips + drive legs |
+| Use carrier momentum | Wrap + plant cut + lean side as he passes (twist/throw) |
+| Shed a blocker | Shoot (strike chest), arm lockout (shoot + hold), rip (arm reach up under), swim (arm over), club (arm swing across) |
+| Swat a stiff arm | Arm reach across toward the opponent's arm |
+
+### 8.2 Ball carrier (Phase 2)
+
+Stiff arm (arm reach toward tackler with elbow lock), spin (whole-body), juke (plant cut + lean),
+lower the shoulder (sink + lean fwd + side), hurdle (whole-body jump), high and tight ball security
+(both arms wrap the ball), switch ball to outside arm (whole-body hand-off between grips),
+hesitation/dead leg (brief speed drop + lean), jump cut (whole-body), dip shoulder to get skinny
+(lean side + sink), high step through arm tackles (high knee gait), churn legs to break a wrap
+(drive legs + chop), fall forward (dive small).
+
+### 8.3 Blocker (bot, Phase 2)
+
+Inside hand placement (shoot to the opponent's chest inside his arms), drive block (drive legs +
+lean fwd + arms locked), anchor (wide base + sink + lean fwd).
+
+### 8.4 Extra ideas (later)
+
+- **Hand fighting**: grips can grip arms; breaking a grip with a rip uses real arm torque.
+- **Shoe-string trip**: reach a foot during a dive.
+- **Hawk tackle**: wrap the far leg and roll.
+- **Push-out on the sideline**: shoot + drive with a sideline-aware bot carrier.
+- **Spin out of a wrap** for the carrier: whole-body spin while the tackler's grips are weak.
+
+## 9. Bots
+
+Roles: ball carrier, tackler, blocker. One or two per drill. Never a teammate of the human.
+
+`BotBrain` reads only what an athlete could perceive (other bodies' positions/velocities, with a
+reaction delay) and outputs `Commands`. Ball carrier brain (Phase 1, simple): run toward the goal
+line, steer away from the tackler's projected intercept, random but seeded choices of when and
+which way to cut so reps differ. Tackler brain (Phase 2): pursuit angle to an intercept, break down
+at 3–4 m, choose technique by situation. Blocker brain (Phase 2): engage, inside hands, drive.
+
+Difficulty (Phase 2): reaction delay (0.35 → 0.12 s), decision noise, aim precision. Never strength.
+
+Brains are modules behind one interface (`Brain.think(perception, dt): Commands`).
+
+## 10. Drills
+
+| Drill | Phase |
+|---|---|
+| Open field 1-on-1, human tackler vs bot carrier | 1 |
+| Open field 1-on-1, human carrier vs bot tackler | 2 |
+| Oklahoma (human defender vs bot blocker + bot carrier, lane between bags) | 3 |
+| Angle tackling on the sideline | 3 |
+| Tackling dummies, sled | 3 |
+| Human carrier vs two bot tacklers; human tackler vs carrier + lead blocker | 3 |
+| Free sandbox | 3 |
+
+A rep ends when the carrier is down (any segment other than hands and feet touches the ground),
+goes out of bounds, or the time limit (10 s) runs out. Reset is fast: rebuild bodies at the start
+pose (Phase 1: teleport reset; physical get-up comes in Phase 2). Full regulation field with
+markings (120 yd × 53⅓ yd incl. end zones).
+
+## 11. Feel
+
+Target: physical, readable, sometimes hilarious chaos — but with strong, fast, balanced athletes.
+
+- **Effort shading**: segments tint toward hot orange as their actuators near saturation.
+- **Force-driven feedback**: camera shake, rumble and impact sound scale with measured contact
+  force; huge hits (> threshold) trigger brief slow motion (a setting).
+- **Anatomy view** (see 5.8).
+- Further ideas: a "force ribbon" trail on the strongest contact for the last second; impact
+  rings on the turf sized by force; a heartbeat-like audio pulse that rises with effort; a
+  post-hit freeze-frame with the force arrow drawn; coaching "film room" replay with the grade
+  overlaid.
+
+## 12. Camera, replay, data
+
+- Chase camera: target follows the pelvis (not the head), critically damped spring; never shakes
+  with the head. Helmet camera: head position, stabilised orientation (yaw from head, pitch/roll
+  heavily smoothed). Free camera in replays (Phase 3).
+- Slow motion never changes `dt`.
+- Replay (Phase 3) stores body transforms per step in a ring buffer.
+- Impact data after each rep: closing speed (relative COM velocity along the line between COMs at
+  first contact), peak contact force (max total normal force between the two athletes, 10 ms
+  moving average), peak head linear acceleration in g (from head velocity, low-pass filtered at
+  ~60 Hz; documented as a filtered rigid-body estimate, not a sensor reading).
+- Technique grade (Phase 3, informational only).
+
+## 13. Look and sound
+
+Meshes generated in code from anatomy data (capsules/ellipsoids per segment sized from the same
+numbers). Two fictional teams: **Harbor Gulls** (navy/white) and **Ridge Foxes** (orange/charcoal).
+A rigged model can later be attached by mapping bones to segments; the renderer reads only segment
+transforms, so physics stays the only driver. Sound: Web Audio synthesis (noise bursts + filtered
+thumps for pads, clicks for cleats), gain from contact force, mute toggle. No sampled audio is
+required; any CC0 sample used later is credited in `docs/realism-sources.md`.
+
+## 14. Quality presets
+
+| Preset | Step rate | Solver iters | Body detail | Render scale | Shadows | Effects |
+|---|---|---|---|---|---|---|
+| Minimum | 240 Hz* | low | Minimum | 0.6 | off | off |
+| Low | 240 Hz | low | Standard | 0.75 | off | off |
+| Medium | 240 Hz | medium | Standard | 1.0 | basic | low |
+| High | 480 Hz | high | Standard | 1.0 | soft | on |
+| Ultra (desktop) | 960 Hz | max | Ultra | 1.0–1.5 | soft hi-res | all |
+| Custom | any | any | any | any | any | any |
+
+\*Final step rates are set from the benchmark (see `physics-benchmark.md`). Phase 1 ships Minimum
+and High. First launch runs a ~5 s automatic benchmark and picks the highest preset that holds the
+target frame rate. One control (menu or `=` key) changes preset; changes apply at the next rep.
+Dynamic resolution may change render scale during play. The consistency test checks outcomes match
+across presets within a documented tolerance.
+
+Performance overlay (toggle): FPS, physics ms/frame, render ms/frame, bodies, contacts, assist level.
+
+## 15. Testing strategy
+
+- **Unit (Vitest)**: anatomy data totals and proportions, merge invariants, joint limits, muscle
+  curves, math utils.
+- **Headless physics (Vitest, Node)**: standing 60 s; push recovery sweep (largest survived impulse
+  per direction); walk/jog/sprint/cut top speeds; contact scenarios run N times with seeded small
+  variations, judged on rates (low wrapped tackle > high arm tackle; lower pad level wins; heavier
+  and faster drives lighter back). These are the realism contract: when one fails, fix physics or
+  controller, never add a bonus.
+- **Determinism**: same inputs → identical state hash.
+- **Consistency**: scenario at each preset → outcomes within tolerance.
+- **Benchmark script**: physics and render time per preset, with CPU throttling via Playwright/CDP.
+- **Playwright**: load the built site, start a drill, scripted inputs, screenshots, fail on console
+  errors. Screenshots are reviewed by eye.
+
+## 16. Roadmap
+
+**Phase 1 — foundation and first playable**
+1. Setup, this doc, CLAUDE.md, engine benchmark and choice.
+2. Anatomy at Standard and Minimum, muscles, equipment, anatomy view.
+3. Hand-built motor controller: stand, balance, push recovery, walk/jog/sprint/cut, balance assist,
+   passing tests; athletic, not wobbly (torso sway and step regularity measured, frames captured).
+4. Movement and Contact modes with core body-part controls (arm reach/grip, wrap, sink, thrust,
+   drive legs, lean, dive) on keyboard and controller.
+5. Open-field 1-on-1: human tackler vs bot carrier, quick reset, reset input.
+6. Impact readout, effort shading, rumble + camera shake, perf overlay, Minimum and High presets
+   with automatic selection.
+7. Tuning panel (controller gains, strength scale, assist, traction) with export.
+8. GitHub Pages deployment + in-game benchmark screen with copyable results.
+
+**Phase 2** — full move sets, either side, second bot and blocker, bot difficulty, physical get-up,
+rebinding screen, local two player.
+**Phase 3** — remaining drills, sandbox, position/level presets, replay, technique grade, feel pass.
+**Phase 4** — full preset ladder + Custom + advanced panel, Chromebook optimisation, Electron app
+with Ultra and cross-origin isolation.
+**Phase 5** — learned-controller groundwork: headless training env, Gymnasium bridge, parallel envs,
+reward modules (reference-motion term optional, off by default, no mocap shipped), policy export,
+in-game loading per player, short end-to-end test, training guide. CPU training by default; check
+AMD GPU support at phase start.
+**Future (don't block)** — six-man football mode; online multiplayer. Keep the sim core free of
+singletons so N athletes and network rollback stay possible.
