@@ -197,7 +197,7 @@ class App {
     this.hud.showResult(null);
     this.peakShown = false;
     this.endWhistled = false;
-    this.input.resetTorso();
+    this.input.resetToggles();
     // The rep's pre-roll steps the human brain with the last input: a camera still turned from the previous rep
     // (e.g. running back after a fumble) and a held key would turn the athlete around before the rep starts.
     // Start from the spawn heading (+Z) with no movement.

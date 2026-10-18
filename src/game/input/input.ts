@@ -121,6 +121,11 @@ export class InputManager {
 
   clearLook() { this.mouse.x = this.mouse.y = 0; }
   resetTorso() { this.torso = [0, 0]; this.torsoTarget = [0, 0]; this.mouse.wheel = 0; }
+  /** New rep: every toggle (side shuffle, sprint / sink toggles) and ramp starts off. */
+  resetToggles() {
+    this.shiftLock = [false, false]; this.sprintOn = [false, false]; this.sinkOn = [false, false]; this.sinkRamp = [0, 0];
+    this.resetTorso();
+  }
 
   /** Read one player's input. Call once per render frame. */
   read(player: number, dt: number): InputFrame {
