@@ -1,5 +1,6 @@
 // Browser entry: title menu, open-field drill, HUD, pause menu, panels. The simulation runs on a fixed
 // timestep; slow motion only changes how fast real time feeds the fixed steps.
+import { DEFAULT_SUPPORT, type SupportSettings } from '../sim/anim/types';
 import { HumanBrain } from '../sim/brains/human';
 import { DIFFICULTY } from '../sim/brains/carrier';
 import { DEFAULT_GAINS } from '../sim/control/hand';
@@ -11,6 +12,7 @@ import { World, type PhysicsSettings } from '../sim/world';
 import { Audio } from './audio';
 import { chooseBest, reportText, runBenchmark } from './benchmark';
 import { ChaseCamera } from './camera';
+import { BIG_HIT_N, hitFeel, MPH } from './feel';
 import { InputManager, type InputFrame } from './input/input';
 import { PRESETS, type PresetName } from './presets';
 import { GameRenderer, RENDER_PRESETS } from './render/renderer';
@@ -64,6 +66,9 @@ class App {
   paused = true;
   timeScale = 1;
   slowUntil = 0;
+  freezeUntil = 0;   // hit-stop: wall-clock ms until which no sim steps run
+  nextStop = 0;      // one hit-stop per hit, not one per contact step
+  speed = 0;         // smoothed human ground speed for the speedometer and FOV kick, m/s
   acc = 0;
   last = performance.now();
   fps = 0; physMs = 0;
@@ -135,7 +140,8 @@ class App {
     const s = this.settings;
     this.drill = await OpenFieldDrill.create(mujocoEngine, {
       ...DEFAULT_OPEN_FIELD, physics: p.physics, assist: s.assist, seed: 1, difficulty: DIFFICULTY.normal,
-      human: { ...DEFAULT_OPEN_FIELD.human, strength: s.strength }, traction: s.traction, gains: s.gains,
+      human: { ...DEFAULT_OPEN_FIELD.human, strength: s.strength, speed: s.speed }, traction: s.traction, gains: s.gains,
+      support: { ...DEFAULT_SUPPORT, ...s.support },
     }, this.human, this.rep++);
     if (!this.renderer || this.rendererPreset !== p.name) {
       this.renderer?.renderer.dispose();
@@ -188,7 +194,8 @@ class App {
     ];
     const t = el('table', { class: 'controls' }, el('tr', {}, el('th', { text: 'Action' }), el('th', { text: 'Keyboard' }), el('th', { text: 'Controller' })),
       ...rows.map((r) => el('tr', {}, ...r.map((c) => el('td', { text: c })))));
-    const box = el('div', { class: 'panel menu wide' }, el('h1', { text: 'Controls' }), t);
+    const box = el('div', { class: 'panel menu wide' }, el('h1', { text: 'Controls' }),
+      el('p', { class: 'sub', text: 'No control is needed for balance: your athlete stays on his feet while running and cutting, so hold Sprint and hit the carrier as hard as you can. Once you make contact, physics decides who stays up.' }), t);
     const b = el('button', { class: 'item', type: 'button' }, 'Back');
     b.addEventListener('click', back);
     box.append(el('p', { class: 'sub', text: 'Bindings live in a data file now; a rebinding screen comes in Phase 2. A mouse is never needed.' }), b);
@@ -215,27 +222,39 @@ class App {
     const s = this.settings;
     const gainKeys: (keyof typeof DEFAULT_GAINS)[] = ['torsoKp', 'torsoKd', 'footK', 'stepWidth', 'swingWn', 'stanceKnee', 'stanceHip', 'dcmK', 'heightKp', 'heightKd', 'spine'];
     const grid = el('div', { class: 'grid2' });
-    const row = (label: string, value: number, min: number, max: number, step: number, set: (v: number) => void) => {
-      const out = el('span', { class: 'mono', text: value.toFixed(3) });
+    const row = (label: string, value: number, min: number, max: number, step: number, set: (v: number) => void, fmt = (v: number) => v.toFixed(3)) => {
+      const out = el('span', { class: 'mono', text: fmt(value) });
       const r = el('input', { type: 'range', min: String(min), max: String(max), step: String(step), value: String(value), 'aria-label': label });
-      r.addEventListener('input', () => { const v = +r.value; out.textContent = v.toFixed(3); set(v); this.save(); });
+      r.addEventListener('input', () => { const v = +r.value; out.textContent = fmt(v); set(v); this.save(); });
       grid.append(el('label', { text: label }), r, out);
     };
-    row('Balance assist', s.assist, 0, 1, 0.01, (v) => (s.assist = v));
-    row('Muscle strength ×', s.strength, 0.5, 1.5, 0.01, (v) => (s.strength = v));
+    const pct = (v: number) => `${(v * 100).toFixed(0)} %`, deg = (v: number) => `${(v * 180 / Math.PI).toFixed(0)}°`;
+    const sup = s.support;
+    const supportRow = (label: string, k: keyof SupportSettings, min: number, max: number, step: number, fmt?: (v: number) => string) =>
+      row(`Support: ${label}`, sup[k], min, max, step, (v) => (sup[k] = v), fmt);
+    supportRow('strength', 'strength', 0, 1, 0.01, pct);
+    supportRow('carry accel (m/s²)', 'carryAccel', 0, 15, 0.1, (v) => v.toFixed(1));
+    supportRow('weight share', 'weightShare', 0, 1, 0.01, pct);
+    supportRow('tilt fade start', 'tiltStart', 0.1, 1.2, 0.01, deg);
+    supportRow('tilt fade end', 'tiltEnd', 0.2, 1.5, 0.01, deg);
+    supportRow('big hit (N·s)', 'bigHit', 20, 400, 1, (v) => v.toFixed(0));
+    supportRow('tracking stiffness ×', 'tracking', 0.25, 2, 0.01, (v) => v.toFixed(2));
+    row('Athlete speed ×', s.speed, 0.7, 1.5, 0.01, (v) => (s.speed = v), (v) => v.toFixed(2));
+    row('Muscle strength ×', s.strength, 0.5, 1.5, 0.01, (v) => (s.strength = v), (v) => v.toFixed(2));
+    row('Balance assist (no support)', s.assist, 0, 1, 0.01, (v) => (s.assist = v), pct);
     row('Cleat traction μ', s.traction, 0.5, 1.6, 0.01, (v) => (s.traction = v));
     for (const k of gainKeys) {
       const d = DEFAULT_GAINS[k], v = s.gains[k] ?? d;
       row(`Gain: ${k}`, v, d * 0.25, d * 4, d / 100, (x) => (s.gains[k] = x));
     }
     const exp = el('textarea', { readonly: 'true', 'aria-label': 'Exported values' });
-    const update = () => (exp.value = JSON.stringify({ assist: s.assist, strength: s.strength, traction: s.traction, gains: { ...DEFAULT_GAINS, ...s.gains } }, null, 2));
+    const update = () => (exp.value = JSON.stringify({ support: sup, speed: s.speed, strength: s.strength, assist: s.assist, traction: s.traction, gains: { ...DEFAULT_GAINS, ...s.gains } }, null, 2));
     update();
     grid.addEventListener('input', update);
     const copy = el('button', { class: 'item', type: 'button' }, 'Copy values');
     copy.addEventListener('click', () => { void navigator.clipboard?.writeText(exp.value).then(() => this.hud.flash('Copied'), () => { exp.select(); }); });
     const reset = el('button', { class: 'item', type: 'button' }, 'Reset to defaults');
-    reset.addEventListener('click', () => { s.gains = {}; s.assist = 0.2; s.strength = 1; s.traction = 1.2; this.save(); this.tuning(); });
+    reset.addEventListener('click', () => { s.gains = {}; s.assist = 0.2; s.strength = 1; s.speed = 1; s.traction = 1.2; s.support = { ...DEFAULT_SUPPORT }; this.save(); this.tuning(); });
     const back = el('button', { class: 'item', type: 'button' }, 'Back');
     back.addEventListener('click', () => (this.drill ? this.pauseMenu() : this.title()));
     this.layer.show(el('div', { class: 'panel menu wide' }, el('h1', { text: 'Tuning' }), el('p', { class: 'sub', text: 'Changes apply from the next rep (physics settings never change mid-rep).' }), grid, exp, copy, reset, back));
@@ -322,39 +341,59 @@ class App {
         const camYaw = Math.atan2(r.camera.getWorldDirection(r.camera.position.clone()).x, r.camera.getWorldDirection(r.camera.position.clone()).z);
         this.human.latest = { move: f.move, lean: f.lean, sprint: f.sprint, sink: f.sink, armL: f.armL, armR: f.armR, contactMode: f.contactMode, held: f.held, cameraYaw: camYaw };
         if (now / 1000 > this.slowUntil) this.timeScale = 1;
-        this.acc += dtReal * this.timeScale;
+        // hit-stop freezes wall time only: the same fixed steps run afterwards, none are skipped mid-step
+        if (now >= this.freezeUntil) this.acc += dtReal * this.timeScale;
         const t0 = performance.now();
         let steps = 0;
-        while (this.acc >= w.dt && steps < 40) { d.step(); this.acc -= w.dt; steps++; this.feedback(w.lastHitForce, now); }
+        while (this.acc >= w.dt && steps < 40) {
+          d.step(); this.acc -= w.dt; steps++;
+          if (this.feedback(w.lastHitForce, now)) { this.acc = 0; break; }
+        }
         if (steps >= 40) this.acc = 0; // never spiral: drop time rather than fall behind
         this.physMs += (performance.now() - t0 - this.physMs) * 0.1;
       }
       this.cam.update(r.camera, w, dtReal, this.humanHeading());
+      const v = w.scene.athletes[0].state.comVel;
+      this.speed += (Math.hypot(v[0], v[2]) - this.speed) * Math.min(1, dtReal * 8);
+      // FOV kick so a full sprint reads as fast: +12° from jog to top speed
+      const fov = 55 + 12 * Math.min(1, Math.max(0, (this.speed - 3) / 7));
+      if (Math.abs(r.camera.fov - fov) > 0.05) { r.camera.fov = fov; r.camera.updateProjectionMatrix(); }
       r.render(w);
       this.updateHud();
     }
     requestAnimationFrame((t) => this.frame(t));
   }
 
-  /** Camera shake, rumble, sound and slow motion all scale with measured contact force. */
-  feedback(F: number, now: number) {
-    if (F < 300) return;
-    const k = Math.min(1, F / 9000);
-    this.cam.addShake(0.02 + 0.25 * k * k);
+  /** Camera shake and punch, rumble, sound, hit-stop and slow motion scale with contact force and closing
+   *  speed. Returns true when a hit-stop starts. */
+  feedback(F: number, now: number): boolean {
+    if (F < 300) return false;
+    const w = this.drill!.world;
+    const fx = hitFeel(F, w.impact.closingSpeed);
+    this.cam.addShake(fx.shake);
     this.audio.hit(F);
     const pad = navigator.getGamepads?.()[0] as (Gamepad & { vibrationActuator?: { playEffect: (t: string, o: object) => Promise<unknown> } }) | null;
-    pad?.vibrationActuator?.playEffect('dual-rumble', { duration: 80 + 140 * k, strongMagnitude: k, weakMagnitude: Math.min(1, k * 1.4) }).catch(() => {});
-    if (this.settings.slowMo && F > 7000 && now / 1000 > this.slowUntil) { this.timeScale = 0.3; this.slowUntil = now / 1000 + 0.9; }
+    pad?.vibrationActuator?.playEffect('dual-rumble', { duration: fx.rumble.duration, strongMagnitude: fx.rumble.strong, weakMagnitude: fx.rumble.weak }).catch(() => {});
+    if (fx.slowMo && this.settings.slowMo && now / 1000 > this.slowUntil) { this.timeScale = 0.3; this.slowUntil = now / 1000 + 0.9; }
+    const a = w.scene.athletes[0].state.com, b = w.scene.athletes[1].state.com;
+    this.cam.punch(b[0] - a[0], b[2] - a[2], fx.punch);
+    if (!fx.stopMs || now < this.nextStop) return false;
+    this.freezeUntil = now + fx.stopMs;
+    this.nextStop = now + 500;
+    return true;
   }
 
   updateHud() {
     const d = this.drill!, w = d.world, me = w.athletes[0];
+    const sup = w.view(me).support; // present once the world runs the active-ragdoll support
     const mode = this.human.latest?.contactMode ? 'CONTACT' : 'MOVEMENT';
     this.hud.setStatus([
       `OPEN FIELD  ·  Rep ${d.rep + 1}  ·  ${Math.min(d.repTime, d.cfg.timeLimit).toFixed(1)} s`,
       `Mode: ${mode}${this.timeScale < 1 ? '   SLOW MOTION' : ''}`,
-      `Balance assist ${(this.settings.assist * 100).toFixed(0)}%${me.assistLevel < 1 ? ` (fading ${(me.assistLevel * 100).toFixed(0)}%)` : ''}`,
+      sup ? `Support ${((d.cfg.support?.strength ?? 1) * 100).toFixed(0)}%  ·  posture ${(sup.posture * 100).toFixed(0)}%  ·  carry ${(sup.carry * 100).toFixed(0)}%${sup.down ? '  ·  DOWN' : ''}`
+        : `Balance assist ${(this.settings.assist * 100).toFixed(0)}%${me.assistLevel < 1 ? ` (fading ${(me.assistLevel * 100).toFixed(0)}%)` : ''}`,
     ]);
+    this.hud.setSpeed(this.speed, this.speed * MPH);
     this.hud.setHint('<kbd>WASD</kbd> move  <kbd>Shift</kbd> sprint  <kbd>Tab</kbd> contact mode  <kbd>J</kbd>/<kbd>L</kbd> arms  <kbd>K</kbd> wrap  <kbd>Space</kbd> sink  <kbd>H</kbd> thrust  <kbd>B</kbd> dive  <kbd>Enter</kbd> reset  <kbd>Esc</kbd> menu');
     if (this.settings.overlay) {
       const st = w.scene.stats();
@@ -368,10 +407,12 @@ class App {
       this.peakShown = true;
       const imp = w.impact;
       const title = d.ended === 'down' && imp.firstContactTime < 0 ? 'Carrier fell (no contact)' : d.ended === 'down' ? 'Tackle — carrier down' : d.ended === 'touchdown' ? 'Missed — touchdown' : d.ended === 'out of bounds' ? 'Pushed out of bounds' : 'Time';
+      const ms = (v: number) => `${v.toFixed(1)} m/s (${(v * MPH).toFixed(1)} mph)`;
       this.hud.showResult({
         title,
+        banner: imp.peakForce >= BIG_HIT_N ? `BIG HIT  ·  ${ms(imp.closingSpeed)}  ·  ${(imp.peakForce / 1000).toFixed(1)} kN` : undefined,
         rows: imp.firstContactTime >= 0 ? [
-          ['Closing speed', `${imp.closingSpeed.toFixed(1)} m/s`],
+          ['Closing speed', ms(imp.closingSpeed)],
           ['Peak contact force', `${(imp.peakForce / 1000).toFixed(2)} kN`],
           ['Peak head accel (you)', `${imp.peakHeadG[0].toFixed(0)} g`],
           ['Peak head accel (carrier)', `${imp.peakHeadG[1].toFixed(0)} g`],

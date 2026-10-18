@@ -43,23 +43,31 @@ export class Hud {
   private overlay = el('div', { class: 'panel overlay mono' });
   private result = el('div', { class: 'panel result' });
   private toast = el('div', { class: 'toast' });
+  private speedoMs = el('b');
+  private speedoMph = el('span');
+  private speedo = el('div', { class: 'panel speedo mono', 'aria-label': 'Speed' }, this.speedoMs, ' m/s', el('br'), this.speedoMph);
   private toastTimer = 0;
   constructor() {
-    this.root.append(this.status, this.hint, this.overlay, this.result, this.toast);
+    this.root.append(this.status, this.hint, this.overlay, this.result, this.toast, this.speedo);
     this.showResult(null);
     this.setOverlay(null);
   }
-  setVisible(on: boolean) { for (const e of [this.status, this.hint]) e.style.display = on ? '' : 'none'; }
+  setVisible(on: boolean) { for (const e of [this.status, this.hint, this.speedo]) e.style.display = on ? '' : 'none'; }
   setStatus(lines: string[]) { this.status.textContent = lines.join('\n'); }
   setHint(html: string) { this.hint.innerHTML = html; }
+  /** Speedometer: speed in m/s, shown with mph. */
+  setSpeed(v: number, mph: number) {
+    this.speedoMs.textContent = v.toFixed(1);
+    this.speedoMph.textContent = `${mph.toFixed(1)} mph`;
+  }
   setOverlay(lines: string[] | null) {
     this.overlay.style.display = lines ? '' : 'none';
     if (lines) this.overlay.textContent = lines.join('\n');
   }
-  showResult(card: { title: string; rows: [string, string][]; foot: string } | null) {
+  showResult(card: { title: string; banner?: string; rows: [string, string][]; foot: string } | null) {
     this.result.style.display = card ? '' : 'none';
     if (!card) return;
-    this.result.replaceChildren(el('h2', { text: card.title }), ...card.rows.map(([k, v]) => el('div', { class: 'row' }, el('span', { text: k }), el('b', { text: v }))), el('p', { class: 'foot', text: card.foot }));
+    this.result.replaceChildren(el('h2', { text: card.title }), ...(card.banner ? [el('div', { class: 'banner', text: card.banner })] : []), ...card.rows.map(([k, v]) => el('div', { class: 'row' }, el('span', { text: k }), el('b', { text: v }))), el('p', { class: 'foot', text: card.foot }));
   }
   flash(msg: string) {
     this.toast.textContent = msg;

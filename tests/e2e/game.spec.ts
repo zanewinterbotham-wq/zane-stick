@@ -43,6 +43,29 @@ test('title loads, drill starts, scripted input plays a rep without errors', asy
   expect(errors).toEqual([]);
 });
 
+test('tuning panel shows the support, speed and strength sliders; HUD shows speed', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
+  await page.goto('/');
+  await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
+  await page.keyboard.down('ShiftLeft'); await page.keyboard.down('KeyW');
+  await page.waitForTimeout(1500);
+  await expect(page.locator('.speedo')).toContainText('mph');
+  await page.screenshot({ path: 'test-results/06-sprint-speedo.png' });
+  await page.keyboard.up('KeyW'); await page.keyboard.up('ShiftLeft');
+  await page.keyboard.press('KeyT');
+  await expect(page.locator('.menu h1')).toHaveText('Tuning');
+  for (const label of ['Support: strength', 'Support: carry accel (m/s²)', 'Support: weight share', 'Support: tilt fade start', 'Support: tilt fade end', 'Support: big hit (N·s)', 'Support: tracking stiffness ×', 'Athlete speed ×', 'Muscle strength ×']) {
+    await expect(page.getByRole('slider', { name: label })).toBeVisible();
+  }
+  await expect(page.getByRole('slider', { name: 'Support: strength' })).toHaveValue('1');
+  await expect(page.getByLabel('Exported values')).toHaveValue(/"support"/);
+  await page.screenshot({ path: 'test-results/07-tuning.png', fullPage: true });
+  expect(errors).toEqual([]);
+});
+
 test('key test screen shows held keys', async ({ page }) => {
   const errors = watchErrors(page);
   await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));

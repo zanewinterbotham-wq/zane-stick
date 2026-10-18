@@ -1,5 +1,5 @@
 // Chase camera: follows the pelvis (never the head), critically damped, so it never shakes with the head.
-// Shake from big hits is added on top and decays.
+// Shake and a punch toward the hit are added on top and decay.
 import * as THREE from 'three';
 import type { World } from '../sim/world';
 
@@ -9,10 +9,17 @@ export class ChaseCamera {
   private vel = new THREE.Vector3();
   private lookVel = new THREE.Vector3();
   private shake = 0;
+  private punchOff = new THREE.Vector3();
   mode: 'chase' | 'helmet' | 'side' = 'chase';
   target = 0;
 
   addShake(amount: number) { this.shake = Math.min(0.35, this.shake + amount); }
+  /** Lurch the camera toward a hit (horizontal direction x, z). Called every contact step: keeps the largest. */
+  punch(x: number, z: number, amount: number) {
+    if (amount <= this.punchOff.length()) return;
+    const n = Math.hypot(x, z) || 1;
+    this.punchOff.set(x / n, 0, z / n).multiplyScalar(amount);
+  }
 
   update(cam: THREE.PerspectiveCamera, w: World, dt: number, heading: number) {
     const a = w.athletes[this.target];
@@ -35,7 +42,8 @@ export class ChaseCamera {
     const k = this.mode === 'helmet' ? 40 : 10;
     spring(this.pos, this.vel, want, k, dt);
     spring(this.look, this.lookVel, lookAt, k, dt);
-    cam.position.copy(this.pos);
+    cam.position.copy(this.pos).add(this.punchOff);
+    this.punchOff.multiplyScalar(Math.exp(-dt * 10));
     if (this.shake > 0.001) {
       cam.position.x += (Math.random() - 0.5) * this.shake;
       cam.position.y += (Math.random() - 0.5) * this.shake;
