@@ -42,6 +42,8 @@ export interface Gains {
   yawGain: number;
   /** Swing phase from which the foot reaches below the turf at the foothold (straight-leg landing). */
   reachStart: number;
+  /** Trunk balance torque through the loaded feet while standing (hip strategy), relative to torsoKp/torsoKd. */
+  standTorso: number;
   /** Running: vertical push scale, apex height feedback (1/m), horizontal acceleration (1/s), extra drive
    *  (m/s² at mid-stance), Raibert foot placement on speed error (s), heel recovery fold (rad). */
   runPush: number; runHeightK: number; runAccel: number; runDrive: number; runFootK: number; runHeel: number;
@@ -58,7 +60,7 @@ export const DEFAULT_GAINS: Gains = {
   stepTMin: 0.4, touchFrac: 0.6, clearance: 0.09, stanceKneeBend: 0.12, armSwing: 0.6, vLead: 0.6,
   leanSpeed: 0.015, leanAccel: 0.04,
   pushStart: 0.55, pushAnkle: 0.35,
-  yawGain: 0.6, reachStart: 0.7,
+  yawGain: 0.6, reachStart: 0.7, standTorso: 1.3,
   runPush: 1.0, runHeightK: 3.0, runAccel: 1.5, runDrive: 2.0, runFootK: 0.06, runHeel: 1.3,
 };
 
@@ -311,7 +313,9 @@ export class HandController implements MotorController {
       const st = this.legs[this.stanceIdx];
       // A swing foot that has taken most of the weight has landed wherever it is: a recovery step can end
       // behind the stance foot, and treating that loaded foot as still swinging leaves the trunk uncontrolled.
-      const ahead = dot([ank[sw.k][0] - ank[st.k][0], 0, ank[sw.k][2] - ank[st.k][2]], travel) > -0.05
+      // Only the fore–aft part of travel counts: when moving sideways a foot cannot pass the other one.
+      const tf = dot(travel, fwdD);
+      const ahead = dot([ank[sw.k][0] - ank[st.k][0], 0, ank[sw.k][2] - ank[st.k][2]], fwdD) * tf > -0.05
         || (feet[sw.k].force > 0.5 * m * G && feet[sw.k].force > feet[st.k].force);
       // A toe scuff mid-swing is not a landing: the foot must take real weight, or the planned set-down must be due.
       const landed = feet[sw.k].touching && (feet[sw.k].force > 0.25 * m * G || this.walkT > 0.9 * stepT);
@@ -359,6 +363,15 @@ export class HandController implements MotorController {
         shares[0] = a; shares[1] = 1 - a;
       } else if (stance.length === 1) shares[stance[0].k] = 1;
       for (const L of this.legs) this.stanceLeg(v, L, out, F, shares[L.k], p, ank[L.k], footFwd[L.k], ePel, stance.length);
+      // Hip strategy: the trunk balance torque of the stepping cycle, through the feet that carry weight. Its
+      // reaction moves the ground force beyond the centre of pressure, which is what lets a person caught on
+      // one foot after a shove stop the fall without stepping.
+      const pw = this.segVec(s.segAngVel, this.pelvisSeg), mgh = m * G * this.standCom * g.standTorso, fSum = feet[0].force + feet[1].force;
+      const Tt: Vec3 = [mgh * (g.torsoKp * ePel[0] - g.torsoKd * pw[0]), 0, mgh * (g.torsoKp * ePel[2] - g.torsoKd * pw[2])];
+      if (fSum > 0) for (const L of this.legs) {
+        const wk = feet[L.k].force / fSum, tH = this.rotToDofs(v, L.hip, [-Tt[0] * wk, 0, -Tt[2] * wk]);
+        L.hip.forEach((i, k) => (out.tff[i] += tH[k]));
+      }
       this.dbg = { mode: 'stand', cpOut, speed, px: p[0], pz: p[2], shareL: shares[0] };
     } else if (this.runMode) {
       this.runCycle(v, out, c, cv, vd, headingD, fwdD, rightD, ank, footFwd, pitchD, rollD, hd, speed);
@@ -434,7 +447,6 @@ export class HandController implements MotorController {
     // --- swing thigh: where the foot should land relative to the COM (heading frame)
     const outD: Vec3 = [-rightD[0] * sw.side, 0, -rightD[2] * sw.side]; // outward for the swing side
     const vS = dot(cv, fwdD), vL = dot(cv, outD), vdS = dot(vd, fwdD), vdL = dot(vd, outD);
-    const legLen = sw.L1 + sw.L2;
     const b = 1 / (Math.exp(w0 * T) - 1);
     // Aim a little short of the capture point (footMargin) so the stance ankle can finish the job. No farther
     // ahead than stepMax: from upright hips a straight leg only reaches the turf close under the body, so a
@@ -468,25 +480,22 @@ export class HandController implements MotorController {
     const pelvisPos = this.segVec(s.segPos, this.pelvisSeg);
     const hoff = qrot(pq, sw.hipOff);
     const rel = qrot(qconj(pq), [ankT[0] - pelvisPos[0] - hoff[0], ankT[1] - pelvisPos[1] - hoff[1], ankT[2] - pelvisPos[2] - hoff[2]]);
-    const n = Math.hypot(...rel) || 1;
-    const d = Math.min(n, legLen * 0.995);
-    const dir: Vec3 = [rel[0] / n, rel[1] / n, rel[2] / n];
-    const kneeIK = Math.PI - Math.acos(clamp((sw.L1 ** 2 + sw.L2 ** 2 - d * d) / (2 * sw.L1 * sw.L2), -1, 1));
-    const alpha = Math.acos(clamp((sw.L1 ** 2 + d * d - sw.L2 ** 2) / (2 * sw.L1 * d), -1, 1));
-    const hipFlex = Math.atan2(dir[2], -dir[1]) + alpha, hipAbd = Math.asin(clamp(dir[0] * sw.side, -1, 1));
+    // The swing thigh is not rotated toward the heading: turning it in the hip yaws the pelvis the other
+    // way (the stance foot can return only ~40 N·m), which grows the heading error it was meant to fix and
+    // spun the pelvis ±25° per step even at 0.5 m/s. The trunk yaw torque through the stance hip turns the body.
+    const hipRot = 0;
+    const [hipFlex, hipAbd, kneeIK] = this.legIK(sw, rel, hipRot);
     const knee = kneeIK + (running ? 1.0 * Math.sin(Math.PI * Math.min(1, sPh / 0.7)) : 0); // heel recovery when running
     const pelvisPitch = -Math.asin(clamp(qrot(pq, [0, 0, 1])[1], -1, 1));
     this.freq(out, sw.hip[0], hipFlex, g.swingWn);
     this.freq(out, sw.hip[1], hipAbd, g.swingWn);
-    // The swing thigh is not rotated toward the heading: turning it in the hip yaws the pelvis the other
-    // way (the stance foot can return only ~40 N·m), which grows the heading error it was meant to fix and
-    // spun the pelvis ±25° per step even at 0.5 m/s. The trunk yaw torque through the stance hip turns the body.
-    this.freq(out, sw.hip[2], 0, g.swingWn * 1.5);
+    this.freq(out, sw.hip[2], hipRot, g.swingWn * 1.5);
     this.freq(out, sw.knee[0], knee, g.swingWn);
     this.freq(out, sw.knee[1], 0, g.swingWn * 0.5);
     // foot kept level-to-toes-up through the swing so the toes cannot catch the turf
     this.freq(out, sw.ankle[0], pelvisPitch - hipFlex + knee + 0.15, g.swingWn * 2);
-    this.freq(out, sw.ankle[1], 0, g.swingWn * 0.5);
+    // sole kept level side to side (an adducted or abducted leg would otherwise land on the foot's edge)
+    this.freq(out, sw.ankle[1], this.levelSole(v, sw), g.swingWn * 0.5);
     this.freq(out, sw.toe, 0.15, g.swingWn * 0.5);
     // --- stance knee and ankle: posture + gravity compensation through J-transpose at the mid-foot
     // A foot that lands on a bent knee yields first and extends over ~0.2 s (loading response): snapping
@@ -499,7 +508,7 @@ export class HandController implements MotorController {
     // the speed the athlete wants (full from 1 m/s); stepping to stop after a shove it would drive the body on.
     const push = clamp((sPh - g.pushStart) / Math.max(0.05, 1 - g.pushStart), 0, 1) * clamp(vdS, 0, 1);
     this.stiff(out, st.ankle[0], -g.pushAnkle * push, g.stanceAnkle * (1 + 3 * push));
-    this.stiff(out, st.ankle[1], 0, g.stanceAnkle);
+    this.stiff(out, st.ankle[1], this.levelSole(v, st), g.stanceAnkle); // flat on the turf under a leaning leg
     this.stiff(out, st.toe, 0.5 * push, g.posture * (1 + 2 * push));
     // In-stance balance: the capture-point law picks the centre of pressure inside the stance foot and
     // the matching ground force (ankle strategy), as in quiet standing.
@@ -546,6 +555,27 @@ export class HandController implements MotorController {
     const yawAll = clamp(Ttorso[1] + R[1], -yawCap, yawCap);
     const tH = this.rotToDofs(v, st.hip, [-(Ttorso[0] + R[0]) * grounded, -yawAll * grounded, -(Ttorso[2] + R[2]) * grounded]);
     st.hip.forEach((i, k) => { this.stiff(out, i, s.q[i], 0.1); out.tff[i] += tH[k]; });
+  }
+
+  /** Leg IK in the pelvis frame: hip flexion, abduction and knee flexion that put the ankle at `rel` (from
+   *  the hip centre) for a given hip internal rotation. Exact for the hip's flex → abd → rotation joint order:
+   *  with the knee bent, rotation swings the shank sideways and abduction moves only the hip-to-knee-plane
+   *  part of the leg, so both are solved for instead of treating the leg as a straight line. */
+  private legIK(L: Leg, rel: Vec3, rot: number): [number, number, number] {
+    const n = Math.hypot(...rel) || 1, d = Math.min(n, (L.L1 + L.L2) * 0.995);
+    const knee = Math.PI - Math.acos(clamp((L.L1 ** 2 + L.L2 ** 2 - d * d) / (2 * L.L1 * L.L2), -1, 1));
+    // ankle in the hip frame before flexion: (side·(A·sin a + Bs·cos a), Bs·sin a − A·cos a, −B·cos r)
+    const A = L.L1 + L.L2 * Math.cos(knee), B = L.L2 * Math.sin(knee), Bs = B * Math.sin(rot);
+    const p: Vec3 = [rel[0] * d / n, rel[1] * d / n, rel[2] * d / n];
+    const abd = Math.asin(clamp(L.side * p[0] / Math.hypot(A, Bs), -1, 1)) - Math.atan2(Bs, A);
+    const fl = Math.atan2(-B * Math.cos(rot), Bs * Math.sin(abd) - A * Math.cos(abd)) - Math.atan2(p[2], p[1]);
+    return [Math.atan2(Math.sin(fl), Math.cos(fl)), abd, knee];
+  }
+
+  /** Ankle inversion angle that sets the sole level side to side. */
+  private levelSole(v: BodyView, L: Leg) {
+    const fu = qrot(this.segQuat(v, L.foot), [0, 1, 0]);
+    return v.state.q[L.ankle[1]] + this.rotToDofs(v, [L.ankle[1]], cross(fu, [0, 1, 0]))[0];
   }
 
   /** Footprint of a foot: from heel to toe tip along its forward direction, ± half width. */
@@ -654,11 +684,7 @@ export class HandController implements MotorController {
         L.ankT = ankT;
         const pelvisPos = this.segVec(s.segPos, this.pelvisSeg), hoff = qrot(pq, L.hipOff);
         const rel = qrot(qconj(pq), [ankT[0] - pelvisPos[0] - hoff[0], ankT[1] - pelvisPos[1] - hoff[1], ankT[2] - pelvisPos[2] - hoff[2]]);
-        const n = Math.hypot(...rel) || 1, legLen = L.L1 + L.L2, d = Math.min(n, legLen * 0.995);
-        const dir: Vec3 = [rel[0] / n, rel[1] / n, rel[2] / n];
-        const kneeIK = Math.PI - Math.acos(clamp((L.L1 ** 2 + L.L2 ** 2 - d * d) / (2 * L.L1 * L.L2), -1, 1));
-        const alpha = Math.acos(clamp((L.L1 ** 2 + d * d - L.L2 ** 2) / (2 * L.L1 * d), -1, 1));
-        const hipFlex = Math.atan2(dir[2], -dir[1]) + alpha, hipAbd = Math.asin(clamp(dir[0] * L.side, -1, 1));
+        const [hipFlex, hipAbd, kneeIK] = this.legIK(L, rel, 0);
         const heel = g.runHeel * Math.min(1, vRef / 9) * Math.sin(Math.PI * Math.min(1, sPh / 0.55)); // fold the leg to swing it fast
         const knee = kneeIK + heel;
         const pelvisPitch = -Math.asin(clamp(qrot(pq, [0, 0, 1])[1], -1, 1));
