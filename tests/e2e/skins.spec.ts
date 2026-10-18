@@ -16,6 +16,19 @@ const skinState = (page: Page) => page.evaluate(() => {
   return { id: r.skin.id, parts: r.athletes.map((a) => a.parts.length) };
 });
 
+
+/** The AI carrier now dodges a straight run, so these UI tests have him walk into the human instead. */
+async function carrierComesToYou(page: import('@playwright/test').Page) {
+  await page.evaluate(() => {
+    type V = [number, number, number];
+    const d = (window as unknown as { __app: { drill: { carrier: number; human: number; brains: { think: unknown }[]; world: { athletes: { cmd: Record<string, unknown> }[] } } } }).__app.drill;
+    d.brains[d.carrier] = { think: (p: { athletes: { com: V }[] }) => {
+      const me = p.athletes[d.carrier].com, h = p.athletes[d.human].com, dx = h[0] - me[0], dz = h[2] - me[2], n = Math.hypot(dx, dz) || 1;
+      return { ...d.world.athletes[d.carrier].cmd, move: { x: dx / n, z: dz / n }, face: null, gait: 'jog', carry: 2, dive: false, thrustHips: false };
+    } };
+  });
+}
+
 test('the default skin (voxel) dresses both athletes; standing and tackling', async ({ page }) => {
   const errors = watchErrors(page);
   await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
@@ -24,6 +37,7 @@ test('the default skin (voxel) dresses both athletes; standing and tackling', as
   await page.keyboard.press('Enter');
   await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
   await expect.poll(() => skinState(page)).toEqual({ id: 'voxel', parts: [21, 21] });
+  await carrierComesToYou(page);
   await page.waitForTimeout(800);
   await page.screenshot({ path: 'test-results/skin-voxel-stand.png' });
   await page.keyboard.down('ShiftLeft'); await page.keyboard.down('KeyW');

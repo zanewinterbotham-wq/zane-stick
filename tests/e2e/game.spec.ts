@@ -37,10 +37,24 @@ async function startRep(page: Page) {
   await page.mouse.move(683, 384);
 }
 
+
+/** The AI carrier now dodges a straight run, so these UI tests have him walk into the human instead. */
+async function carrierComesToYou(page: import('@playwright/test').Page) {
+  await page.evaluate(() => {
+    type V = [number, number, number];
+    const d = (window as unknown as { __app: { drill: { carrier: number; human: number; brains: { think: unknown }[]; world: { athletes: { cmd: Record<string, unknown> }[] } } } }).__app.drill;
+    d.brains[d.carrier] = { think: (p: { athletes: { com: V }[] }) => {
+      const me = p.athletes[d.carrier].com, h = p.athletes[d.human].com, dx = h[0] - me[0], dz = h[2] - me[2], n = Math.hypot(dx, dz) || 1;
+      return { ...d.world.athletes[d.carrier].cmd, move: { x: dx / n, z: dz / n }, face: null, gait: 'jog', carry: 2, dive: false, thrustHips: false };
+    } };
+  });
+}
+
 test('title loads, drill starts, mouse and keyboard controls reach the brain, contact mode is automatic', async ({ page }) => {
   const errors = watchErrors(page);
   await startRep(page);
   // the control list is a vertical panel on the left
+  await carrierComesToYou(page);
   const list = page.locator('.keylist');
   await expect(list).toContainText('Left click');
   await expect(list).toContainText('Scroll');
