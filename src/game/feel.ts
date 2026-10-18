@@ -1,5 +1,6 @@
 // Hit feedback from World.hits. Presentation only: none of this feeds back into the simulation (hit-stop
 // pauses wall time; the sim still runs the same fixed steps).
+import type { Vec3 } from '../sim/math';
 import type { HitEvent, World } from '../sim/world';
 
 export const MPH = 2.236936;             // (m/s) → mph
@@ -12,6 +13,7 @@ const NEW_COLLISION_GAP = 0.25;          // s without contact before the next to
 const PAIR_GAP = 0.2;                    // s a segment pair must be apart before it sounds again
 
 export type HitKind = 'helmet' | 'helmetPads' | 'pads' | 'body' | 'grab';
+const ARM = /^(upperArm|forearm|hand)/;
 
 /** Which surfaces met: the helmet is on the head, the shoulder pads on the thorax. A slow hand is a grab. */
 export function hitKind(segA: string, segB: string, speed: number): HitKind {
@@ -29,7 +31,8 @@ export function hitLoudness(speed: number, force: number): number {
   return Math.min(1, Math.max(0, 0.8 * kV + 0.2 * kF));
 }
 
-export interface HitSound { kind: HitKind; loud: number; speed: number; force: number; pair: string }
+/** limb: an arm segment (upper arm, forearm, hand) was one of the two; pos: contact point (world). */
+export interface HitSound { kind: HitKind; loud: number; speed: number; force: number; pair: string; limb: boolean; pos: Vec3 }
 export interface BigHit { closing: number; impulse: number } // m/s, N·s over 30 ms
 
 export interface HitFeel {
@@ -79,7 +82,7 @@ export class HitMeter {
       total += h.force;
       const pair = pairKey(h);
       if (this.t - (this.pairSeen.get(pair) ?? -Infinity) > PAIR_GAP) {
-        sounds.push({ kind: hitKind(h.segA, h.segB, h.speed), loud: hitLoudness(h.speed, h.force), speed: h.speed, force: h.force, pair });
+        sounds.push({ kind: hitKind(h.segA, h.segB, h.speed), loud: hitLoudness(h.speed, h.force), speed: h.speed, force: h.force, pair, limb: ARM.test(h.segA) || ARM.test(h.segB), pos: h.pos });
       }
       this.pairSeen.set(pair, this.t);
     }

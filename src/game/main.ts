@@ -12,6 +12,7 @@ import { World, type PhysicsSettings } from '../sim/world';
 import { Audio } from './audio';
 import { chooseBest, reportText, runBenchmark } from './benchmark';
 import { ChaseCamera } from './camera';
+import { SoundCues } from './cues';
 import { HitMeter, hitFeel, MPH } from './feel';
 import { InputManager, type InputFrame } from './input/input';
 import { PRESETS, type PresetName } from './presets';
@@ -70,6 +71,7 @@ class App {
   nextStop = 0;      // one hit-stop per hit, not one per contact step
   meter = new HitMeter();
   meterWorld: World | null = null;
+  cues = new SoundCues(0, 1);
   speed = 0;         // smoothed human ground speed for the speedometer and FOV kick, m/s
   acc = 0;
   last = performance.now();
@@ -93,6 +95,12 @@ class App {
     window.addEventListener('resize', () => this.renderer?.resize());
     window.addEventListener('keydown', (e) => this.onKey(e));
     window.addEventListener('pointerdown', () => this.audio.unlock(), { once: false });
+    // menu sounds: hover/focus moves, activation (buttons may name their own: back, confirm), slider drags
+    let hover: Element | null = null;
+    const ui = this.layer.root, btn = (e: Event) => (e.target as Element).closest?.('button') ?? null;
+    ui.addEventListener('mouseover', (e) => { const b = btn(e); if (b && b !== hover) this.audio.play('ui_move', 1); hover = b; });
+    ui.addEventListener('click', (e) => { const b = btn(e); if (b) this.audio.play(b.dataset.sfx ?? 'ui_select', 1); });
+    ui.addEventListener('input', (e) => { if ((e.target as HTMLInputElement).type === 'range') this.audio.play('ui_slider_tick', 1); });
     document.getElementById('loading')!.textContent = 'Loading physics…';
     await mujocoEngine.init();
     if (!this.settings.preset) await this.autoPreset();
@@ -120,6 +128,7 @@ class App {
   // ---------------------------------------------------------------- screens
   title() {
     this.paused = true;
+    this.audio.loop(null);
     this.hud.setVisible(false);
     this.hud.showResult(null);
     this.input.capture = false;
@@ -138,6 +147,7 @@ class App {
     this.layer.hide();
     this.enterPlay();
     this.audio.unlock();
+    this.audio.loop('crowd_ambience_loop');
     this.hud.setVisible(true);
     this.input.capture = true;
     await this.newRep();
@@ -166,6 +176,7 @@ class App {
     this.renderer.effortShading = s.effortShading;
     this.cam.snap(this.renderer.camera, this.drill.world, this.humanHeading());
     this.acc = 0;
+    this.audio.play('game_whistle_start', 1);
   }
 
   pauseMenu() {
@@ -176,7 +187,7 @@ class App {
     const s = this.settings;
     this.layer.show(menu('Paused', [
       { label: 'Resume', hint: 'Esc / Start', action: () => this.resume() },
-      { label: 'Reset rep', hint: 'Enter', action: () => { this.resume(); void this.newRep(); } },
+      { label: 'Reset rep', hint: 'Enter', sfx: 'ui_confirm', action: () => { this.resume(); void this.newRep(); } },
       { label: `Quality: ${this.preset.label}`, hint: 'next rep', action: () => { this.cyclePreset(); this.pauseMenu(); } },
       { label: `Anatomy view: ${this.renderer?.xray ? 'on' : 'off'}`, action: () => { this.renderer?.setXray(!this.renderer.xray); this.pauseMenu(); } },
       { label: `Effort shading (anatomy view): ${s.effortShading ? 'on' : 'off'}`, action: () => { s.effortShading = !s.effortShading; if (this.renderer) this.renderer.effortShading = s.effortShading; this.save(); this.pauseMenu(); } },
@@ -187,7 +198,7 @@ class App {
       { label: 'Tuning panel', hint: 'T', action: () => this.tuning() },
       { label: 'Controls', action: () => this.controls(() => this.pauseMenu()) },
       { label: 'Key test', action: () => this.keyTest(() => this.pauseMenu()) },
-      { label: 'Quit to title', action: () => { this.drill?.destroy(); this.drill = null; this.title(); } },
+      { label: 'Quit to title', sfx: 'ui_back', action: () => { this.drill?.destroy(); this.drill = null; this.title(); } },
     ]));
   }
 
@@ -245,7 +256,7 @@ class App {
     const box = el('div', { class: 'panel menu wide' }, el('h1', { text: 'Controls' }),
       el('p', { class: 'sub', text: 'Contact mode is automatic: within about 4 m of the ball carrier your athlete settles into a ready stance with the arms up. No control is needed for balance; once you make contact, physics decides who stays up.' }),
       play, el('p', { class: 'sub' }), meta);
-    const b = el('button', { class: 'item', type: 'button' }, 'Back');
+    const b = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back');
     b.addEventListener('click', back);
     box.append(el('p', { class: 'sub', text: this.settings.autoCamera ? 'Automatic camera is on: no mouse is needed.' : 'Click the field to capture the mouse; Esc frees it and pauses. Ctrl+W can close the tab unless the browser grants keyboard lock in fullscreen, so C also sinks.' }), b);
     this.layer.show(box);
@@ -255,7 +266,7 @@ class App {
     const box = el('div', { class: 'panel menu wide' }, el('h1', { text: 'Key test' }), el('p', { class: 'sub', text: 'Hold keys or buttons. Everything that registers shows below, so you can see which combinations your keyboard drops.' }));
     const keys = el('div', { class: 'keys' });
     const acts = el('p', { class: 'sub mono' });
-    const b = el('button', { class: 'item', type: 'button' }, 'Back (Esc)');
+    const b = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back (Esc)');
     b.addEventListener('click', () => { clearInterval(timer); back(); });
     box.append(keys, acts, b);
     const timer = window.setInterval(() => {
@@ -300,11 +311,11 @@ class App {
     const update = () => (exp.value = JSON.stringify({ support: sup, speed: s.speed, strength: s.strength, assist: s.assist, traction: s.traction, gains: { ...DEFAULT_GAINS, ...s.gains } }, null, 2));
     update();
     grid.addEventListener('input', update);
-    const copy = el('button', { class: 'item', type: 'button' }, 'Copy values');
+    const copy = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Copy values');
     copy.addEventListener('click', () => { void navigator.clipboard?.writeText(exp.value).then(() => this.hud.flash('Copied'), () => { exp.select(); }); });
-    const reset = el('button', { class: 'item', type: 'button' }, 'Reset to defaults');
+    const reset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset to defaults');
     reset.addEventListener('click', () => { s.gains = {}; s.assist = 0.2; s.strength = 1; s.speed = 1; s.traction = 1.2; s.support = { ...DEFAULT_SUPPORT }; this.save(); this.tuning(); });
-    const back = el('button', { class: 'item', type: 'button' }, 'Back');
+    const back = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back');
     back.addEventListener('click', () => (this.drill ? this.pauseMenu() : this.title()));
     this.layer.show(el('div', { class: 'panel menu wide' }, el('h1', { text: 'Tuning' }), el('p', { class: 'sub', text: 'Changes apply from the next rep (physics settings never change mid-rep).' }), grid, exp, copy, reset, back));
   }
@@ -318,11 +329,11 @@ class App {
     const rs = await runBenchmark(canvas);
     out.value = reportText(rs);
     this.renderer = null; this.rendererPreset = null;
-    const copy = el('button', { class: 'item', type: 'button' }, 'Copy results');
+    const copy = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Copy results');
     copy.addEventListener('click', () => { void navigator.clipboard?.writeText(out.value).then(() => this.hud.flash('Copied'), () => out.select()); });
-    const use = el('button', { class: 'item', type: 'button' }, `Use recommended preset (${PRESETS[chooseBest(rs)].label})`);
+    const use = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, `Use recommended preset (${PRESETS[chooseBest(rs)].label})`);
     use.addEventListener('click', () => { this.settings.preset = chooseBest(rs); this.save(); this.title(); });
-    const back = el('button', { class: 'item', type: 'button' }, 'Back');
+    const back = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back');
     back.addEventListener('click', () => this.title());
     box.append(copy, use, back);
     copy.focus();
@@ -336,10 +347,10 @@ class App {
   onKey(e: KeyboardEvent) {
     this.audio.unlock();
     if (this.layer.open) {
-      if (e.code === 'ArrowDown') { moveFocus(this.layer.root, 1); e.preventDefault(); }
-      else if (e.code === 'ArrowUp') { moveFocus(this.layer.root, -1); e.preventDefault(); }
+      if (e.code === 'ArrowDown') { this.focusMove(1); e.preventDefault(); }
+      else if (e.code === 'ArrowUp') { this.focusMove(-1); e.preventDefault(); }
       // the Esc that released the pointer can also arrive as a key press: it must not resume at once
-      else if (e.code === 'Escape' && this.drill && performance.now() - this.pausedAt > 300) this.resume();
+      else if (e.code === 'Escape' && this.drill && performance.now() - this.pausedAt > 300) { this.audio.play('ui_back', 1); this.resume(); }
       return;
     }
     if (!this.drill) return;
@@ -358,16 +369,18 @@ class App {
     const down = (i: number) => !!p.buttons[i]?.pressed;
     const edge = (i: number) => down(i) && !this.padPrev[i];
     if (this.layer.open) {
-      if (edge(13)) moveFocus(this.layer.root, 1);
-      if (edge(12)) moveFocus(this.layer.root, -1);
+      if (edge(13)) this.focusMove(1);
+      if (edge(12)) this.focusMove(-1);
       if (edge(0)) (document.activeElement as HTMLElement | null)?.click();
-      if (edge(1) && this.drill) this.resume();
+      if (edge(1) && this.drill) { this.audio.play('ui_back', 1); this.resume(); }
     } else if (this.drill) {
       if (down(9)) { this.startHeld += dt; if (this.startHeld > 0.6 && this.startHeld - dt <= 0.6) this.pauseMenu(); }
       else { if (this.startHeld > 0 && this.startHeld < 0.6) void this.newRep(); this.startHeld = 0; }
     }
     this.padPrev = p.buttons.map((b) => b.pressed);
   }
+
+  focusMove(dir: 1 | -1) { moveFocus(this.layer.root, dir); this.audio.play('ui_move', 1); }
 
   humanHeading() {
     const q = this.drill!.world.scene.athletes[0].state.segQuat;
@@ -400,6 +413,8 @@ class App {
         this.physMs += (performance.now() - t0 - this.physMs) * 0.1;
       }
       this.cam.update(r.camera, w, dtReal, this.humanHeading());
+      const m = r.camera.matrixWorld.elements; // column 0: the camera's right axis
+      this.audio.listen([r.camera.position.x, r.camera.position.y, r.camera.position.z], [m[0], m[1], m[2]]);
       const v = w.scene.athletes[0].state.comVel;
       this.speed += (Math.hypot(v[0], v[2]) - this.speed) * Math.min(1, dtReal * 8);
       // FOV kick so a full sprint reads as fast: +12° from jog to top speed
@@ -415,10 +430,11 @@ class App {
    *  and closing speed) gets slow motion, hit-stop, the camera punch and the banner. Call after each step;
    *  returns true when a hit-stop starts. */
   feedback(now: number): boolean {
-    const w = this.drill!.world;
-    if (this.meterWorld !== w) { this.meter = new HitMeter(); this.meterWorld = w; }
+    const d = this.drill!, w = d.world;
+    if (this.meterWorld !== w) { this.meter = new HitMeter(); this.cues = new SoundCues(d.ball, d.carrier); this.meterWorld = w; }
     const { sounds, bigNow } = this.meter.step(w);
     for (const s of sounds) this.audio.hit(s);
+    for (const c of this.cues.step(w)) this.audio.play(c.cat, c.loud, c.pos);
     const loud = sounds[0]?.loud ?? 0;
     const pad = navigator.getGamepads?.()[0] as (Gamepad & { vibrationActuator?: { playEffect: (t: string, o: object) => Promise<unknown> } }) | null;
     const rumble = (r: { duration: number; strong: number; weak: number }) => pad?.vibrationActuator?.playEffect('dual-rumble', { duration: r.duration, strongMagnitude: r.strong, weakMagnitude: r.weak }).catch(() => {});
@@ -427,12 +443,18 @@ class App {
       return false;
     }
     const fx = hitFeel(bigNow.impulse, bigNow.closing);
+    const a = w.scene.athletes[0].state, b = w.scene.athletes[1].state;
+    const n = [0, 1, 2].map((k) => b.com[k] - a.com[k]), along = (v: number[]) => v[0] * n[0] + v[1] * n[1] + v[2] * n[2];
+    this.audio.play('hit_big_layer', 0.5 + 0.5 * fx.k, [0, 1, 2].map((k) => (a.com[k] + b.com[k]) / 2));
+    this.audio.play('crowd_ooh', 0.6 + 0.4 * fx.k);
+    // the grunt comes from the athlete who was hit: the one closing less along the line between them
+    const hit = along(a.comVel) >= -along(b.comVel) ? 1 : 0, hs = w.scene.athletes[hit].state, hi = w.athletes[hit].segIndex.get('head')!;
+    this.audio.play('voice_grunt', 1, [hs.segPos[3 * hi], hs.segPos[3 * hi + 1], hs.segPos[3 * hi + 2]]);
     this.cam.addShake(fx.shake);
     rumble(fx.rumble);
     this.hud.flash('BIG HIT');
     if (fx.slowMo && this.settings.slowMo && now / 1000 > this.slowUntil) { this.timeScale = 0.3; this.slowUntil = now / 1000 + 0.9; }
-    const a = w.scene.athletes[0].state.com, b = w.scene.athletes[1].state.com;
-    this.cam.punch(b[0] - a[0], b[2] - a[2], fx.punch);
+    this.cam.punch(n[0], n[2], fx.punch);
     if (!fx.stopMs || now < this.nextStop) return false;
     this.freezeUntil = now + fx.stopMs;
     this.nextStop = now + 500;

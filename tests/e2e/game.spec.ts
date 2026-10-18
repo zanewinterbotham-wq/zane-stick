@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 
 /** Fail on any console error or uncaught exception. */
@@ -122,6 +123,30 @@ test('automatic camera moves the arms to J / L and the torso to I / K, live', as
   expect(l.torso).toBeGreaterThan(0.2);
   await page.mouse.up({ button: 'left' });
   await page.screenshot({ path: 'test-results/09-auto-camera.png' });
+  expect(errors).toEqual([]);
+});
+
+test('the picked sounds load and decode from the deploy (and nothing from the dev library), and play in a rep', async ({ page }) => {
+  const errors = watchErrors(page), sfx: { url: string; status: number }[] = [];
+  page.on('response', (r) => { if (/\.ogg$/.test(r.url())) sfx.push({ url: r.url(), status: r.status() }); });
+  await page.addInitScript(() => {
+    const w = window as unknown as { __plays: number }, start = AudioBufferSourceNode.prototype.start;
+    w.__plays = 0;
+    AudioBufferSourceNode.prototype.start = function (...a: Parameters<typeof start>) { w.__plays++; return start.apply(this, a); };
+  });
+  const plays = () => page.evaluate(() => (window as unknown as { __plays: number }).__plays);
+  await startRep(page);
+  const { categories } = JSON.parse(readFileSync('src/game/sfx-picks.json', 'utf8')) as { categories: Record<string, { files: string[] }> };
+  const picked = Object.values(categories).reduce((n, c) => n + c.files.length, 0);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __app: { audio: { buffers: Map<string, unknown> } } }).__app.audio.buffers.size), { timeout: 30_000 }).toBe(picked);
+  expect(sfx.length).toBe(picked);
+  for (const r of sfx) { expect(r.status, r.url).toBe(200); expect(r.url).toContain('/sfx/'); expect(r.url).not.toContain('/art/'); }
+  // footsteps while running
+  const before = await plays();
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(2000);
+  await page.keyboard.up('KeyW');
+  expect(await plays() - before).toBeGreaterThan(3);
   expect(errors).toEqual([]);
 });
 

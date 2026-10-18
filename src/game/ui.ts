@@ -10,7 +10,8 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<
   return e;
 }
 
-export interface MenuItem { label: string; hint?: string; action: () => void }
+/** sfx: the sound category played on activation (default ui_select). */
+export interface MenuItem { label: string; hint?: string; sfx?: string; action: () => void }
 
 /** A focusable vertical menu. Returns the element; focus moves with arrows / D-pad. */
 export function menu(title: string, items: MenuItem[], subtitle?: string): HTMLElement {
@@ -19,7 +20,7 @@ export function menu(title: string, items: MenuItem[], subtitle?: string): HTMLE
   if (subtitle) box.append(el('p', { class: 'sub', text: subtitle }));
   const list = el('div', { class: 'items' });
   items.forEach((it) => {
-    const b = el('button', { class: 'item', type: 'button' }, it.label);
+    const b = el('button', { class: 'item', type: 'button', ...(it.sfx && { 'data-sfx': it.sfx }) }, it.label);
     if (it.hint) b.append(el('span', { class: 'hint', text: it.hint }));
     b.addEventListener('click', it.action);
     list.append(b);
