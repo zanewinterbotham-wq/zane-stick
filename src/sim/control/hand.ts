@@ -44,6 +44,8 @@ export interface Gains {
   reachStart: number;
   /** Trunk balance torque through the loaded feet while standing (hip strategy), relative to torsoKp/torsoKd. */
   standTorso: number;
+  /** Swing clearance of chopping steps (m): the feet barely leave the turf. */
+  chopClear: number;
   /** Running: vertical push scale, apex height feedback (1/m), horizontal acceleration (1/s), extra drive
    *  (m/s² at mid-stance), Raibert foot placement on speed error (s), heel recovery fold (rad). */
   runPush: number; runHeightK: number; runAccel: number; runDrive: number; runFootK: number; runHeel: number;
@@ -61,6 +63,7 @@ export const DEFAULT_GAINS: Gains = {
   leanSpeed: 0.015, leanAccel: 0.04,
   pushStart: 0.55, pushAnkle: 0.35,
   yawGain: 0.6, reachStart: 0.7, standTorso: 1.3,
+  chopClear: 0.025,
   runPush: 1.0, runHeightK: 3.0, runAccel: 1.5, runDrive: 2.0, runFootK: 0.06, runHeel: 1.3,
 };
 
@@ -102,6 +105,8 @@ export class HandController implements MotorController {
   private headingHold: number | null = null;
   private stanceIdx: 0 | 1 = 0;
   private walkT = 0;
+  /** The current step is a chop step (latched when the step starts, so a step keeps its own timing). */
+  private chopStep = false;
   private runMode = false;
   private vRef: Vec3 = [0, 0, 0];
   private prevQ: Float64Array;
@@ -264,7 +269,8 @@ export class HandController implements MotorController {
     const running = vRef > 2.6;
     // Recovery steps are quicker: shorten the step as the capture point leaves the base of support.
     if (vRef < 2.6) stepT = clamp(stepT, Math.max(0.36, g.stepTMin), 0.6); // ~0.5 s steps at a brisk walk, like people
-    if (cmd.chopFeet) stepT = 0.22; // chopping steps (~4.5 steps/s, short and quick)
+    const walkStepT = stepT;
+    if (this.chopStep) stepT = 0.22; // chopping steps (~4.5 steps/s, short and quick)
 
     // ---- posture intent: COM height, trunk lean
     const sink = clamp(cmd.sink, 0, 1);
@@ -301,7 +307,7 @@ export class HandController implements MotorController {
       // first swing: the leg on the side the capture point is leaving through, else the less loaded one
       const first = cpOut > 0.03 ? this.sideToward(xi, mid, rightD) : feet[0].force < feet[1].force ? 0 : 1;
       this.stanceIdx = (1 - first) as 0 | 1;
-      this.walkT = 0;
+      this.walkT = 0; this.chopStep = cmd.chopFeet;
       this.legs[first].liftPos = ank[first];
     }
     // running (flight phases) above ~3 m/s, back to walking below ~2 m/s
@@ -325,9 +331,12 @@ export class HandController implements MotorController {
       if ((landed && this.walkT > clamp(g.touchFrac, 0.5, 0.9) * stepT && ahead) || this.walkT > 1.5 * stepT) {
         // step complete: stop if nothing is pushing us on, otherwise the other leg swings next
         if (vdMag < 0.1 && speed < 0.35 && cpOut === 0 && !cmd.chopFeet) this.standing = true;
-        else { this.stanceIdx = sw.k; this.walkT = 0; this.legs[1 - sw.k].liftPos = ank[1 - sw.k]; sw.kneeLand = s.q[sw.knee[0]]; }
+        else { this.stanceIdx = sw.k; this.walkT = 0; this.chopStep = cmd.chopFeet; this.legs[1 - sw.k].liftPos = ank[1 - sw.k]; sw.kneeLand = s.q[sw.knee[0]]; }
       }
     }
+    // A step keeps the timing it started with: releasing chop mid-step must not stretch a 0.22 s step whose
+    // foothold was planned for it into a 0.4 s one (the body falls over the stance foot meanwhile).
+    stepT = this.chopStep ? 0.22 : walkStepT;
 
     // ---- trunk attitude: world error → joint target offsets (stance hips, spine, neck)
     const ePel = this.err(this.orient(headingD, clamp(0.3 * pitchD, -0.1, 0.25), 0.3 * rollD), pq);
@@ -381,7 +390,7 @@ export class HandController implements MotorController {
     } else {
       const st = this.legs[this.stanceIdx], sw = this.legs[1 - this.stanceIdx];
       st.phase = 'stance'; sw.phase = 'swing';
-      this.stepCycle(v, st, sw, out, c, cv, vd, headingD, fwdD, rightD, w0, stepT, running, cmd.chopFeet, pitchD, rollD, ank[st.k], footFwd[st.k], hd);
+      this.stepCycle(v, st, sw, out, c, cv, vd, headingD, fwdD, rightD, w0, stepT, running, this.chopStep, pitchD, rollD, ank[st.k], footFwd[st.k], hd);
       this.dbg = { mode: 'step', stance: st.k, t: this.walkT, stepT, cpOut, speed, vd: vdMag };
     }
 
@@ -472,9 +481,9 @@ export class HandController implements MotorController {
     // lag, and without the lead the foot arrives late, behind and still high.
     const wPh = clamp((this.walkT + 0.03) / T, 0, 1);
     const u = Math.min(1, wPh / 0.8), ease = u * u * (3 - 2 * u);
-    // Steps quicker than a walking step (chopping the feet) lift the foot proportionally less: a high lift has
-    // no time to come back down, so the leg lands late on a bent knee and the swing whips the pelvis around.
-    const clear = running ? g.clearance + 0.02 + 0.02 * Math.hypot(cv[0], cv[2]) : g.clearance * Math.min(1, T / g.stepTMin);
+    // Chopping steps barely lift the feet: a walking-height lift in a 0.22 s step has no time to come back
+    // down, so the leg lands late on a bent knee, the foot misses its foothold and the swing whips the pelvis.
+    const clear = running ? g.clearance + 0.02 + 0.02 * Math.hypot(cv[0], cv[2]) : chop ? g.chopClear : g.clearance;
     // height starts from where the ankle lifted off (heel up after push-off), else the IK would press the toes into the turf
     // Late in the swing the target sinks below the turf at the foothold: the IK then reaches out with a straight
     // leg and the foot lands when the leg arrives (a bent-knee landing has to straighten under full load, which
