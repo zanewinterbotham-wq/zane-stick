@@ -12,6 +12,7 @@
     "bench:engines": "tsx bench/engines/run.ts",
     "test:realism": "vitest run --config vitest.realism.config.ts",
     "sfx:build": "tsx tools/sfx/build.ts",
+    "sfx:export": "tsx tools/sfx/export-picks.ts",
     "picker": "vite --config tools/picker/vite.config.ts",
     "test:picker": "playwright test --config tools/picker/playwright.config.ts"
   },

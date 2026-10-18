@@ -1,0 +1,263 @@
+{
+  "version": 1,
+  "categories": {
+    "hit_helmet_helmet": {
+      "volume": 0.3,
+      "files": [
+        "sfx/hit_helmet_helmet/03.ogg",
+        "sfx/hit_helmet_helmet/01.ogg",
+        "sfx/hit_helmet_helmet/02.ogg"
+      ]
+    },
+    "hit_helmet_pads": {
+      "volume": 0.65,
+      "files": [
+        "sfx/hit_helmet_pads/09.ogg",
+        "sfx/hit_helmet_pads/10.ogg",
+        "sfx/hit_helmet_pads/08.ogg"
+      ]
+    },
+    "hit_pads_pads": {
+      "volume": 0.45,
+      "files": [
+        "sfx/hit_pads_pads/09.ogg",
+        "sfx/hit_pads_pads/10.ogg",
+        "sfx/hit_pads_pads/11.ogg",
+        "sfx/hit_pads_pads/12.ogg"
+      ]
+    },
+    "hit_body_body": {
+      "volume": 0.85,
+      "files": [
+        "sfx/hit_body_body/01.ogg",
+        "sfx/hit_body_body/02.ogg",
+        "sfx/hit_body_body/04.ogg",
+        "sfx/hit_body_body/03.ogg",
+        "sfx/hit_body_body/05.ogg"
+      ]
+    },
+    "hit_limb_slap": {
+      "volume": 0.3,
+      "files": [
+        "sfx/hit_limb_slap/01.ogg",
+        "sfx/hit_limb_slap/02.ogg"
+      ]
+    },
+    "hit_grab_jersey": {
+      "volume": 0.1,
+      "files": [
+        "sfx/hit_grab_jersey/01.ogg",
+        "sfx/hit_grab_jersey/02.ogg",
+        "sfx/hit_grab_jersey/03.ogg"
+      ]
+    },
+    "hit_big_layer": {
+      "volume": 0.6,
+      "files": [
+        "sfx/hit_big_layer/01.ogg",
+        "sfx/hit_big_layer/03.ogg",
+        "sfx/hit_big_layer/04.ogg"
+      ]
+    },
+    "foot_jog": {
+      "volume": 0.55,
+      "files": [
+        "sfx/foot_jog/09.ogg",
+        "sfx/foot_jog/10.ogg",
+        "sfx/foot_jog/11.ogg",
+        "sfx/foot_jog/12.ogg",
+        "sfx/foot_jog/13.ogg",
+        "sfx/foot_jog/14.ogg",
+        "sfx/foot_jog/15.ogg",
+        "sfx/foot_jog/16.ogg"
+      ]
+    },
+    "foot_sprint": {
+      "volume": 0.55,
+      "files": [
+        "sfx/foot_sprint/09.ogg",
+        "sfx/foot_sprint/10.ogg",
+        "sfx/foot_sprint/11.ogg",
+        "sfx/foot_sprint/12.ogg",
+        "sfx/foot_sprint/13.ogg",
+        "sfx/foot_sprint/14.ogg",
+        "sfx/foot_sprint/15.ogg",
+        "sfx/foot_sprint/16.ogg"
+      ]
+    },
+    "foot_plant_skid": {
+      "volume": 0.4,
+      "files": [
+        "sfx/foot_plant_skid/08.ogg",
+        "sfx/foot_plant_skid/09.ogg",
+        "sfx/foot_plant_skid/10.ogg"
+      ]
+    },
+    "ball_catch": {
+      "volume": 0.65,
+      "files": [
+        "sfx/ball_catch/08.ogg",
+        "sfx/ball_catch/09.ogg",
+        "sfx/ball_catch/07.ogg"
+      ]
+    },
+    "ball_bounce": {
+      "volume": 0.65,
+      "files": [
+        "sfx/ball_bounce/01.ogg",
+        "sfx/ball_bounce/02.ogg",
+        "sfx/ball_bounce/03.ogg",
+        "sfx/ball_bounce/04.ogg",
+        "sfx/ball_bounce/05.ogg",
+        "sfx/ball_bounce/06.ogg",
+        "sfx/ball_bounce/07.ogg",
+        "sfx/ball_bounce/08.ogg",
+        "sfx/ball_bounce/09.ogg",
+        "sfx/ball_bounce/10.ogg",
+        "sfx/ball_bounce/11.ogg",
+        "sfx/ball_bounce/12.ogg"
+      ]
+    },
+    "ball_hit_body": {
+      "volume": 0.4,
+      "files": [
+        "sfx/ball_hit_body/10.ogg",
+        "sfx/ball_hit_body/09.ogg",
+        "sfx/ball_hit_body/08.ogg"
+      ]
+    },
+    "game_whistle_start": {
+      "volume": 0.25,
+      "files": [
+        "sfx/game_whistle_start/01.ogg"
+      ]
+    },
+    "crowd_ooh": {
+      "volume": 0.2,
+      "files": [
+        "sfx/crowd_ooh/01.ogg",
+        "sfx/crowd_ooh/02.ogg"
+      ]
+    },
+    "crowd_ambience_loop": {
+      "volume": 0.1,
+      "files": [
+        "sfx/crowd_ambience_loop/01.ogg"
+      ]
+    },
+    "ui_move": {
+      "volume": 0.4,
+      "files": [
+        "sfx/ui_move/09.ogg"
+      ]
+    },
+    "ui_select": {
+      "volume": 0.35,
+      "files": [
+        "sfx/ui_select/05.ogg"
+      ]
+    },
+    "ui_back": {
+      "volume": 0.65,
+      "files": [
+        "sfx/ui_back/01.ogg"
+      ]
+    },
+    "ui_slider_tick": {
+      "volume": 0.65,
+      "files": [
+        "sfx/ui_slider_tick/10.ogg"
+      ]
+    },
+    "ui_confirm": {
+      "volume": 0.6,
+      "files": [
+        "sfx/ui_confirm/08.ogg"
+      ]
+    },
+    "body_turf_tackle": {
+      "volume": 0.5,
+      "files": [
+        "sfx/body_turf_tackle/12.ogg",
+        "sfx/body_turf_tackle/11.ogg",
+        "sfx/body_turf_tackle/10.ogg",
+        "sfx/body_turf_tackle/09.ogg"
+      ]
+    },
+    "body_turf_slide": {
+      "volume": 0.05,
+      "files": [
+        "sfx/body_turf_slide/01.ogg",
+        "sfx/body_turf_slide/02.ogg",
+        "sfx/body_turf_slide/03.ogg",
+        "sfx/body_turf_slide/04.ogg",
+        "sfx/body_turf_slide/05.ogg",
+        "sfx/body_turf_slide/06.ogg",
+        "sfx/body_turf_slide/07.ogg",
+        "sfx/body_turf_slide/08.ogg",
+        "sfx/body_turf_slide/09.ogg",
+        "sfx/body_turf_slide/10.ogg"
+      ]
+    },
+    "body_dive_land": {
+      "volume": 0.75,
+      "files": [
+        "sfx/body_dive_land/08.ogg",
+        "sfx/body_dive_land/09.ogg",
+        "sfx/body_dive_land/10.ogg"
+      ]
+    },
+    "body_getup": {
+      "volume": 0.25,
+      "files": [
+        "sfx/body_getup/07.ogg",
+        "sfx/body_getup/08.ogg",
+        "sfx/body_getup/10.ogg"
+      ]
+    },
+    "air_whoosh": {
+      "volume": 0.15,
+      "files": [
+        "sfx/air_whoosh/01.ogg",
+        "sfx/air_whoosh/02.ogg",
+        "sfx/air_whoosh/03.ogg",
+        "sfx/air_whoosh/04.ogg",
+        "sfx/air_whoosh/05.ogg",
+        "sfx/air_whoosh/06.ogg",
+        "sfx/air_whoosh/09.ogg"
+      ]
+    },
+    "voice_grunt": {
+      "volume": 0.15,
+      "files": [
+        "sfx/voice_grunt/12.ogg",
+        "sfx/voice_grunt/11.ogg",
+        "sfx/voice_grunt/10.ogg",
+        "sfx/voice_grunt/09.ogg",
+        "sfx/voice_grunt/08.ogg",
+        "sfx/voice_grunt/07.ogg",
+        "sfx/voice_grunt/06.ogg",
+        "sfx/voice_grunt/05.ogg",
+        "sfx/voice_grunt/04.ogg",
+        "sfx/voice_grunt/03.ogg",
+        "sfx/voice_grunt/02.ogg",
+        "sfx/voice_grunt/01.ogg"
+      ]
+    },
+    "voice_exhale": {
+      "volume": 0.05,
+      "files": [
+        "sfx/voice_exhale/10.ogg",
+        "sfx/voice_exhale/09.ogg",
+        "sfx/voice_exhale/08.ogg",
+        "sfx/voice_exhale/07.ogg",
+        "sfx/voice_exhale/06.ogg",
+        "sfx/voice_exhale/05.ogg",
+        "sfx/voice_exhale/04.ogg",
+        "sfx/voice_exhale/03.ogg",
+        "sfx/voice_exhale/01.ogg",
+        "sfx/voice_exhale/02.ogg"
+      ]
+    }
+  }
+}
