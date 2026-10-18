@@ -54,5 +54,5 @@ export interface SupportSettings {
   tracking: number;     // muscle tracking stiffness multiplier
 }
 export const DEFAULT_SUPPORT: SupportSettings = {
-  strength: 1, carryAccel: 8, weightShare: 0.6, tiltStart: 0.45, tiltEnd: 0.8, bigHit: 150, tracking: 1,
+  strength: 1, carryAccel: 8, weightShare: 0.6, tiltStart: 0.45, tiltEnd: 0.8, bigHit: 100, tracking: 1,
 };

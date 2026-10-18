@@ -118,13 +118,14 @@ describe('support in contact', () => {
 });
 
 describe('support state', () => {
-  it('posture is zero while down and the carry returns once a hitter has separated with stable footing', async () => {
+  it('posture is zero while down (until the get-up) and the carry returns once a hitter has separated with stable footing', async () => {
     let downNoPosture = true, carryBack = false;
     for (let seed = 1; seed <= 4; seed++) {
       await collide({ speed: 8, script: technique.lowDrive }, { speed: 4, script: technique.upright }, seed, STD, 3, {
         support: { ...DEFAULT_SUPPORT },
         onStep: (w) => {
-          for (const a of w.athletes) if (a.downBy && a.support.posture !== 0) downNoPosture = false;
+          // during the get-up hands and knees are on the turf (still 'down') while posture ramps back in
+          for (const a of w.athletes) if (a.downBy && a.controller.debug?.().clip !== 'getup' && a.support.posture !== 0) downNoPosture = false;
           if (w.time > 2.5 && !w.athletes[0].downBy && w.athletes[0].support.carry > 0.9) carryBack = true;
         },
       });

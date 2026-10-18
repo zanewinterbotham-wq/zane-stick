@@ -4,9 +4,10 @@
 // fights for balance physically; they blend back once the support returns. Everything stays within the muscles.
 import type { BodyPlan } from '../anatomy/body';
 import { DEFAULT_SUPPORT, newFrame, type AnimFrame, type Animator, type RootTarget, type SupportSettings, type SupportState } from '../anim/types';
-import { clamp, cross, dot, qconj, qrot, type Quat, type Vec3 } from '../math';
+import { clamp, cross, dot, type Vec3 } from '../math';
 import { newTargets, type MuscleSet, type MuscleTargets } from '../muscles';
-import { GAIT_SPEED, HandController } from './hand';
+import { ProceduralAnimator } from '../anim/procedural';
+import { HandController } from './hand';
 import type { BodyView, Commands, MotorController } from './types';
 
 const G = 9.81;
@@ -40,7 +41,7 @@ export class TrackingController implements MotorController {
   private dbg: Record<string, number | string> = {};
 
   constructor(plan: BodyPlan, private muscles: MuscleSet, animator?: Animator) {
-    this.animator = animator ?? new BasicAnimator(plan, muscles);
+    this.animator = animator ?? new ProceduralAnimator(plan, muscles);
     this.hand = new HandController(plan, muscles);
     this.frame = newFrame(muscles.n);
     this.handOut = newTargets(muscles.n);
@@ -135,115 +136,4 @@ export class TrackingController implements MotorController {
 
   private ankle(v: BodyView, chain: number[]): Vec3 { const i = chain[chain.length - 1]; return this.vec(v.state.dofAnchor, i); }
   private vec(a: Float64Array, i: number): Vec3 { return [a[3 * i], a[3 * i + 1], a[3 * i + 2]]; }
-}
-
-/** Root acceleration toward the commanded speed (m/s²): quick, as the owner asked for (sprint starts ~7). */
-const ROOT_ACCEL = { walk: 3, jog: 5, sprint: 7 };
-
-type AnimLeg = { side: 1 | -1; L1: number; L2: number; hipOff: Vec3; ankleH: number; hip: number[]; knee: number; ankle: number };
-const legIK = (HandController.prototype as unknown as { legIK: (L: object, rel: Vec3, rot: number) => [number, number, number] }).legIK;
-
-/** Minimal stand-in until the procedural animator is plugged in through the constructor: a standing pose and a
- *  phase-based gait whose stance foot sweeps back at the body's measured speed (so planted feet do not slide),
- *  solved by the hand controller's exact leg IK from the actual pelvis pose. */
-class BasicAnimator implements Animator {
-  private phase = 0;
-  private vel: Vec3 | null = null;
-  private heading: number | null = null;
-  private prevQ: Float64Array;
-  private legs: AnimLeg[];
-  private arms: { flex: number; abd: number; rot: number; elbow: number }[];
-  private pelvis: number; private lumbar: number;
-  private pelvisH: number;
-
-  constructor(private plan: BodyPlan, private muscles: MuscleSet) {
-    const D = (n: string) => muscles.index(n), S = (n: string) => plan.segments.findIndex((x) => x.name === n);
-    this.pelvis = S('pelvis'); this.lumbar = D('lumbar.flex');
-    const pel = plan.segments[this.pelvis];
-    this.pelvisH = pel.origin[1];
-    this.legs = ([1, -1] as const).map((side) => {
-      const sx = side > 0 ? 'L' : 'R', J = (n: string) => plan.joints.find((j) => j.name === n + sx)!;
-      const hip = J('hip'), knee = J('knee'), ank = J('ankle');
-      return {
-        side, L1: hip.pos[1] - knee.pos[1], L2: knee.pos[1] - ank.pos[1], ankleH: ank.pos[1],
-        hipOff: [hip.pos[0] - pel.origin[0], hip.pos[1] - pel.origin[1], hip.pos[2] - pel.origin[2]],
-        hip: ['flex', 'abd', 'intRot'].map((d) => D(`hip${sx}.${d}`)), knee: D(`knee${sx}.flex`), ankle: D(`ankle${sx}.dorsi`),
-      };
-    });
-    this.arms = ['L', 'R'].map((sx) => ({ flex: D(`shoulder${sx}.flex`), abd: D(`shoulder${sx}.abd`), rot: D(`shoulder${sx}.intRot`), elbow: D(`elbow${sx}.flex`) }));
-    this.prevQ = new Float64Array(muscles.n).fill(NaN);
-  }
-
-  update(v: BodyView, cmd: Commands, _sup: SupportState, out: AnimFrame) {
-    const s = v.state, dt = v.dt, cv = s.comVel;
-    // root velocity: slews toward the command, never far ahead of the actual speed (gentle carry after a hit)
-    const cap = GAIT_SPEED[cmd.gait] * this.plan.params.speed, mvLen = Math.hypot(cmd.move.x, cmd.move.z), mv = Math.min(1, mvLen);
-    const want: Vec3 = mv > 0.05 ? [(cmd.move.x / mvLen) * mv * cap, 0, (cmd.move.z / mvLen) * mv * cap] : [0, 0, 0];
-    const vel = this.vel ?? [cv[0], 0, cv[2]]; // start from the body's own velocity
-    const dv: Vec3 = [want[0] - vel[0], 0, want[2] - vel[2]], dl = Math.hypot(dv[0], dv[2]), step = ROOT_ACCEL[cmd.gait] * dt;
-    if (dl > step) { dv[0] *= step / dl; dv[2] *= step / dl; }
-    this.vel = [clamp(vel[0] + dv[0], cv[0] - 1.5, cv[0] + 1.5), 0, clamp(vel[2] + dv[2], cv[2] - 1.5, cv[2] + 1.5)];
-    if (mv <= 0.05 && Math.hypot(this.vel[0], this.vel[2]) < 0.1) this.vel = [0, 0, 0];
-    const pq: Quat = [s.segQuat[4 * this.pelvis], s.segQuat[4 * this.pelvis + 1], s.segQuat[4 * this.pelvis + 2], s.segQuat[4 * this.pelvis + 3]];
-    const pf = qrot(pq, [0, 0, 1]);
-    if (this.heading === null) this.heading = Math.atan2(pf[0], pf[2]);
-    const face = cmd.face ?? (Math.hypot(want[0], want[2]) > 0.3 ? { x: want[0], z: want[2] } : null);
-    if (face) { const d = Math.atan2(face.x, face.z) - this.heading; this.heading += clamp(Math.atan2(Math.sin(d), Math.cos(d)), -10 * dt, 10 * dt); }
-
-    // gait timing from the measured speed: cadence and contact time [S4]; contact shrinks to what the leg can reach
-    const sp = Math.hypot(cv[0], cv[2]), moving = sp > 0.15 || Math.hypot(this.vel[0], this.vel[2]) > 0.1;
-    const travel: Vec3 = sp > 0.3 ? [cv[0] / sp, 0, cv[2] / sp] : [Math.sin(this.heading), 0, Math.cos(this.heading)];
-    const sink = clamp(cmd.sink, 0, 1), height = this.pelvisH - 0.03 - 0.007 * sp - 0.25 * sink;
-    const Tst = 2 / clamp(1.75 + 0.32 * sp, 1.75, 4.8);
-    const L = this.legs[0], reach = 0.97 * (L.L1 + L.L2), vert = height + L.hipOff[1] - L.ankleH;
-    const Xmax = Math.sqrt(Math.max(0.01, reach * reach - vert * vert));
-    const d = moving ? clamp(Math.min(clamp(0.62 - 0.045 * sp, 0.22, 0.62), 2 * Xmax / Math.max(0.1, sp * Tst)), 0.12, 0.62) : 1;
-    const X = moving ? sp * d * Tst / 2 : 0;
-    if (moving) this.phase = (this.phase + dt / Tst) % 1;
-    const pelvisPos: Vec3 = [s.segPos[3 * this.pelvis], s.segPos[3 * this.pelvis + 1], s.segPos[3 * this.pelvis + 2]];
-    const pelvisPitch = -Math.asin(clamp(pf[1], -1, 1));
-    out.gain.fill(1);
-    for (let i = 0; i < this.muscles.n; i++) out.q[i] = 0;
-    const hipFlex: number[] = [];
-    this.legs.forEach((leg, k) => {
-      const psi = (this.phase + 0.5 * k) % 1, stance = psi < d;
-      let along: number, lift = 0;
-      if (stance) along = X * (1 - 2 * psi / d);
-      else {
-        const u = (psi - d) / (1 - d), e = Math.min(1, u / 0.85);
-        along = -X + 2 * X * e * e * (3 - 2 * e);
-        lift = (0.05 + 0.03 * sp) * Math.sin(Math.PI * u);
-      }
-      out.planted[k] = stance;
-      const hoff = qrot(pq, leg.hipOff), hip: Vec3 = [pelvisPos[0] + hoff[0], pelvisPos[1] + hoff[1], pelvisPos[2] + hoff[2]];
-      // stance target a little below the turf so the leg presses into it
-      const tgt: Vec3 = [hip[0] + travel[0] * along, leg.ankleH + lift - (stance ? 0.01 : 0), hip[2] + travel[2] * along];
-      const rel = qrot(qconj(pq), [tgt[0] - hip[0], tgt[1] - hip[1], tgt[2] - hip[2]]);
-      const [fl, ab, kn] = legIK(leg, rel, 0);
-      hipFlex.push(fl);
-      out.q[leg.hip[0]] = fl; out.q[leg.hip[1]] = ab; out.q[leg.knee] = kn;
-      // foot level in the swing; in stance the ankle mostly follows the turf and plantarflexes late (push-off)
-      out.q[leg.ankle] = stance ? -0.35 * clamp(psi / d - 0.5, 0, 1) * clamp(sp / 3, 0, 1) : pelvisPitch - fl + kn + 0.1;
-    });
-    const running = sp > 2.6;
-    this.arms.forEach((A, k) => {
-      const own = hipFlex[k], opp = hipFlex[1 - k];
-      out.q[A.flex] = -(running ? clamp(0.5 + 0.06 * sp, 0, 1.1) : 0.6) * (own - opp) * 0.9;
-      out.q[A.abd] = 0.12; out.q[A.elbow] = running ? 1.4 : 0.35;
-      if (cmd.carry === k + 1) { out.q[A.flex] = 0.35; out.q[A.abd] = -0.05; out.q[A.rot] = 0.7; out.q[A.elbow] = 1.9; }
-      else for (const i of [A.flex, A.abd, A.rot, A.elbow]) out.gain[i] = 0.6;
-    });
-    // trunk lean with speed and with the speed still to gain (sprint start), plus the commanded sink and lean
-    const lean = clamp(0.02 * sp + 0.2 * (Math.hypot(this.vel[0], this.vel[2]) - sp), -0.1, 0.35) + 0.5 * sink + 0.45 * cmd.lean.fwd;
-    if (this.lumbar >= 0) out.q[this.lumbar] = 0.3 * lean;
-    // target speeds: how fast each target moves (damping follows the motion instead of resisting it)
-    for (let i = 0; i < this.muscles.n; i++) {
-      out.qd[i] = Number.isNaN(this.prevQ[i]) ? 0 : clamp((out.q[i] - this.prevQ[i]) / dt, -20, 20);
-      this.prevQ[i] = out.q[i];
-    }
-    out.root.vel = this.vel; out.root.height = height; out.root.heading = this.heading;
-    out.root.pitch = lean; out.root.roll = 0.3 * cmd.lean.side;
-    out.phase = this.phase; out.clip = !moving ? 'idle' : running ? 'run' : 'walk';
-    if (!moving) out.planted = [true, true];
-  }
 }
