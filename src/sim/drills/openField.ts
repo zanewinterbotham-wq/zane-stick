@@ -53,8 +53,7 @@ export class OpenFieldDrill {
   static async create(engine: PhysicsEngine, cfg: OpenFieldConfig, humanBrain: Brain, rep = 0): Promise<OpenFieldDrill> {
     const rng = new Rng(cfg.seed * 7919 + rep * 104729);
     const hx = rng.range(-2, 2), cx = hx + rng.range(-3, 3), gap = rng.range(10, 14);
-    // support goes through a typed variable: WorldSetup gains its field when the support branch merges
-    const setup: WorldSetup & { support?: SupportSettings } = {
+    const setup: WorldSetup = {
       physics: cfg.physics, seed: cfg.seed + rep, assist: cfg.assist, traction: cfg.traction,
       field: { halfWidth: HALF_WIDTH, goalZ: GOAL_Z, dirZ: -1 },
       athletes: [
