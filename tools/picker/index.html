@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Zane Stick picker</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Zane Stick picker <span class="tag">dev tool</span></h1>
+      <p class="sub">Pick the sounds and the character you like, then press <b>Save to project</b> and tell Claude.</p>
+    </div>
+    <div class="actions">
+      <button id="save" class="primary">Save to project</button>
+      <button id="download">Download</button>
+      <button id="import">Import</button>
+      <input id="importFile" type="file" accept=".json,application/json" hidden />
+      <span id="status" class="dim" role="status"></span>
+    </div>
+  </header>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="sounds" aria-selected="true">Sounds <span id="soundCount" class="count"></span></button>
+    <button role="tab" data-tab="characters" aria-selected="false">Characters <span id="charName" class="count"></span></button>
+  </nav>
+  <main>
+    <section id="sounds" class="tab">
+      <p class="keys dim"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>Space</kbd>/<kbd>P</kbd> play · <kbd>X</kbd> pick · <kbd>A</kbd>/<kbd>S</kbd> previous/next category</p>
+      <div id="soundList"></div>
+    </section>
+    <section id="characters" class="tab" hidden>
+      <div id="cards" class="cards"></div>
+    </section>
+    <label class="notes">Notes for Claude
+      <textarea id="notes" rows="3" placeholder="Anything about your picks, e.g. &quot;tackles should sound heavier&quot;"></textarea>
+    </label>
+  </main>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

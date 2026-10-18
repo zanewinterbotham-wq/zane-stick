@@ -11,7 +11,9 @@
     "test:e2e": "playwright test",
     "bench:engines": "tsx bench/engines/run.ts",
     "test:realism": "vitest run --config vitest.realism.config.ts",
-    "sfx:build": "tsx tools/sfx/build.ts"
+    "sfx:build": "tsx tools/sfx/build.ts",
+    "picker": "vite --config tools/picker/vite.config.ts",
+    "test:picker": "playwright test --config tools/picker/playwright.config.ts"
   },
   "license": "MIT",
   "type": "module",

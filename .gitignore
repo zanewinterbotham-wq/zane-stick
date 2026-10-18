@@ -8,3 +8,4 @@ bench/out/
 .claude/settings.local.json
 scratch/
 .claude/worktrees/
+tools/picker/fixtures/picks.json

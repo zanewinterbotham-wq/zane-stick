@@ -44,6 +44,8 @@ Engine comparison: `docs/physics-benchmark.md`.
 - `npx tsx bench/tune/score.ts '<gains json>' --avg` — score one gain set; the objective is chaotic, so
   compare controller changes with `--avg` (mean over small gain perturbations), never single runs
 - `npm run typecheck`
+- `npm run picker` — dev-only sound/character picker (tools/picker, never built or deployed); the owner's
+  choices land in `art/picks.json` (format and validate() in `tools/picker/picks.ts`). `npm run test:picker`
 
 ## How to verify a change
 1. `npm run typecheck && npm test` must pass.

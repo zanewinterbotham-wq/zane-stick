@@ -1,0 +1,77 @@
+/* Same tokens as the game's dark UI (src/game/style.css). */
+:root { --bg: #0e1a12; --ink: #f2f5f0; --dim: #a9b8aa; --accent: #ffb547; --panel: rgba(10, 18, 12, 0.82); --line: rgba(255,255,255,0.08); }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+button, input, textarea { font: inherit; color: var(--ink); background: #1d2b20; border: 1px solid #3c5440; border-radius: 6px; padding: 4px 10px; }
+button { cursor: pointer; }
+button:hover:not(:disabled) { background: #2c4431; }
+button:disabled { opacity: 0.45; cursor: default; }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #1a1205; font-weight: 700; }
+button.primary:hover { background: #ffc56e; }
+.dim { color: var(--dim); }
+.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+kbd { background: #24362a; border: 1px solid #3c5440; border-radius: 4px; padding: 0 5px; color: var(--ink); font: 12px ui-monospace, Consolas, monospace; margin-right: 2px; }
+
+.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px 24px; padding: 18px 24px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); z-index: 5; }
+.top h1 { margin: 0; font-size: 24px; letter-spacing: 0.05em; color: var(--accent); }
+.top .tag { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); border: 1px solid #3c5440; border-radius: 4px; padding: 1px 6px; vertical-align: middle; }
+.top .sub { margin: 4px 0 0; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+#status { min-width: 180px; font-size: 12px; }
+#status.warn { color: var(--accent); }
+#status.err { color: #ff7a66; }
+
+.tabs { display: flex; gap: 4px; padding: 10px 24px 0; }
+.tabs button { border-radius: 6px 6px 0 0; border-bottom: none; padding: 8px 16px; background: transparent; }
+.tabs button[aria-selected=true] { background: var(--panel); border-color: #3c5440; color: var(--accent); font-weight: 700; }
+.count { color: var(--dim); font-weight: 400; font-size: 12px; margin-left: 4px; }
+main { padding: 0 24px 32px; max-width: 1100px; }
+.tab { padding-top: 12px; }
+.keys { margin: 0 0 10px; font-size: 12px; }
+.empty { padding: 24px; border: 1px dashed #3c5440; border-radius: 8px; color: var(--dim); }
+
+.group > h2 { margin: 18px 0 8px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.cat { background: var(--panel); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+.cat > header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.cat > header .label { font-weight: 700; }
+.cat > header .event { flex: 1 1 260px; font-size: 12px; }
+.cat > header .picked { font-size: 12px; color: var(--dim); min-width: 64px; }
+.cat > header .picked.some { color: var(--accent); font-weight: 700; }
+.cat > header label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
+.cat > header input[type=range] { width: 110px; padding: 0; accent-color: var(--accent); }
+.cat > header output { width: 34px; font-variant-numeric: tabular-nums; }
+.row { display: grid; grid-template-columns: 32px minmax(150px, 220px) 1fr 56px minmax(80px, 150px) 32px; align-items: center; gap: 10px; padding: 4px 12px; border-left: 3px solid transparent; cursor: pointer; }
+.row + .row { border-top: 1px solid var(--line); }
+.row.current { background: #1b2c1f; border-left-color: var(--accent); }
+.row.playing .play { color: var(--accent); border-color: var(--accent); }
+.row .play, .row .heart { width: 30px; height: 26px; padding: 0; line-height: 1; }
+.row .note { font-size: 13px; }
+.row .dur { text-align: right; font-variant-numeric: tabular-nums; font-size: 12px; }
+.row .src { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .heart { font-size: 16px; color: var(--dim); }
+.row .heart[aria-pressed=true] { color: #1a1205; background: var(--accent); border-color: var(--accent); }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.card { background: var(--panel); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+.card.chosen { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.card .img { aspect-ratio: 4 / 5; background: #0c150e; display: grid; place-items: center; color: var(--dim); font-size: 12px; }
+.card .img img { width: 100%; height: 100%; object-fit: contain; }
+.card .body { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.card h3 { margin: 0; font-size: 15px; }
+.card p { margin: 0; font-size: 12px; }
+.card .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: auto; padding-top: 4px; }
+.card .foot label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; }
+.card input[type=radio] { accent-color: var(--accent); }
+
+.notes { display: block; margin-top: 20px; color: var(--dim); font-size: 12px; }
+.notes textarea { display: block; width: 100%; margin-top: 4px; resize: vertical; }
+
+.layer { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(5, 12, 7, 0.7); z-index: 20; padding: 16px; }
+.viewer { background: var(--panel); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 12px; width: min(760px, 96vw); }
+.viewer header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.viewer header h2 { margin: 0 auto 0 0; font-size: 15px; color: var(--accent); }
+.viewer header button[aria-pressed=true] { background: #2c4431; border-color: var(--accent); }
+.viewer .stage { width: 100%; aspect-ratio: 4 / 3; border-radius: 6px; overflow: hidden; background: #0c150e; }
+.viewer canvas { display: block; width: 100%; height: 100%; }
+.viewer .vstatus { margin-top: 6px; font-size: 12px; }

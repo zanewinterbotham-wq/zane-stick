@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "categories": [
+    {
+      "id": "hit_helmet_helmet", "label": "Helmet on helmet", "group": "Hits",
+      "event": "plays when two helmets collide; louder with harder hits",
+      "variants": [
+        { "id": "hit_helmet_helmet_01", "file": "hit_helmet_helmet/01.ogg", "source": "synth", "license": "CC0", "duration": 0.25, "note": "fixture: 900 Hz tone" },
+        { "id": "hit_helmet_helmet_02", "file": "hit_helmet_helmet/02.ogg", "source": "synth", "license": "CC0", "duration": 0.18, "note": "fixture: 1300 Hz tone" }
+      ]
+    },
+    {
+      "id": "foot_step_turf", "label": "Footstep on turf", "group": "Feet",
+      "event": "plays when a cleat lands on the field",
+      "variants": [
+        { "id": "foot_step_turf_01", "file": "foot_step_turf/01.ogg", "source": "synth", "license": "CC0", "duration": 0.12, "note": "fixture: brown noise" },
+        { "id": "foot_step_turf_02", "file": "foot_step_turf/02.ogg", "source": "synth", "license": "CC0", "duration": 0.15, "note": "fixture: pink noise" }
+      ]
+    },
+    {
+      "id": "ui_click", "label": "Menu click", "group": "UI",
+      "event": "plays when a menu item is chosen",
+      "variants": [
+        { "id": "ui_click_01", "file": "ui_click/01.ogg", "source": "synth", "license": "CC0", "duration": 0.05, "note": "fixture: 2 kHz blip" }
+      ]
+    }
+  ]
+}
