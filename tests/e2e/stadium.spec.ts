@@ -62,11 +62,11 @@ test('the inventory lists skins and stadiums; equipping a stadium is remembered 
   await expect.poll(() => page.evaluate(() => [...document.querySelectorAll<HTMLImageElement>('.inv-card img')].every((i) => i.complete && i.naturalWidth > 0))).toBe(true);
   await page.screenshot({ path: 'test-results/inventory-stadiums.png' });
 
-  const pro = stadiums.find((x) => x.id === 'pro')!;
-  await panel.locator(`.inv-card[data-item="pro"] .equip`).click();
-  await expect(panel.locator('.inv-card.equipped h3')).toHaveText(pro.label);
+  const other = stadiums.find((x) => x.id === 'night')!; // not the default (the owner picked the dome)
+  await panel.locator(`.inv-card[data-item="night"] .equip`).click();
+  await expect(panel.locator('.inv-card.equipped h3')).toHaveText(other.label);
   await expect(panel.locator('[role=status]')).toContainText('next rep');
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('zane-stick-settings-v1') ?? '{}').stadium)).toBe('pro');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('zane-stick-settings-v1') ?? '{}').stadium)).toBe('night');
   await page.screenshot({ path: 'test-results/inventory-equipped.png' });
 
   // Esc goes back to the title; the next rep is played in the stadium just equipped
@@ -74,6 +74,6 @@ test('the inventory lists skins and stadiums; equipping a stadium is remembered 
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK');
   await page.keyboard.press('Enter');
   await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
-  await expect.poll(() => page.evaluate(() => (window as unknown as { __app: { renderer: { stadium: { id: string } } } }).__app.renderer.stadium.id)).toBe('pro');
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __app: { renderer: { stadium: { id: string } } } }).__app.renderer.stadium.id)).toBe('night');
   expect(errors).toEqual([]);
 });

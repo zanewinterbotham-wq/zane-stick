@@ -21,3 +21,11 @@ it('fresh settings are 1x with the owner carry acceleration', () => {
   expect([s.strength, s.speed, s.support.carryAccel]).toEqual([1, 1, 10.5]);
   saveSettings(s); expect(loadSettings().strength).toBe(1);
 });
+
+it('version 3: the owner picks become the default skin and stadium once, and Gore off maps to the no-blood level', () => {
+  store.set('zane-stick-settings-v1', JSON.stringify({ version: 2, skin: 'voxel', stadium: 'college', gore: false }));
+  const s = loadSettings();
+  expect([s.skin, s.stadium, s.goreLevel]).toEqual(['rubberhose', 'pro', 0]);
+  s.skin = 'clay'; saveSettings(s);
+  expect(loadSettings().skin).toBe('clay'); // a choice made after the upgrade sticks
+});

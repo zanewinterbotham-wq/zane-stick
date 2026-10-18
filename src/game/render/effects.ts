@@ -32,6 +32,11 @@ export const STYLES: EffectStyle[] = [
 /** The owner's first pick, else Realistic. */
 export const DEFAULT_STYLE = STYLES.find((s) => s.id === (picks as { effects?: string[] }).effects?.[0]) ?? STYLES[0];
 export const styleById = (id: string) => STYLES.find((s) => s.id === id) ?? DEFAULT_STYLE;
+/** Gore setting levels (owner's picks note, 2026-10-18): each level shows one effect style. */
+export const GORE_LEVELS = [
+  { label: 'None', style: 'comic' }, { label: 'Low', style: 'cartoon' }, { label: 'Medium', style: 'voxel' },
+  { label: 'High', style: 'realistic' }, { label: 'Very high', style: 'spray' },
+] as const;
 
 const MAX_PARTICLES = 400, MAX_DECALS = 240, G = 9.81;
 const BONE = 0xeee4cc;

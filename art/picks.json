@@ -177,9 +177,40 @@
     ],
     "game_whistle_end": [
       "game_whistle_end_02"
+    ],
+    "bone_crack": [
+      "bone_crack_10"
+    ],
+    "pain_scream": [
+      "pain_scream_01",
+      "pain_scream_02",
+      "pain_scream_03",
+      "pain_scream_04",
+      "pain_scream_05",
+      "pain_scream_06",
+      "pain_scream_07",
+      "pain_scream_08"
+    ],
+    "pain_moan": [
+      "pain_moan_06",
+      "pain_moan_09",
+      "pain_moan_10",
+      "pain_moan_04"
+    ],
+    "ko_thud": [
+      "ko_thud_01",
+      "ko_thud_02",
+      "ko_thud_03",
+      "ko_thud_04",
+      "ko_thud_05",
+      "ko_thud_06"
+    ],
+    "ko_ring": [
+      "ko_ring_01"
     ]
   },
-  "character": "voxel",
+  "character": "rubberhose",
+  "stadium": "pro",
   "volumes": {
     "hit_body_body": 0.85,
     "hit_pads_pads": 0.45,
@@ -211,7 +242,19 @@
     "air_wind_loop": 0.05,
     "voice_grunt": 0.15,
     "voice_exhale": 0.05,
-    "crowd_cheer": 0.05
+    "crowd_cheer": 0.05,
+    "bone_crack": 0.4,
+    "pain_scream": 0.3,
+    "pain_moan": 0.25,
+    "ko_thud": 0.45,
+    "ko_ring": 0.2
   },
-  "notes": "make all the different models skins that you can unlock in the future, but for now they should just all be unlocked always.\n"
+  "effects": [
+    "cartoon",
+    "realistic",
+    "comic",
+    "voxel",
+    "spray"
+  ],
+  "notes": "\nuse every character and stadium, since i can only chose one, i chose the one I want as default. \n\nfor effects, have 4 levels, no gore: stars; low gore: cartoon splat; medium gore; voxel blood; high gore; realistic; very high gore; over the top"
 }

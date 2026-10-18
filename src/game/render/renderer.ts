@@ -1,9 +1,10 @@
 // Three.js view of a World. Reads physics state only; never writes it.
 import * as THREE from 'three';
 import type { World } from '../../sim/world';
+import { clamp } from '../../sim/math';
 import { AthleteMesh, TEAMS } from './athleteMesh';
 import { AnatomyOverlay } from './anatomy';
-import { InjuryEffects } from './effects';
+import { GORE_LEVELS, InjuryEffects } from './effects';
 import { buildBarrier, buildField } from './field';
 import { loadStadium, OPEN_FIELD, stadiumById, type Stadium, type StadiumScene } from './stadium';
 import { CLASSIC, loadSkin, skinById, type Skin, type SkinTemplate } from './skin';
@@ -39,9 +40,12 @@ export class GameRenderer {
   private skinReq = 0;
   /** Athlete whose head is not drawn (the helmet camera looks out from inside it), or -1. */
   hideHeadOf = -1;
-  /** Injury effects (blood, bones, stars); off with the Gore setting. */
+  /** Injury effects (blood, bones, stars); the Gore setting picks their style (render/effects.ts GORE_LEVELS). */
   readonly effects = new InjuryEffects();
-  gore = true;
+  set goreLevel(level: number) {
+    const id = GORE_LEVELS[clamp(Math.round(level), 0, GORE_LEVELS.length - 1)].style;
+    if (this.effects.style.id !== id) this.effects.setStyle(id);
+  }
   /** Render time of the last frame (ms) and the last frame's draw calls. */
   lastMs = 0;
 
@@ -157,8 +161,7 @@ export class GameRenderer {
       this.props[i].quaternion.set(...quat);
     });
     if (this.overlay?.root.visible) this.overlay.update(w);
-    this.effects.root.visible = this.gore;
-    if (this.gore) this.effects.follow(w);
+    this.effects.follow(w);
     // keep the shadow camera on the action
     const c = w.scene.athletes[0].state.com;
     this.sun.target.position.set(c[0], 0, c[2]);

@@ -1,11 +1,11 @@
 [
   {
-    "id": "voxel",
-    "label": "Voxel Block",
-    "pitch": "3.4 cm voxels on one world grid with merged faces: a sandbox-game athlete, 1.6x head.",
-    "file": "models/voxel.glb",
-    "preview": "models/previews/voxel.jpg",
-    "look": "standard",
+    "id": "rubberhose",
+    "label": "Rubber Hose",
+    "pitch": "1930s cartoon: noodle limbs, white mitts, pie-cut eyes, huge shoes, 1.95x head.",
+    "file": "models/rubberhose.glb",
+    "preview": "models/previews/rubberhose.jpg",
+    "look": "toon",
     "unlocked": true
   },
   {
@@ -36,6 +36,15 @@
     "unlocked": true
   },
   {
+    "id": "voxel",
+    "label": "Voxel Block",
+    "pitch": "3.4 cm voxels on one world grid with merged faces: a sandbox-game athlete, 1.6x head.",
+    "file": "models/voxel.glb",
+    "preview": "models/previews/voxel.jpg",
+    "look": "standard",
+    "unlocked": true
+  },
+  {
     "id": "clay",
     "label": "Claymation",
     "pitch": "Stop-motion plasticine: lumpy hand-pressed surfaces, soft matte, 1.65x head.",
@@ -60,15 +69,6 @@
     "file": "models/paper.glb",
     "preview": "models/previews/paper.jpg",
     "look": "paper",
-    "unlocked": true
-  },
-  {
-    "id": "rubberhose",
-    "label": "Rubber Hose",
-    "pitch": "1930s cartoon: noodle limbs, white mitts, pie-cut eyes, huge shoes, 1.95x head.",
-    "file": "models/rubberhose.glb",
-    "preview": "models/previews/rubberhose.jpg",
-    "look": "toon",
     "unlocked": true
   }
 ]

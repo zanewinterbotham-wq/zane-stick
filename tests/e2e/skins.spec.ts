@@ -29,28 +29,28 @@ async function carrierComesToYou(page: import('@playwright/test').Page) {
   });
 }
 
-test('the default skin (voxel) dresses both athletes; standing and tackling', async ({ page }) => {
+test('the default skin (the owner pick, Rubber Hose) dresses both athletes; standing and tackling', async ({ page }) => {
   const errors = watchErrors(page);
   await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Skin: Voxel Block' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: 'Skin: Rubber Hose' })).toBeVisible({ timeout: 60_000 });
   await page.keyboard.press('Enter');
   await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
-  await expect.poll(() => skinState(page)).toEqual({ id: 'voxel', parts: [21, 21] });
+  await expect.poll(() => skinState(page)).toEqual({ id: 'rubberhose', parts: [21, 21] });
   await carrierComesToYou(page);
   await page.waitForTimeout(800);
-  await page.screenshot({ path: 'test-results/skin-voxel-stand.png' });
+  await page.screenshot({ path: 'test-results/skin-default-stand.png' });
   await page.keyboard.down('ShiftLeft'); await page.keyboard.down('KeyW');
   await page.evaluate(() => { (window as unknown as { __app: { cam: { mode: string } } }).__app.cam.mode = 'side'; });
   await expect.poll(() => page.evaluate(() => (window as unknown as { __app: { drill: { world: { impact: { firstContactTime: number } } } } }).__app.drill.world.impact.firstContactTime), { timeout: 20_000 }).toBeGreaterThan(0);
   await page.waitForTimeout(150);
-  await page.screenshot({ path: 'test-results/skin-voxel-tackle.png' });
+  await page.screenshot({ path: 'test-results/skin-default-tackle.png' });
   await page.waitForTimeout(600);
-  await page.screenshot({ path: 'test-results/skin-voxel-tackle-2.png' });
+  await page.screenshot({ path: 'test-results/skin-default-tackle-2.png' });
   await page.keyboard.up('KeyW'); await page.keyboard.up('ShiftLeft');
   // the pause menu cycles the skin and the athletes change at once
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Skin: Voxel Block' }).click();
+  await page.getByRole('button', { name: 'Skin: Rubber Hose' }).click();
   await expect(page.getByRole('button', { name: `Skin: ${skins[1].label}` })).toBeVisible();
   await expect.poll(async () => (await skinState(page)).id).toBe(skins[1].id);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('zane-stick-settings-v1') ?? '{}').skin);

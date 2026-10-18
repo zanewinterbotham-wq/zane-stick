@@ -17,6 +17,7 @@ import { SoundCues } from './cues';
 import { HitMeter, hitFeel, MPH } from './feel';
 import { InputManager, keyName, keysText, RESERVED, type InputFrame } from './input/input';
 import { PRESETS, type PresetName } from './presets';
+import { GORE_LEVELS } from './render/effects';
 import { GameRenderer, RENDER_PRESETS } from './render/renderer';
 import { DEFAULT_SETTINGS, DIFFICULTY_PRESETS, GAME_SUPPORT, PLAYER_BASE, difficultyOf, loadSettings, saveSettings, type Settings } from './settings';
 import { skinById, unlockedSkins } from './render/skin';
@@ -229,7 +230,7 @@ class App {
     this.renderer.setWorld(this.drill.world);
     this.renderer.setXray(this.renderer.xray);
     this.renderer.effortShading = s.effortShading;
-    this.renderer.gore = s.gore;
+    this.renderer.goreLevel = s.goreLevel;
     this.cam.snap(this.renderer.camera, this.drill.world, this.humanHeading());
     this.input.clearLook(); // mouse movement during loading must not spin the fresh camera
     this.acc = 0;
@@ -251,7 +252,7 @@ class App {
       { label: 'Inventory', hint: 'next rep', action: () => this.inventory(() => this.pauseMenu(), false) },
       { label: `Anatomy view: ${this.renderer?.xray ? 'on' : 'off'}`, action: () => { this.renderer?.setXray(!this.renderer.xray); this.pauseMenu(); } },
       { label: `Effort shading (anatomy view): ${s.effortShading ? 'on' : 'off'}`, action: () => { s.effortShading = !s.effortShading; if (this.renderer) this.renderer.effortShading = s.effortShading; this.save(); this.pauseMenu(); } },
-      { label: `Gore (blood and bones on injuries): ${s.gore ? 'on' : 'off'}`, action: () => { s.gore = !s.gore; if (this.renderer) this.renderer.gore = s.gore; this.save(); this.pauseMenu(); } },
+      { label: `Gore: ${GORE_LEVELS[s.goreLevel]?.label ?? 'Low'}`, action: () => { s.goreLevel = (s.goreLevel + 1) % GORE_LEVELS.length; if (this.renderer) this.renderer.goreLevel = s.goreLevel; this.save(); this.pauseMenu(); } },
       { label: `Big-hit slow motion: ${s.slowMo ? 'on' : 'off'}`, action: () => { s.slowMo = !s.slowMo; this.save(); this.pauseMenu(); } },
       { label: `Camera: ${this.cam.mode}`, action: () => { this.toggleCamera(); this.pauseMenu(); } },
       { label: `Automatic camera: ${s.autoCamera ? 'on (follows the athlete)' : 'off (mouse look)'}`, action: () => { this.setAutoCamera(!s.autoCamera); this.pauseMenu(); } },

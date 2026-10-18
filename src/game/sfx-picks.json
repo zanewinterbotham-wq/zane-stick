@@ -266,39 +266,56 @@
       ]
     },
     "bone_crack": {
-      "volume": 1,
+      "volume": 0.4,
       "files": [
-        "sfx/bone_crack/01.ogg",
-        "sfx/bone_crack/02.ogg"
+        "sfx/bone_crack/10.ogg"
       ]
     },
     "pain_scream": {
-      "volume": 1,
+      "volume": 0.3,
       "files": [
         "sfx/pain_scream/01.ogg",
-        "sfx/pain_scream/02.ogg"
+        "sfx/pain_scream/02.ogg",
+        "sfx/pain_scream/03.ogg",
+        "sfx/pain_scream/04.ogg",
+        "sfx/pain_scream/05.ogg",
+        "sfx/pain_scream/06.ogg",
+        "sfx/pain_scream/07.ogg",
+        "sfx/pain_scream/08.ogg"
       ]
     },
     "pain_moan": {
-      "volume": 1,
+      "volume": 0.25,
       "files": [
-        "sfx/pain_moan/01.ogg",
-        "sfx/pain_moan/02.ogg"
+        "sfx/pain_moan/06.ogg",
+        "sfx/pain_moan/09.ogg",
+        "sfx/pain_moan/10.ogg",
+        "sfx/pain_moan/04.ogg"
       ]
     },
     "ko_thud": {
-      "volume": 1,
+      "volume": 0.45,
       "files": [
         "sfx/ko_thud/01.ogg",
-        "sfx/ko_thud/02.ogg"
+        "sfx/ko_thud/02.ogg",
+        "sfx/ko_thud/03.ogg",
+        "sfx/ko_thud/04.ogg",
+        "sfx/ko_thud/05.ogg",
+        "sfx/ko_thud/06.ogg"
       ]
     },
     "ko_ring": {
-      "volume": 1,
+      "volume": 0.2,
       "files": [
-        "sfx/ko_ring/01.ogg",
-        "sfx/ko_ring/02.ogg"
+        "sfx/ko_ring/01.ogg"
       ]
     }
-  }
+  },
+  "effects": [
+    "cartoon",
+    "realistic",
+    "comic",
+    "voxel",
+    "spray"
+  ]
 }

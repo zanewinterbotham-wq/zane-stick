@@ -1,5 +1,30 @@
 [
   {
+    "id": "pro",
+    "label": "Metro Dome",
+    "pitch": "Pro arena with suites, a steep upper deck, a roof ring with a video band and tall light towers.",
+    "file": "models/stadiums/pro.glb",
+    "preview": "models/previews/stadium-pro.jpg",
+    "scene": {
+      "sky": "#9cc3e4",
+      "fog": [
+        "#bfd8ee",
+        110,
+        340
+      ],
+      "hemi": [
+        "#e3efff",
+        "#4b5a4a",
+        1.05
+      ],
+      "sun": [
+        "#ffffff",
+        2
+      ]
+    },
+    "unlocked": true
+  },
+  {
     "id": "college",
     "label": "State U Bowl",
     "pitch": "Two-deck college bowl in maroon and gold: banners over the rim, a video board and a full house.",
@@ -45,31 +70,6 @@
       "sun": [
         "#ffffff",
         2.2
-      ]
-    },
-    "unlocked": true
-  },
-  {
-    "id": "pro",
-    "label": "Metro Dome",
-    "pitch": "Pro arena with suites, a steep upper deck, a roof ring with a video band and tall light towers.",
-    "file": "models/stadiums/pro.glb",
-    "preview": "models/previews/stadium-pro.jpg",
-    "scene": {
-      "sky": "#9cc3e4",
-      "fog": [
-        "#bfd8ee",
-        110,
-        340
-      ],
-      "hemi": [
-        "#e3efff",
-        "#4b5a4a",
-        1.05
-      ],
-      "sun": [
-        "#ffffff",
-        2
       ]
     },
     "unlocked": true

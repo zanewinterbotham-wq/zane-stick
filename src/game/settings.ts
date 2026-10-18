@@ -2,6 +2,7 @@
 // windows), so every read and write is guarded and the defaults always work.
 import { DEFAULT_SUPPORT, type SupportSettings } from '../sim/anim/types';
 import type { PresetName } from './presets';
+import skins from './skins.json';
 import stadiums from './stadiums.json';
 
 export interface Settings {
@@ -28,19 +29,20 @@ export interface Settings {
   overlay: boolean;
   skin: string;                  // character skin id (src/game/skins.json, or 'classic')
   stadium: string;               // stadium id (src/game/stadiums.json, or 'field' for the Open Field)
-  gore: boolean;                 // injury effects: blood, bones (style picked by the owner, render/effects.ts)
+  goreLevel: number;             // injury effects 0..4: none (stars) .. very high (render/effects.ts GORE_LEVELS)
 }
 
 /** Owner's tuned baseline for Normal (2026-10-18): the player's strength and speed at 1x, and the carry
  *  acceleration. The difficulty sliders are multipliers on these. */
 export const PLAYER_BASE = { strength: 1.5, speed: 1.29 };
 export const GAME_SUPPORT = { ...DEFAULT_SUPPORT, carryAccel: 10.5 };
-/** Stored settings layout; 2 = strength/speed are multipliers on PLAYER_BASE. */
-const VERSION = 2;
+/** Stored settings layout; 2 = strength/speed are multipliers on PLAYER_BASE; 3 = gore levels, owner's new default
+ *  skin and stadium. */
+const VERSION = 3;
 
 export const DEFAULT_SETTINGS: Settings = {
   version: VERSION, preset: null, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, hitPower: 1.5, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
-  slowMo: true, autoCamera: false, sprintToggle: false, sinkToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: 'voxel', gore: true, stadium: stadiums[0]?.id ?? 'field', // the owner's pick is first in the list
+  slowMo: true, autoCamera: false, sprintToggle: false, sinkToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: skins[0]?.id ?? 'classic', goreLevel: 1, stadium: stadiums[0]?.id ?? 'field', // the owner's picks are first in the lists
 };
 
 /** Difficulty presets: each axis moves on its own (AI toughness, AI juking, the player's strength and speed). */
@@ -66,6 +68,12 @@ export function loadSettings(): Settings {
         if (typeof s.strength === 'number') s.strength /= PLAYER_BASE.strength;
         if (typeof s.speed === 'number') s.speed /= PLAYER_BASE.speed;
         if (s.support?.carryAccel === DEFAULT_SUPPORT.carryAccel) s.support.carryAccel = GAME_SUPPORT.carryAccel;
+      }
+      if ((s.version ?? 1) < 3) {
+        // the owner picked new defaults: start once from them; Gore off maps to the no-blood level
+        delete s.skin; delete s.stadium;
+        if (s.gore === false) s.goreLevel = 0;
+        delete s.gore;
       }
       return { ...DEFAULT_SETTINGS, ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support } };
     }

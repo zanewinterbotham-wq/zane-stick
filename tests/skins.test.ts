@@ -24,7 +24,7 @@ const v = (a: ArrayLike<number>, i = 0) => new THREE.Vector3(a[i], a[i + 1], a[i
 describe('skins', () => {
   it('lists every exported model, all unlocked, with the owner pick first', () => {
     expect(files.map((s) => s.id).sort()).toEqual(['clay', 'future', 'lowpoly', 'paper', 'rubberhose', 'toon', 'vinyl', 'voxel']);
-    expect(files[0].id).toBe('voxel');
+    expect(files[0].id).toBe(JSON.parse(readFileSync('art/picks.json', 'utf8')).character); // the owner's pick first
     expect(SKINS.every((s) => s.unlocked)).toBe(true);
   });
 
