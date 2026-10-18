@@ -17,10 +17,14 @@ const DT_REF = 1 / 240;
 const WN = { leg: 35, arm: 20, trunk: 25 };
 /** Without support (world without SupportSettings) the hand controller balances alone. */
 const NO_SUPPORT: SupportState = { posture: 0, carry: 0, down: false };
+/** Share of muscle output a full stun takes away. */
+const STUN_LOOSE = 0.6;
 
 export class TrackingController implements MotorController {
   /** The world's support tuning (World.create hands its own object in, so panel edits reach it). */
   supportSettings: SupportSettings = DEFAULT_SUPPORT;
+  /** 0..1 stun from the world (a big hit received): scales all muscle output down by up to STUN_LOOSE. */
+  stun = 0;
   readonly frame: AnimFrame;
   readonly hand: HandController;
   private animator: Animator;
@@ -74,7 +78,7 @@ export class TrackingController implements MotorController {
     // share of body weight the legs carry: what the posture support does not
     const legShare = clamp(1 - set.weightShare * sup.posture * set.strength, 0, 1);
     this.track(v, this.trackOut, legShare, set.tracking);
-    const h = this.handOut, t = this.trackOut;
+    const h = this.handOut, t = this.trackOut, loose = 1 - STUN_LOOSE * clamp(this.stun, 0, 1);
     for (let i = 0; i < n; i++) {
       // blend torques, not set points: kp·q and kd·qd are mixed so the spring and damper terms add up exactly
       const kp = t.kp[i] + (h.kp[i] - t.kp[i]) * b, kd = t.kd[i] + (h.kd[i] - t.kd[i]) * b;
@@ -85,8 +89,10 @@ export class TrackingController implements MotorController {
       out.qd[i] = kd > 1e-9 ? kv / kd : 0;
       // the hand controller's leg forces assume the legs carry all the weight; with support they carry legShare
       out.tff[i] = t.tff[i] + (h.tff[i] * (this.isLeg[i] ? legShare : 1) - t.tff[i]) * b;
+      // stunned: less tone everywhere (after the blend, so the balance controller loosens too)
+      out.kp[i] *= loose; out.kd[i] *= loose; out.tff[i] *= loose;
     }
-    this.dbg = { clip: this.frame.clip, phase: this.frame.phase, blend: b, legShare, mode: String(this.hand.debug().mode ?? '') };
+    this.dbg = { clip: this.frame.clip, phase: this.frame.phase, blend: b, legShare, stun: this.stun, mode: String(this.hand.debug().mode ?? '') };
   }
 
   /** PD toward the frame plus gravity compensation (free segments) and a Jᵀ weight push (planted legs). */

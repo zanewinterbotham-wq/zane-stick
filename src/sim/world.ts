@@ -29,8 +29,11 @@ const ASSIST_FADE_OUT = 0.15, ASSIST_STABLE_TIME = 0.3, ASSIST_FADE_IN = 0.3;
 /** Support [design §6.5]: carry velocity gain (1/s), stable footing before the carry returns and its ramp (s),
  *  window for the impulse received (s), flight a stride may have before the carry fades (s), how fast knock
  *  decays (1/s), get-up ramp (s), pelvis height PD (1/s², 1/s), upright stiffness (m·g·h per rad), damping
- *  (m·h² per s), and yaw relative to roll/pitch. */
-const SUP = { kv: 6, stable: 0.3, fadeIn: 0.3, window: 0.2, flight: 0.15, decay: 1, getup: 1, hKp: 36, hKd: 10, kUp: 1.5, cUp: 6, yaw: 0.3 };
+ *  (m·h² per s), yaw relative to roll/pitch, and the stun: knock impulse (in bigHits) where it starts and the
+ *  further amount that makes it full, and its fade time (s); speed along the last big hit beyond the wanted one
+ *  where the knock starts and where it is full (m/s), and how long that hit is remembered (s). */
+const SUP = { kv: 6, stable: 0.3, fadeIn: 0.3, window: 0.2, flight: 0.15, decay: 1, getup: 1, hKp: 36, hKd: 10, kUp: 1.5, cUp: 6, yaw: 0.3,
+  stunStart: 1, stunFull: 2, stunTime: 0.5, drivenStart: 0.5, drivenFull: 2, drivenTime: 1.5 };
 
 /** One body-part-on-body-part contact between two athletes this step (summed over its contact points). */
 export interface HitEvent {
@@ -64,6 +67,11 @@ export class Athlete {
   /** Support levels handed to the controller, and the fade state behind them (design §6.5). */
   support: SupportState = { posture: 1, carry: 1, down: false };
   knock = 0; carryLevel = 1; supStable = 0; airT = 0; getup = 0;
+  /** 0..1 loss of muscle tone after being driven back by a big hit (handed to controllers that take it). */
+  stun = 0;
+  /** Horizontal direction (x, z) of the last big hit received, the speed along it before that hit (m/s), and
+   *  how recent it is (1 → 0). */
+  hitDir: [number, number] = [0, 0]; hitPre = 0; hitMem = 0;
   /** Contact force received from other athletes this step (N, world), and its last SUP.window seconds (N·s). */
   hitForce: Vec3 = [0, 0, 0];
   hitWindow: Vec3[] = []; hitImpulse: Vec3 = [0, 0, 0];
@@ -204,7 +212,18 @@ export class World {
     // Only the part of the impulse the athlete's own momentum did not absorb counts: the momentum it left him
     // moving with along the hit. A hitter who drives through keeps moving into it; the one driven back does not.
     const Jh = Math.hypot(J[0], J[2]), vAlong = Jh > 1e-9 ? (s.comVel[0] * J[0] + s.comVel[2] * J[2]) / Jh : 0;
-    const knockHit = Math.min(Jh, m * Math.max(0, vAlong)) / S.bigHit;
+    const Jknock = Math.min(Jh, m * Math.max(0, vAlong)), knockHit = Jknock / S.bigHit;
+    // Stun: an athlete driven back hard loses muscle tone for a moment (the controller loosens), so the hit's
+    // momentum goes through a limp-ish body instead of being caught by a stiff balance reaction.
+    a.stun = Math.max(clamp((Jknock - SUP.stunStart * S.bigHit) / (SUP.stunFull * S.bigHit), 0, 1), a.stun - dt / SUP.stunTime);
+    // Driven back: still moving along the last big hit faster than the animation wants, the athlete has not caught
+    // the momentum yet, so the knock stays up after the impulse window (else posture returns mid-stumble).
+    // Measured against the speed he already had along it before the hit (own momentum is not the hit's).
+    if (knockHit > 0.3) a.hitDir = [J[0] / Jh, J[2] / Jh];
+    const vHit = s.comVel[0] * a.hitDir[0] + s.comVel[2] * a.hitDir[1], vWant = r ? r.vel[0] * a.hitDir[0] + r.vel[2] * a.hitDir[1] : 0;
+    // (the lowest estimate over the hit: once the impulse leaves the window the estimate would be his new speed)
+    if (knockHit > 0.3) { a.hitPre = a.hitMem > 0 ? Math.min(a.hitPre, vHit - Jh / m) : vHit - Jh / m; a.hitMem = 1; } else a.hitMem = Math.max(0, a.hitMem - dt / SUP.drivenTime);
+    const knockDriven = a.hitMem <= 0 ? 0 : clamp((vHit - Math.max(0, vWant, a.hitPre) - SUP.drivenStart) / (SUP.drivenFull - SUP.drivenStart), 0, 1);
     // Trunk tilt away from both upright and the lean the animation wants: a deliberate lean (low drive) is not a
     // knock, nor is the trunk still on its way into or out of one.
     const ti = a.segIndex.get('thorax') ?? a.segIndex.get('trunk')!, q = s.segQuat.subarray(4 * ti, 4 * ti + 4);
@@ -216,7 +235,7 @@ export class World {
     const footing = a.feet[0].touching || a.feet[1].touching, speed = Math.hypot(s.comVel[0], s.comVel[2]);
     a.airT = footing ? 0 : a.airT + dt;
     const knockAir = clamp((a.airT - (0.08 + 0.015 * speed)) / 0.15, 0, 1);
-    const target = Math.min(1, Math.max(knockHit, knockTilt, knockAir));
+    const target = Math.min(1, Math.max(knockHit, knockTilt, knockAir, knockDriven));
     // rises fast, decays slowly
     a.knock = target > a.knock ? a.knock + (target - a.knock) * Math.min(1, dt / 0.02) : Math.max(target, a.knock - dt * SUP.decay);
     const down = a.downBy !== null, clip = a.controller.debug?.().clip;
@@ -238,6 +257,7 @@ export class World {
     }
     const flight = clamp(1 - (a.airT - SUP.flight) / 0.1, 0, 1);
     a.support = { posture: down && clip !== 'getup' ? 0 : 1 - a.knock, carry: a.playerContact ? 0 : a.carryLevel * flight * (1 - a.knock), down };
+    if ('stun' in a.controller) a.controller.stun = a.stun;
   }
 
   /** Invisible posture/weight support. Vertical force and roll/pitch torque only — never horizontal force. */

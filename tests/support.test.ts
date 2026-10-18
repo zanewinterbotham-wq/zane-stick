@@ -3,7 +3,9 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { DEFAULT_ATHLETE } from '../src/sim/anatomy/body';
 import { DEFAULT_SUPPORT } from '../src/sim/anim/types';
+import { ScriptBrain } from '../src/sim/brains/script';
 import type { Gait } from '../src/sim/control/types';
+import { DEFAULT_OPEN_FIELD, OpenFieldDrill } from '../src/sim/drills/openField';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
 import { carrierVsTacklerScenario, supportRunScenario } from '../src/sim/scenarios';
 import { World, type PhysicsSettings } from '../src/sim/world';
@@ -109,11 +111,70 @@ describe('support in contact', () => {
     expect(fast.bDown).toBeGreaterThan(slow.bDown + 0.2);
     expect(slow.instabilities + fast.instabilities).toBe(0);
   });
+  it('the athlete driven back is stunned and stays without posture support while still moving with the hit; the hitter is not', async () => {
+    let stunned = 0, hitterStun = 0, heldKnock = 0;
+    const n = 8;
+    for (let seed = 1; seed <= n; seed++) {
+      let maxStun = 0, t0 = -1;
+      await collide(drive(8), upright(4), seed, STD, 1.5, {
+        support,
+        onStep: (w) => {
+          const [a, b] = w.athletes, vb = w.scene.athletes[1].state.comVel[2];
+          if (t0 < 0 && w.lastHitForce > 0) t0 = w.time;
+          maxStun = Math.max(maxStun, b.stun); hitterStun = Math.max(hitterStun, a.stun);
+          // past the 0.2 s impulse window, still carried back (+Z) fast: the knock must not have let go
+          if (t0 >= 0 && w.time - t0 > 0.3 && vb > 2.5 && !b.playerContact && b.knock > 0.9) heldKnock++;
+        },
+      });
+      if (maxStun > 0.5) stunned++;
+    }
+    console.log('stunned', stunned, '/', n, 'hitter max stun', hitterStun, 'steps with held knock', heldKnock);
+    expect(stunned).toBeGreaterThanOrEqual(n / 2);
+    expect(hitterStun).toBeLessThan(0.2);
+    expect(heldKnock).toBeGreaterThan(0);
+  });
   it('rates move with mass: a light athlete is downed more often than a heavy one by the same hit', async () => {
     const light = await rates(drive(5), upright(3, 65), 12), heavy = await rates(drive(5), upright(3, 130), 12);
     console.log('B down: 65 kg', light.bDown, '130 kg', heavy.bDown);
     expect(light.bDown).toBeGreaterThan(heavy.bDown + 0.3);
     expect(light.instabilities + heavy.instabilities).toBe(0);
+  });
+});
+
+describe('ball carry', () => {
+  /** Open-field drill with the human running off to the side: the bot carrier runs and cuts away from him. */
+  async function carry(physics: PhysicsSettings, rep: number, carrierGait: Gait) {
+    const away = new ScriptBrain((_t, _p, c) => { c.move = { x: 1, z: 0 }; c.gait = 'jog'; });
+    const d = await OpenFieldDrill.create(mujocoEngine, { ...DEFAULT_OPEN_FIELD, physics, carrierGait }, away, rep);
+    const w = d.world, a = w.athletes[d.carrier], s = w.scene.athletes[d.carrier].state;
+    let held = true, contact = false, cut = 0, far = 0, top = 0;
+    while (d.repTime < 6 && !d.ended) {
+      d.step();
+      held &&= a.grips[1].active;
+      contact ||= a.playerContact;
+      const b = w.scene.propPose(d.ball).pos, h = a.handSegs[1];
+      far = Math.max(far, Math.hypot(b[0] - s.segCom[3 * h], b[1] - s.segCom[3 * h + 1], b[2] - s.segCom[3 * h + 2]));
+      top = Math.max(top, Math.hypot(s.comVel[0], s.comVel[2]));
+      if (d.repTime > 1.5) cut = Math.max(cut, Math.abs(Math.atan2(s.comVel[0], -s.comVel[2])));
+    }
+    const out = { held, contact, cutDeg: cut * 180 / Math.PI, far, top, t: d.repTime, ended: d.ended, instabilities: w.scene.stats().instabilities };
+    d.destroy();
+    return out;
+  }
+  it('the carrier keeps the ball tucked for 6 s of running and cutting (no contact), on every body detail', async () => {
+    for (const [physics, gait] of [[STD, 'jog'], [STD, 'sprint'], [{ hz: 240, iterations: 20, detail: 'minimum' }, 'jog']] as [PhysicsSettings, Gait][]) {
+      for (const rep of [0, 1]) {
+        const r = await carry(physics, rep, gait);
+        console.log(physics.detail, gait, 'rep', rep, r);
+        expect(r.contact).toBe(false);
+        expect(r.ended).toBe(null);
+        expect(r.t).toBeGreaterThanOrEqual(6);
+        expect(r.cutDeg).toBeGreaterThan(25);
+        expect(r.held).toBe(true);
+        expect(r.far).toBeLessThan(0.25);
+        expect(r.instabilities).toBe(0);
+      }
+    }
   });
 });
 
