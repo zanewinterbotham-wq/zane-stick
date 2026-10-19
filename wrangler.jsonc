@@ -1,0 +1,8 @@
+// Cloudflare Pages project zane-stick (npm run deploy:cf): the static site in dist/ plus functions/ (the room API).
+// The room Durable Objects live in Worker zane-stick-rooms (server/rooms/wrangler.jsonc, npm run deploy:rooms).
+{
+  "name": "zane-stick",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2025-09-01",
+  "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "RoomDO", "script_name": "zane-stick-rooms" }] }
+}
