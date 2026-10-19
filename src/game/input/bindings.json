@@ -3,7 +3,8 @@
   "keyboard": {
     "moveUp": ["KeyW"], "moveDown": ["KeyS"], "moveLeft": ["KeyA"], "moveRight": ["KeyD"],
     "sprint": ["ShiftLeft", "ShiftRight"],
-    "thrust": ["Space"],
+    "thrust": ["KeyQ"],
+    "jump": ["Space"],
     "dive": ["KeyE"],
     "armL": ["Mouse0", "KeyJ"], "armR": ["Mouse2", "KeyL"],
     "torsoUp": ["KeyI"], "torsoDown": ["KeyK"],
@@ -13,7 +14,7 @@
   "gamepad": {
     "moveX": ["a0"], "moveY": ["a1"],
     "lookX": ["a2"], "lookY": ["a3"],
-    "sprint": ["b7"], "thrust": ["b0"], "dive": ["b1"],
+    "sprint": ["b7"], "jump": ["b0"], "thrust": ["b2"], "dive": ["b1"],
     "armL": ["b4"], "armR": ["b5"],
     "torsoUp": ["b12"], "torsoDown": ["b13", "b6"],
     "shiftLock": ["b10"],

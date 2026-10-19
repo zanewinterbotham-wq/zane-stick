@@ -46,13 +46,15 @@ const HELD = { start: 0.3, full: 0.9, oneArm: 0.6, sag: 1.0, sagMax: 0.8 };
  *  further amount that makes it full, and its fade time (s); speed along the last big hit beyond the wanted one
  *  where the knock starts and where it is full (m/s), and how long that hit is remembered (s); and a dive
  *  take-off's velocity gain (1/s) and largest acceleration (m/s², about the ~1.5 g net a standing long-jump
- *  take-off reaches), and the largest horizontal acceleration of a hip-thrust lunge (m/s², ~1 body weight of
- *  horizontal ground force, a sprint start's); the knock's rise time (s), a big hit's (about two steps at 240 Hz); and
+ *  take-off reaches; a jump's from a stand, ~1.7 g, about the net a counter-movement jump's ~2.5–3 body-weight
+ *  propulsive peak gives, and off a running stride (from 2.5 to 3.5 m/s), ~4 g, a one-foot take-off's ~4–5 body
+ *  weights [S4]), and the largest horizontal acceleration of a hip-thrust lunge (m/s², ~1 body weight of horizontal
+ *  ground force, a sprint start's); the knock's rise time (s), a big hit's (about two steps at 240 Hz); and
  *  how long after the last contact a tilt or a flight stops counting as a knock (s), and the largest downward brake
  *  on a body rising past its pelvis target (× body weight), and the largest sideways acceleration the carry gives
  *  to turn a run at up to 4 m/s and from 8 m/s (m/s², the animator's LAT_ACCEL). */
 const SUP = { kv: 6, stable: 0.3, fadeIn: 0.3, window: 0.2, flight: 0.15, decay: 1, getup: 1, hKp: 36, hKd: 10, kUp: 1.5, cUp: 6, yaw: 0.3,
-  stunStart: 1, stunFull: 2, stunTime: 0.5, drivenStart: 0.5, drivenFull: 2, drivenTime: 1.5, launchKv: 20, launch: 15, lunge: 12, rise: 0.02, bigRise: 0.008,
+  stunStart: 1, stunFull: 2, stunTime: 0.5, drivenStart: 0.5, drivenFull: 2, drivenTime: 1.5, launchKv: 20, launch: 15, jump: [17, 40] as const, lunge: 12, rise: 0.02, bigRise: 0.008,
   free: 1, brake: 0.5, lat: [14, 8.5] as const };
 
 /** One body-part-on-body-part contact between two athletes this step (summed over its contact points). */
@@ -232,11 +234,13 @@ export class World {
     // dive flight is ballistic: no support of any kind, so momentum is the take-off's and the body lands
     if (r.dive === 'flight') return;
     const s = this.scene.athletes[a.index].state, m = a.mass, k = S.strength, pi = a.segIndex.get('pelvis')!;
-    const c = a.playerContact ? 0 : sup.carry * k;
-    // dive take-off: the carry stands in for the push off the turf, so it needs a foot on it
-    const launch = r.dive === 'launch' && (a.feet[0].touching || a.feet[1].touching);
+    const c = a.playerContact || r.jump === 'flight' ? 0 : sup.carry * k;
+    // dive or jump take-off: the carry stands in for the push off the turf, so it needs a foot on it
+    const launch = (r.dive === 'launch' || r.jump === 'launch') && (a.feet[0].touching || a.feet[1].touching);
+    // jump flight is ballistic too (no carry, and weightSupport gives no lift); only the posture's attitude torque stays,
+    // the same as through a running stride's flight
     if (c > 0 && launch) {
-      const f: Vec3 = [0, 1, 2].map((j) => m * SUP.launchKv * (r.vel[j] - s.comVel[j])) as Vec3, n = Math.hypot(...f), lim = m * SUP.launch;
+      const f: Vec3 = [0, 1, 2].map((j) => m * SUP.launchKv * (r.vel[j] - s.comVel[j])) as Vec3, n = Math.hypot(...f), lim = m * (r.jump === 'launch' ? lerp(SUP.jump[0], SUP.jump[1], clamp(Math.hypot(s.comVel[0], s.comVel[2]) - 2.5, 0, 1)) : SUP.launch);
       a.carryForce = f.map((x) => x * c * (n > lim ? lim / n : 1)) as Vec3;
     } else if (c > 0) {
       // a hip-thrust lunge is a take-off too: the carry stands in for the explosive push off the turf
@@ -373,7 +377,8 @@ export class World {
     // him upright (design §6.5). One still off balance from a hit keeps stumbling until he has caught himself.
     a.freeT = a.playerContact ? 0 : a.freeT + dt;
     const own = a.freeT > SUP.free && a.hitMem <= 0 && a.heldT <= 0 && a.knock < 0.05 ? 0 : 1;
-    const target = Math.min(1, Math.max(knockHit, own * knockTilt, own * knockAir, knockDriven, knockLift, knockHeld));
+    // (his own jump's flight is no knock either, even just after a contact)
+    const target = Math.min(1, Math.max(knockHit, own * knockTilt, r?.jump === 'flight' ? 0 : own * knockAir, knockDriven, knockLift, knockHeld));
     // rises fast, within a couple of steps on a big hit (the body goes as its impulse lands), decays slowly
     a.knock = target > a.knock ? a.knock + (target - a.knock) * Math.min(1, dt / (knockHit >= 1 ? SUP.bigRise : SUP.rise)) : Math.max(target, a.knock - dt * SUP.decay);
     const down = a.downBy !== null, clip = a.controller.debug?.().clip;

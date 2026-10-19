@@ -27,6 +27,9 @@ const JOLT = 0.05;
 const THRUST_DRIVE = { burst: 1, held: 0.5, time: 0.5 };
 /** Upward push of each hand in a full thrust, N (assumption: about what one arm curls up at chest height). */
 const THRUST_LIFT = 250;
+/** Stance push of a jump's take-off, × body weight over both legs: a counter-movement jump's propulsive ground force
+ *  averages ~2 body weights [S4]; the world's launch carry (the same as a dive's) adds what the legs fall short of. */
+const JUMP_PUSH = 2;
 /** Leg drive in contact at full driveLegs, × body weight (assumption: a hard sled drive, both legs). */
 const DRIVE = 1;
 /** Pull of each hand that holds an opponent with the arm raised, × its grip strength: about as hard as the fist
@@ -119,7 +122,7 @@ export class TrackingController implements MotorController {
     let want = 1 - Math.min(sup.posture, flying ? 1 : sup.carry);
     // A hip thrust has priority: the muscles drive the thrust pose, in contact too, while the athlete still
     // has his posture. Dive flight has nothing to balance: the muscles hold the dive pose until the landing.
-    want = r.dive === 'flight' ? 0 : Math.min(want, 1 - sup.posture * r.thrust);
+    want = r.dive === 'flight' || r.jump === 'flight' ? 0 : Math.min(want, 1 - sup.posture * r.thrust);
     // injured or knocked out: no balance reaction, only the animation's loose hold on where the body lies
     if (sup.out) want = 0;
     // in quickly (a hit; at once on the jolt of a big one, so the body reacts the step it lands, not to a shove's
@@ -198,7 +201,7 @@ export class TrackingController implements MotorController {
     const stanceDofs = new Set(stance.flatMap((k) => this.chains[k]));
     // in free fall no joint carries the weight of what hangs from it
     // (nor does a limp, injured body hold its limbs up)
-    if (f.root.dive !== 'flight' && !v.support?.out) for (let i = 0; i < ms.n; i++) if (!stanceDofs.has(i)) this.gravityComp(v, i, out);
+    if (f.root.dive !== 'flight' && f.root.jump !== 'flight' && !v.support?.out) for (let i = 0; i < ms.n; i++) if (!stanceDofs.has(i)) this.gravityComp(v, i, out);
     const th = f.root.thrust;
     this.thrustT = th > 0.05 ? this.thrustT + v.dt : 0;
     if (stance.length === 0) return;
@@ -207,7 +210,9 @@ export class TrackingController implements MotorController {
     // Height feedback keeps a hard stance push from launching the body above the animation's pelvis height;
     // a hip thrust may push up to its full strength (the muscles' limits cap it) and drives forward as well.
     const pi = this.pelvisSeg, dh = f.root.height - s.segPos[3 * pi + 1], vy = s.segVel[3 * pi + 1];
-    const Fy = legShare * this.mass * G / Math.max(0.3, this.grounded) / stance.length * clamp(1 + 10 * Math.min(dh, 0.15) - (1.5 + 2.5 * th) * vy, 0, 2 + th);
+    // A jump's take-off is the exception: the legs extend as hard as they can, however fast the body already rises.
+    const Fy = f.root.jump === 'launch' ? JUMP_PUSH * this.mass * G / stance.length
+      : legShare * this.mass * G / Math.max(0.3, this.grounded) / stance.length * clamp(1 + 10 * Math.min(dh, 0.15) - (1.5 + 2.5 * th) * vy, 0, 2 + th);
     const Fh = th * (this.thrustT < THRUST_DRIVE.time ? THRUST_DRIVE.burst : THRUST_DRIVE.held) * this.mass * G / stance.length;
     const F: Vec3 = [Fh * Math.sin(f.root.heading), Fy, Fh * Math.cos(f.root.heading)];
     for (const k of stance) {

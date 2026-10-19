@@ -65,9 +65,24 @@ const DIVE = { load: [0.3, 0.08], push: [0.25, 0.12], vStand: 3.4, vy: [1.6, 0.4
 const LUNGE = { time: 0.5, v: 5, accel: 12 } as const;
 /** One press's whole hip thrust (s): the lunge and drive, then the rise up onto the balls of the feet. */
 const THRUST_T = 0.8;
+/** Jump [S4]. Standing: counter-movement (s), push (s) and pelvis dip (m) (a maximal counter-movement jump dips
+ *  ~0.3–0.4 m in ~0.4 s and pushes for ~0.25 s). From a run (faster than `runFrom`, m/s) it is a one-foot take-off off
+ *  the next stride, a hurdler's: push time (s). The take-off's vertical target (m/s) is above what the push reaches, so
+ *  the world's launch pushes at its cap for as long as a foot is on the turf: standing, ~3.3–3.4 m/s comes off it (a
+ *  ~0.6 m vertical); off a sprint stride's brief toe contact much less, and the tucked legs clear a diver. Then how long
+ *  both feet must be off the turf to count as airborne (s), the longest flight before giving up on a landing and how
+ *  long past the push he may stay on the turf before giving the jump up (s), the time after a landing before the next
+ *  jump (s), how long a press made in a stride's flight waits for a foot on the turf (s), and the landing: the legs'
+ *  tracking gain as they meet the turf and how long they take to firm up again (s; assumption: soft enough that the
+ *  knees bend instead of the turf stopping the fall in a step). */
+const JUMP = { load: 0.4, push: [0.24, 0.13], dip: 0.38, vy: 4, runFrom: 3, off: 0.02, maxFlight: 1.5, stuck: 0.3, cool: 0.35, req: 0.2, soft: 0.3, softGain: 0.25 } as const;
+/** A running take-off's legs: the pushing leg extended behind the hips onto its toes, the other knee driven up; and the
+ *  hurdle's tuck in the air (heels drawn up under the hips). */
+const JUMP_PUSH_LEG: LegQ = [-0.5, 0.05, 0.1, -0.6, 0.3, 0, 0], JUMP_LEAD_LEG: LegQ = [1.3, 0.08, 1.6, 0.2, 0, 0, 0];
+const JUMP_TUCK: LegQ = [0.9, 0.08, 1.4, 0.1, 0, 0, 0], JUMP_HURDLE: LegQ = [1.5, 0.08, 2.35, 0.2, 0, 0, 0];
 type DiveStage = 'load' | 'launch' | 'flight';
 
-type Mode = 'loco' | 'dive' | 'down' | 'getup';
+type Mode = 'loco' | 'dive' | 'jump' | 'down' | 'getup';
 /** One leg's angles: hip flexion, abduction, knee flexion, ankle dorsiflexion, toe extension, foot yaw
  *  relative to the heading (positive toward the athlete's left), and the foot's toe-up roll on the turf. */
 type LegQ = [number, number, number, number, number, number, number];
@@ -113,6 +128,8 @@ export class ProceduralAnimator implements Animator {
   // whole-body modes and cross-fades
   private mode: Mode = 'loco'; private modeT = 0; private settleT = 0; private standT = 0; private prevDive = false;
   private dv = { run: 0, vh: 0, dir: [0, 1] as [number, number], tL: 0.2, tP: 0.2, stage: 'load' as DiveStage, vy: 0 };
+  private jv = { running: false, vel: [0, 0] as [number, number], tL: 0.3, tP: 0.2, tT: 0, tF: Infinity, pushed: false, offT: 0, leg: -1, q0: [] as LegQ[], was: [true, true], stage: 'load' as DiveStage, vy: 0 };
+  private prevJump = false; private jumpCool = 0; private jumpReq = 0; private landT = Infinity;
   private blendFrom: Float64Array; private blendRoot = { height: 0, pitch: 0, roll: 0 }; private blendW = 1; private blendDur = 0.2;
   private getup = { faceDown: true, heading: 0, h0: 0.2, p0: 0, r0: 0, keys: [] as Float64Array[], downT: 0 };
   private start: Float64Array;
@@ -241,6 +258,8 @@ export class ProceduralAnimator implements Animator {
 
   private lift(L: Leg, phi: number) { L.stance = false; L.liftPhase = Math.min(phi, 0.95); L.qLift = [...L.q]; L.tdG = NaN; }
 
+  private legDofs(L: Leg) { return [L.hf, L.ab, L.rot, L.kn, L.knRot, L.dor, L.inv, L.toe].filter((i) => i >= 0); }
+
   private writeLeg(L: Leg, q: LegQ) {
     const Q = this.q;
     if (L.hf >= 0) Q[L.hf] = q[0];
@@ -265,7 +284,8 @@ export class ProceduralAnimator implements Animator {
     this.modeT += dt;
     const comSpeed = Math.hypot(s.comVel[0], s.comVel[1], s.comVel[2]);
     // ---- whole-body mode
-    if (support.down && (this.mode === 'loco' || this.mode === 'dive')) this.enter('down', 0.15);
+    this.jumpReq = cmd.jump && !this.prevJump ? JUMP.req : Math.max(0, this.jumpReq - dt);
+    if (support.down && (this.mode === 'loco' || this.mode === 'dive' || this.mode === 'jump')) this.enter('down', 0.15);
     // out of play (knocked out, or both legs broken; design §6.6): he goes down where he stands and stays down this
     // rep. One break he plays on with: down from the hit as physics decides, then up again like anyone.
     if (support.out && this.mode !== 'down') this.enter('down', 0.15);
@@ -287,13 +307,22 @@ export class ProceduralAnimator implements Animator {
     // one press, one whole dive: holding the button changes nothing; it ends on the turf (down), or on the
     // feet again if it never landed
     else if (this.mode === 'dive' && this.modeT > this.dv.tL + this.dv.tP + DIVE.maxFlight) this.enter('loco', 0.3);
-    this.prevDive = cmd.dive;
+    // one press, one jump, from the turf (a press in a stride's flight waits for the next foot down), not again until a
+    // moment after the last landing
+    else if (this.mode === 'loco' && this.jumpReq > 0 && this.jumpCool <= 0 && (view.feet[0].touching || view.feet[1].touching)) this.startJump(view);
+    // a jump ends when a foot finds the turf on the way down (or it never lands): he runs on from the landing
+    // (or he never got off the turf: held down, or the push never came)
+    else if (this.mode === 'jump' && (this.jv.stage === 'flight' ? (this.modeT > this.jv.tF + 0.1 && s.comVel[1] < 0.5 && (view.feet[0].touching || view.feet[1].touching))
+      || this.modeT > this.jv.tF + JUMP.maxFlight : this.modeT > (this.jv.stage === 'load' ? this.jv.tL : this.jv.tT + this.jv.tP) + JUMP.stuck)) this.land(view);
+    this.prevDive = cmd.dive; this.prevJump = cmd.jump;
+    if (this.mode !== 'jump') this.jumpCool = Math.max(0, this.jumpCool - dt);
 
     this.q.fill(0);
     out.gain.fill(1);
     switch (this.mode) {
       case 'loco': this.loco(view, cmd, false, out); break;
       case 'dive': this.dive(view, cmd, out); break;
+      case 'jump': this.jump(view, cmd, out); break;
       case 'down': this.down(view, out); break;
       case 'getup': this.doGetup(view, out); break;
     }
@@ -318,8 +347,9 @@ export class ProceduralAnimator implements Animator {
     const dive = this.mode === 'dive' ? this.dv.stage : 'none';
     // the root's vertical speed: a dive's take-off, else how fast the posture lowers or raises the hips (the support
     // damps the pelvis toward it, so a quick sink is not braked as if it were a fall)
-    out.root.vel[1] = dive === 'launch' ? this.dv.vy : this.mode === 'loco' ? -this.dropV : 0;
-    out.root.dive = dive;
+    const jump = this.mode !== 'jump' || (this.jv.stage === 'load' && this.jv.running) ? 'none' : this.jv.stage;
+    out.root.vel[1] = dive === 'launch' ? this.dv.vy : jump === 'launch' ? this.jv.vy : this.mode === 'loco' ? -this.dropV : 0;
+    out.root.dive = dive; out.root.jump = jump;
     out.root.thrust = this.mode === 'loco' ? this.lv.thrust : 0;
     out.clip = this.mode === 'loco' ? this.clip : this.mode;
   }
@@ -602,11 +632,14 @@ export class ProceduralAnimator implements Animator {
         // driven on through the turf, the leg bounced a sprinter into a long hop.
         if (sw > 0.5 && touch && !v.playerContact) {
           const g = lerp(1, SWING_SOFT, clamp((sp - 4) / 2, 0, 1));
-          for (const i of [L.hf, L.ab, L.rot, L.kn, L.knRot, L.dor, L.inv, L.toe]) if (i >= 0) out.gain[i] = g;
+          for (const i of this.legDofs(L)) out.gain[i] = g;
         }
       }
       this.writeLeg(L, q);
+      // just down from a jump the legs are soft and give (a landing's knee bend), firming up as they take the weight
+      if (this.landT < JUMP.soft) for (const i of this.legDofs(L)) out.gain[i] *= lerp(JUMP.softGain, 1, this.landT / JUMP.soft);
     }
+    this.landT += dt;
 
     // ---- trunk, head, arms
     const ready = Math.max(lv.stance, shuffle, 0.7 * bp, 0.6 * lv.contact * (1 - run));
@@ -738,6 +771,106 @@ export class ProceduralAnimator implements Animator {
     // the feet push against the turf until take-off
     out.planted[0] = D.stage !== 'flight' && v.feet[0].touching; out.planted[1] = D.stage !== 'flight' && v.feet[1].touching;
     out.phase = clamp(t / (D.tL + D.tP), 0, 1);
+  }
+
+  private startJump(v: BodyView) {
+    const c = v.state.comVel, running = Math.hypot(c[0], c[2]) > JUMP.runFrom;
+    // the run's velocity is kept through the take-off: from a run he jumps on along it (a hurdle), standing he goes up
+    this.jv = { running, vel: [c[0], c[2]], tL: running ? 0 : JUMP.load, tP: running ? JUMP.push[1] : JUMP.push[0], tT: running ? Infinity : JUMP.load, tF: Infinity, pushed: false, offT: 0, leg: -1, q0: [],
+      was: [v.feet[0].touching, v.feet[1].touching], stage: 'load', vy: 0 };
+    this.enter('jump', running ? 0.05 : 0.6 * JUMP.load); this.jumpReq = 0;
+  }
+
+  /** Landed on his feet: locomotion again, carrying on at the speed he lands with. The hips keep falling at the landing
+   *  speed and the legs give, stopping them at the locomotion's ~2.5 g (its sink limit), then rise again. */
+  private land(v: BodyView) {
+    const c = v.state.comVel, pel = v.state.segPos[3 * this.pelvisSeg + 1];
+    this.height = pel; // the cross-fade starts from where the hips really are
+    this.enter('loco', 0.15);
+    this.vel = [c[0], 0, c[2]]; this.vPlan = [c[0], c[2]];
+    this.dropF = this.standH - pel; this.dropV = Math.max(0, -c[1]);
+    this.jumpCool = JUMP.cool; this.landT = 0;
+  }
+
+  /** Jump: counter-movement (hips, knees and ankles flex, arms swing back), take-off (all three extend onto the toes,
+   *  arms swing up, or to where the hands aim), flight (legs tuck, then reach down for the landing). From a run the
+   *  take-off is one stride's (a planted foot cannot be held under the hips at speed): the stride runs on until the next
+   *  foot lands (one at the end of its stance is already behind the hips), and that leg pushes. */
+  private jump(v: BodyView, cmd: Commands, out: AnimFrame) {
+    const J = this.jv, t = this.modeT, dt = v.dt, s = v.state, touch = v.feet[0].touching || v.feet[1].touching;
+    if (J.stage === 'load') {
+      const down = [0, 1].find((k) => v.feet[k].touching && !J.was[k]) ?? -1;
+      J.was = [v.feet[0].touching, v.feet[1].touching];
+      if (t >= J.tL && (!J.running || down >= 0)) { J.stage = 'launch'; J.leg = down; J.tT = t; J.q0 = this.legs.map((L) => [...L.q] as LegQ); }
+    }
+    // the flight starts when both feet have left the turf after the push (for a moment: a rigid foot's contact flickers
+    // under load): at the end of its schedule, or sooner once a foot has pushed him up off it
+    if (J.stage === 'launch') {
+      J.pushed ||= touch;
+      J.offT = touch ? 0 : J.offT + dt;
+      if (J.offT >= JUMP.off && (t >= J.tT + J.tP || (J.pushed && s.comVel[1] > 1))) {
+        J.stage = 'flight'; J.tF = t;
+        // off a running stride the flight pose fades in from the stride's
+        if (J.running) { this.blendFrom.set(this.prevQ); this.blendRoot = { height: this.height, pitch: this.pitch, roll: this.roll }; this.blendW = 0; this.blendDur = 0.05; }
+      }
+    }
+    const uL = J.tL > 0 ? minJerk(t / J.tL) : 1, wP = minJerk((t - J.tT) / J.tP), wF = minJerk((t - J.tF) / (J.running ? 0.08 : 0.15));
+    J.vy = J.stage === 'launch' ? JUMP.vy : 0;
+    if (J.running && J.stage !== 'flight') {
+      if (J.stage === 'load') { this.loco(v, cmd, false, out); return; }
+      // the take-off: that leg extends (hip, knee and ankle) as it sweeps back under the body, the other knee drives up
+      this.legs.forEach((L, k) => { this.writeLeg(L, J.q0[k].map((c, i) => lerp(c, (k === J.leg ? JUMP_PUSH_LEG : JUMP_LEAD_LEG)[i], wP)) as LegQ); L.stance = false; });
+      this.height = s.segPos[3 * this.pelvisSeg + 1]; this.pitch = follow(this.pitch, 0.15, dt, 0.1); this.roll = follow(this.roll, 0, dt, 0.1);
+      this.vel[0] = J.vel[0]; this.vel[2] = J.vel[1];
+      for (const a of this.arms) {
+        const k = a.side > 0 ? 0 : 1, wa = this.aimArm(v, cmd, a, k, dt);
+        this.setArm(a, lerp(lerp(0.3, 2.4, wP), this.aimAng[k][0], wa), lerp(0.15, this.aimAng[k][1], wa), 0, lerp(0.6, 0.2, Math.max(wP, wa)), 0);
+      }
+      this.head(-0.9 * this.pitch);
+      out.root.height = this.height; out.root.pitch = this.pitch; out.root.roll = this.roll;
+      out.planted[0] = J.leg === 0 && v.feet[0].touching; out.planted[1] = J.leg === 1 && v.feet[1].touching;
+      out.phase = wP;
+      return;
+    }
+    const hLoad = this.standH - JUMP.dip, pLoad = 0.35;
+    if (J.stage === 'load') {
+      this.pitch = lerp(this.blendRoot.pitch, pLoad, uL);
+      this.height = lerp(this.blendRoot.height, hLoad, uL);
+    } else if (J.stage === 'launch') {
+      this.pitch = lerp(pLoad, 0.05, wP);
+      this.height = lerp(hLoad, this.standH + 0.06, wP);
+    } else {
+      this.pitch = follow(this.pitch, 0.05, dt, 0.1);
+      this.height = follow(this.height, s.segPos[3 * this.pelvisSeg + 1], dt, 0.05);
+    }
+    if (J.stage === 'flight') { this.vel[0] = s.comVel[0]; this.vel[2] = s.comVel[2]; } else { this.vel[0] = J.vel[0]; this.vel[2] = J.vel[1]; }
+    this.roll = follow(this.roll, 0, dt, 0.1);
+    // Load and push as the dive's: legs solved for about the real pelvis (feet under the hips, so they give under the
+    // body and stay on the turf), then hips, knees and ankles extend onto the toes. In the air the knees come up (a
+    // hurdle's heels right up), then reach down for the turf as he falls, toes first and soft, so the ankles and knees
+    // give (landing flat-footed on stiff legs, the turf stopped the fall in a step at ~20 body weights; on the toes ~4).
+    const h = this.height, p = this.pitch, fw = this.segAxis(v, this.pelvisSeg, [0, 0, 1]);
+    this.height = Math.min(Math.max(h, s.segPos[3 * this.pelvisSeg + 1] - 0.01), this.standH);
+    this.pitch = Math.atan2(-fw[1], Math.hypot(fw[0], fw[2]));
+    const E: LegQ = [-0.05, 0.05, 0.05, -0.7, 0.3, 0, 0], T = J.running ? JUMP_HURDLE : JUMP_TUCK, Ld: LegQ = [0.35, 0.08, 0.5, -0.5, 0, 0, 0];
+    const wD = J.stage === 'flight' ? s01(-s.comVel[1] / 2) : 0;
+    for (const L of this.legs) {
+      const C = this.solve(L, [L.side * 0.12, 0], L.side * 0.08, 0).q;
+      this.writeLeg(L, C.map((c, i) => lerp(lerp(lerp(c, E[i], wP), T[i], wF), Ld[i], wD)) as LegQ);
+      L.stance = false;
+      for (const i of this.legDofs(L)) out.gain[i] = lerp(1, JUMP.softGain, wD);
+    }
+    this.height = h; this.pitch = p;
+    const fl = lerp(lerp(-0.5 * uL, 2.6, wP), 2.2, wF);
+    for (const a of this.arms) {
+      const k = a.side > 0 ? 0 : 1, w = this.aimArm(v, cmd, a, k, dt) * wP;
+      this.setArm(a, lerp(fl, this.aimAng[k][0], w), lerp(0.15, this.aimAng[k][1], w), 0, lerp(0.3, 0.2, w), 0);
+    }
+    this.add('lumbar.flex', 0.2 * uL * (1 - wP));
+    this.head(-0.9 * this.pitch);
+    out.root.height = this.height; out.root.pitch = this.pitch; out.root.roll = this.roll;
+    out.planted[0] = J.stage !== 'flight' && v.feet[0].touching; out.planted[1] = J.stage !== 'flight' && v.feet[1].touching;
+    out.phase = clamp(t / (J.tL + J.tP), 0, 1);
   }
 
   /** Down: no pose to fight for, the muscles only hold the body loosely where it lies. */

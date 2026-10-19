@@ -60,6 +60,7 @@ export class HumanBrain implements Brain {
     // runs a whole thrust either way)
     c.thrustHips = h.has('thrust');
     c.dive = h.has('dive'); // one press runs a whole dive; holding changes nothing
+    c.jump = h.has('jump'); // the same for a jump
     const sink = TORSO_SINK * Math.max(0, i.torso);
     c.sink = c.thrustHips ? 0 : this.contact ? Math.max(sink, READY_SINK) : sink;
     c.lean = { fwd: c.thrustHips ? 0 : i.torso, side: 0 };

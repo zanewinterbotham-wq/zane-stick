@@ -33,5 +33,17 @@ it('version 3: the owner picks become the default skin and stadium once, and Gor
 it('version 4: the sink toggle and sink rebinds are dropped; multipliers saved by v3 are not scaled again', () => {
   store.set('zane-stick-settings-v1', JSON.stringify({ version: 3, strength: 1.2, sinkToggle: true, bindings: { sink: ['KeyX'], dive: ['KeyQ'] } }));
   const s = loadSettings() as unknown as Record<string, unknown>;
-  expect([s.strength, 'sinkToggle' in s, s.bindings]).toEqual([1.2, false, { dive: ['KeyQ'] }]);
+  // (and v5: dive kept Q, so the new thrust default gives it up)
+  expect([s.strength, 'sinkToggle' in s, s.bindings]).toEqual([1.2, false, { dive: ['KeyQ'], thrust: [] }]);
+});
+
+it('version 5: Space leaves a saved thrust rebind for the new jump, and a key another rebind holds leaves the new default', () => {
+  store.set('zane-stick-settings-v1', JSON.stringify({ version: 4, bindings: { thrust: ['Space', 'Mouse1'], dive: ['KeyQ'] } }));
+  expect(loadSettings().bindings).toEqual({ thrust: ['Mouse1'], dive: ['KeyQ'] });
+  store.set('zane-stick-settings-v1', JSON.stringify({ version: 4, bindings: { thrust: ['Space'] } }));
+  expect(loadSettings().bindings).toEqual({});   // thrust falls back to its new default, Q
+  store.set('zane-stick-settings-v1', JSON.stringify({ version: 4, bindings: { dive: ['KeyQ'], armL: ['Space'], thrust: [] } }));
+  expect(loadSettings().bindings).toEqual({ dive: ['KeyQ'], armL: ['Space'], thrust: [], jump: [] });
+  store.set('zane-stick-settings-v1', JSON.stringify({ version: 5, bindings: { thrust: ['Space'] } }));
+  expect(loadSettings().bindings).toEqual({ thrust: ['Space'] });   // chosen after the upgrade: kept
 });

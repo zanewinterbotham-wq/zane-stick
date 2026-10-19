@@ -272,7 +272,7 @@ class App {
     const k = this.input.bindings.keyboard, t = (a: string) => keysText(k[a] ?? []);
     const move = ['moveUp', 'moveLeft', 'moveDown', 'moveRight'].map((a) => k[a]?.[0] ? keyName(k[a][0]) : '—').join(' ');
     return [
-      ['Move', move], ['Sprint', t('sprint')], ['Thrust', t('thrust')], ['Dive', t('dive')],
+      ['Move', move], ['Sprint', t('sprint')], ['Thrust', t('thrust')], ['Jump', t('jump')], ['Dive', t('dive')],
       ['Left arm, grab', t('armL')], ['Right arm, grab', t('armR')],
       ['Pads down / up: torso and hips (scroll up = down)', `Scroll, ${t('torsoDown')} / ${t('torsoUp')}`],
       ['Side shuffle (toggle)', t('shiftLock')],

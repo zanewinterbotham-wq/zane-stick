@@ -158,6 +158,22 @@ Kram, Domingo & Ferris 1997, also at reduced gravity); preferred transition spee
 (Hreljac 1993: 2.06 m/s). The controller caps the walking reference speed at Froude 0.5 (2.2 m/s for the
 reference athlete).
 
+Jump (`Commands.jump`; added October 2026, not yet through the fact-checking pass):
+
+| Quantity | Target | Basis |
+|---|---|---|
+| Standing vertical jump (COM rise) | 0.6–0.75 m | NFL Combine vertical jump means ~0.7–0.9 m by position (McGee & Burkett 2003, J Strength Cond Res 17:6; Robbins 2010, J Strength Cond Res 24:2888), measured reach to reach; college players lower |
+| Counter-movement dip, push time | ~0.3–0.4 m, ~0.25 s | force-platform counter-movement jumps (Linthorne 2001, Am J Phys 69:1198) |
+| Propulsive ground force | ~2–3 BW | same; the stance push is 2 BW and the world's launch adds up to 1.7 g net while a foot is on the turf |
+| One-foot running take-off | contact ~0.11–0.13 s, vertical speed ~3–3.5 m/s, ~4–5 BW | long jump take-off (Lees, Graham-Smith & Fowler 1994, J Appl Biomech 10:61); the launch cap off a run is 4 g |
+| Landing peak ground force | ~3–6 BW from ~0.6 m | drop landings, soft to stiff (Zhang, Bates & Dufek 2000, Med Sci Sports Exerc 32:812) |
+
+Measured (tests/jump.test.ts): standing 0.62 m (0.56 m on the minimum body), landing on the toes 3.4–4.6 BW. The legs
+alone (no launch) reach ~0.30 m: joint-level Hill curves without tendon recoil fall short of a real jump's take-off
+power, which is why the launch stands in, as it does for the dive. Known shortfall (assumption): the simulated sprint
+stride touches down on the toes for only ~0.03 s, so a one-foot take-off at 10 m/s lifts the body ~0.1–0.17 m (a real
+one ~0.4–0.5 m) and a jog's ~0.15–0.3 m; the hurdle's tuck still lifts the feet ~0.37–0.5 m, over a diver.
+
 ## S5 — Equipment, ball, turf, impacts
 
 | Item | Value used | Source |

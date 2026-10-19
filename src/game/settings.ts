@@ -42,7 +42,7 @@ export const PLAYER_BASE = { strength: 1.5, speed: 1.29 };
 export const GAME_SUPPORT = { ...DEFAULT_SUPPORT, carryAccel: 10.5 };
 /** Stored settings layout; 2 = strength/speed are multipliers on PLAYER_BASE; 3 = gore levels, owner's new default
  *  skin and stadium; 4 = no sink control (lowering the pads sinks the hips). */
-const VERSION = 4;
+const VERSION = 5;
 
 export const DEFAULT_SETTINGS: Settings = {
   version: VERSION, preset: null, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
@@ -80,10 +80,23 @@ export function loadSettings(): Settings {
         delete s.gore;
       }
       if ((s.version ?? 1) < 4) { delete s.sinkToggle; delete s.bindings?.sink; } // the sink control is gone
+      // version 5: thrust moved to Q and Space jumps; a saved rebind keeps its key, and the new default it clashes
+      // with gives that key up (as a rebind does), so one key never does two things
+      if ((s.version ?? 1) < 5 && s.bindings) migrateJumpKeys(s.bindings);
       return { ...DEFAULT_SETTINGS, ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support } };
     }
   } catch { /* storage unavailable: use defaults */ }
   return { ...DEFAULT_SETTINGS, support: { ...GAME_SUPPORT } };
+}
+
+/** v4 → v5 keyboard rebinds: Space leaves a saved thrust rebind (dropped if nothing is left), and a key another saved
+ *  rebind holds leaves the new default that also has it (thrust Q, jump Space). */
+function migrateJumpKeys(b: Record<string, string[]>) {
+  if (Array.isArray(b.thrust)) { b.thrust = b.thrust.filter((k) => k !== 'Space'); if (!b.thrust.length) delete b.thrust; }
+  for (const [action, key] of [['thrust', 'KeyQ'], ['jump', 'Space']] as const) {
+    if (b[action]) continue;
+    if (Object.entries(b).some(([a, v]) => a !== action && Array.isArray(v) && v.includes(key))) b[action] = [];
+  }
 }
 
 export function saveSettings(s: Settings) {
