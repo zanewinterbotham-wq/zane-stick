@@ -89,7 +89,8 @@ describe('special teams (headless)', () => {
   }, 120_000);
 
   it('a return the coverage cannot stop is a touchdown: six points to the returning team', async () => {
-    const p = await run(modeById('kickoffReturn'), { block: 2, cover: 1 });
+    // the kicker alone against four blockers (a long return is chaotic: two blockers break it only sometimes)
+    const p = await run(modeById('kickoffReturn'), { block: 4, cover: 1 });
     expect(p.ended).toBe('touchdown');
     expect([p.scorer, p.points]).toEqual([0, 6]);
     expect(p.ballPos()[2]).toBeGreaterThan(GOAL_LINE);

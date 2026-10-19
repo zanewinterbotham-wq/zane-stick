@@ -29,6 +29,8 @@ Engine comparison: `docs/physics-benchmark.md`.
   an athlete's own running, cutting, sinking or leaning never knocks him (design §6.5).
 - Steer assist (owner decision 2026-10-18): the human brain may turn its move direction part way toward the
   ball carrier or a loose ball (a 0–1 setting). Through Commands only, never a force on the body.
+- Catching (owner decision 2026-10-18): a ball within reach of a raised hand is caught (hand snap), the same rule for
+  every athlete.
 - If a requirement can't be met as written, stop and explain options. Never quietly substitute a shortcut.
 - Physics settings change only between reps. Every body detail level preserves mass properties.
 - Public repo: no personal info in code, docs, commits or settings. Free/open-source libraries only.
