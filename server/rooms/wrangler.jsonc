@@ -1,0 +1,12 @@
+// Room server Worker: Durable Object RoomDO, one per room code. Reached only through the Pages Function on the
+// zane-stick site (binding ROOMS with script_name zane-stick-rooms), never on a workers.dev address.
+// Deploy: npm run deploy:rooms (before the first deploy:cf that ships functions/). Local: npm run dev:rooms.
+{
+  "name": "zane-stick-rooms",
+  "main": "index.ts",
+  "compatibility_date": "2025-09-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "RoomDO" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RoomDO"] }] // SQLite-backed: the kind the free plan allows
+}

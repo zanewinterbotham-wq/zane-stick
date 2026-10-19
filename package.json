@@ -4,7 +4,9 @@
   "description": "Physics-only football hitting and tackling simulator",
   "scripts": {
     "dev": "vite",
+    "dev:rooms": "npx --yes wrangler@4.151.0 dev -c server/rooms/wrangler.jsonc --ip 127.0.0.1 --port 8787",
     "deploy:cf": "npm run build && npx --yes wrangler@4.151.0 pages deploy dist --project-name zane-stick --branch main --commit-dirty=true",
+    "deploy:rooms": "npx --yes wrangler@4.151.0 deploy -c server/rooms/wrangler.jsonc",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",

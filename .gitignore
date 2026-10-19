@@ -10,3 +10,4 @@ scratch/
 __pycache__/
 .claude/worktrees/
 tools/picker/fixtures/picks.json
+.wrangler/
