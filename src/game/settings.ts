@@ -14,6 +14,7 @@ export interface Settings {
   speed: number;                 // the player's max joint speed scale (difficulty)
   toughness: number;             // AI toughness: the bot's support thresholds × (difficulty; 1 = the player's)
   juking: number;                // AI juking skill 0..1 (difficulty)
+  tackling: number;              // AI tackling skill 0..1 (difficulty): reads your jukes, pursuit angles
   boneStrength: number;          // the player's break tolerances × (1 = measured; lower breaks more easily)
   aiBoneStrength: number;        // the bots' break tolerances ×
   hitPower: number;              // arcade hit power, 1 = pure physics
@@ -45,22 +46,15 @@ export const GAME_SUPPORT = { ...DEFAULT_SUPPORT, carryAccel: 10.5 };
 const VERSION = 3;
 
 export const DEFAULT_SETTINGS: Settings = {
-  version: VERSION, preset: null, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
+  version: VERSION, preset: null, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
   slowMo: true, autoCamera: false, sprintToggle: false, sinkToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: skins[0]?.id ?? 'classic', goreLevel: 1, stadium: stadiums[0]?.id ?? 'field', // the owner's picks are first in the lists
 };
 
-/** Bone strength sliders (owner item 2026-10-18), for the settings panel: how easily the player's and the bots'
- *  bones break (each athlete's break tolerances × the value; the knockout is unchanged). */
-export const BONE_SETTINGS = [
-  { key: 'boneStrength', label: 'Player bone strength', min: 0.25, max: 4, step: 0.05 },
-  { key: 'aiBoneStrength', label: 'AI bone strength', min: 0.25, max: 4, step: 0.05 },
-] as const satisfies readonly { key: keyof Settings; label: string; min: number; max: number; step: number }[];
-
 /** Difficulty presets: each axis moves on its own (AI toughness, AI juking, the player's strength and speed). */
 export const DIFFICULTY_PRESETS = {
-  easy: { toughness: 0.6, juking: 0, strength: 1.2, speed: 1.1 },
-  normal: { toughness: 1, juking: 0.5, strength: 1, speed: 1 },
-  hard: { toughness: 1.6, juking: 1, strength: 1, speed: 1 },
+  easy: { toughness: 0.6, juking: 0, tackling: 0.2, strength: 1.2, speed: 1.1 },
+  normal: { toughness: 1, juking: 0.5, tackling: 0.5, strength: 1, speed: 1 },
+  hard: { toughness: 1.6, juking: 1, tackling: 1, strength: 1, speed: 1 },
 };
 export type DifficultyName = keyof typeof DIFFICULTY_PRESETS | 'custom';
 /** The preset the settings match, or 'custom'. */

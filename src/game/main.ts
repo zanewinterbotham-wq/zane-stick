@@ -3,6 +3,7 @@
 import './testLock'; // first: tests must not capture the owner's real cursor
 import { HumanBrain } from '../sim/brains/human';
 import { carrierSkill } from '../sim/brains/carrier';
+import { tacklerSkill } from '../sim/brains/tackler';
 import { DEFAULT_OPEN_FIELD } from '../sim/drills/openField';
 import { Play } from '../sim/modes/play';
 import { modeById } from '../sim/modes/registry';
@@ -201,7 +202,7 @@ class App {
     const s = this.settings;
     this.human.steerAssist = s.steerAssist;
     this.drill = await Play.create(mujocoEngine, {
-      physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), toughness: s.toughness, hitPower: s.hitPower, boneStrength: s.boneStrength, aiBoneStrength: s.aiBoneStrength, carrierGait: DEFAULT_OPEN_FIELD.carrierGait,
+      physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), defense: tacklerSkill(s.tackling), toughness: s.toughness, hitPower: s.hitPower, boneStrength: s.boneStrength, aiBoneStrength: s.aiBoneStrength, carrierGait: DEFAULT_OPEN_FIELD.carrierGait,
       human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, bot: DEFAULT_OPEN_FIELD.carrier, traction: s.traction, gains: s.gains,
       support: { ...GAME_SUPPORT, ...s.support },
     }, this.mode, this.modeOpts, this.human, this.rep++);

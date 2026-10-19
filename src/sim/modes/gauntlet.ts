@@ -32,7 +32,7 @@ export const GAUNTLET: ModeDef = {
       brain(play, i, r) {
         const h = play.world.ballCarrier;
         if (h !== 0 || i === 0) return null;
-        if (play.team(i) === 1) return new GateBrain(new TacklerBrain(r, play.cfg.difficulty), +o.wake);
+        if (play.team(i) === 1) return new GateBrain(new TacklerBrain(r, play.cfg.defense ?? play.cfg.difficulty), +o.wake);
         return new BlockerBrain(r, play.cfg.difficulty);
       },
       ended(play) {

@@ -55,6 +55,9 @@ export type GameplayRow =
 export const GAMEPLAY_ROWS: GameplayRow[] = [
   { kind: 'slider', label: 'AI toughness (force needed to tackle the bot)', desc: 'How hard the bot is to knock off balance (its hit, stun and wrap-up thresholds).', min: 0.4, max: 2.5, step: 0.05, get: (s) => s.toughness, set: (s, v) => (s.toughness = v), fmt: x },
   { kind: 'slider', label: 'AI juking', desc: 'How well the bot carrier reads you, times his cuts and bursts away.', min: 0, max: 1, step: 0.05, get: (s) => s.juking, set: (s, v) => (s.juking = v), fmt: pct },
+  { kind: 'slider', label: 'AI tackling', desc: 'How quickly bot tacklers read your jukes, how good their pursuit angles are, how hard they are to shake.', min: 0, max: 1, step: 0.05, get: (s) => s.tackling, set: (s, v) => (s.tackling = v), fmt: pct },
+  { kind: 'slider', label: 'Player bone strength', desc: 'How hard a hit it takes to break one of your bones (lower breaks more easily).', min: 0.25, max: 4, step: 0.05, get: (s) => s.boneStrength, set: (s, v) => (s.boneStrength = v), fmt: (v) => `${v.toFixed(2)}x` },
+  { kind: 'slider', label: 'AI bone strength', desc: 'The same for the bots.', min: 0.25, max: 4, step: 0.05, get: (s) => s.aiBoneStrength, set: (s, v) => (s.aiBoneStrength = v), fmt: (v) => `${v.toFixed(2)}x` },
   { kind: 'slider', label: 'Player strength', desc: 'Your muscle strength.', min: 0.5, max: 1.5, step: 0.01, get: (s) => s.strength, set: (s, v) => (s.strength = v), fmt: x },
   { kind: 'slider', label: 'Player speed', desc: 'How fast your joints can move.', min: 0.7, max: 1.5, step: 0.01, get: (s) => s.speed, set: (s, v) => (s.speed = v), fmt: x },
   { kind: 'slider', label: 'Hit power', desc: 'Above 1 adds an arcade push to whoever a hit drives back (the bot can blow you back too); 1 is pure physics.', min: 1, max: 3, step: 0.1, get: (s) => s.hitPower, set: (s, v) => (s.hitPower = v), fmt: (v) => (v <= 1 ? '1.0 (pure physics)' : `${v.toFixed(1)}×`) },
@@ -154,7 +157,7 @@ function gameplayTab({ host, status, reopen }: Ctx) {
       return b;
     }), el('span', { class: 'seg-note', text: now === 'custom' ? 'Custom' : '' }));
   };
-  rows.append(setRow('Difficulty', 'Presets set AI toughness, AI juking and your strength and speed together.', presets));
+  rows.append(setRow('Difficulty', 'Presets set AI toughness, AI juking, AI tackling and your strength and speed together.', presets));
   for (const r of GAMEPLAY_ROWS) {
     if (r.kind === 'slider') {
       const [input, out] = range(r.label, r.get(s), r.min, r.max, r.step, (v) => r.set(s, v), r.fmt ?? ((v) => v.toFixed(2)), () => { host.save(); refresh(); });

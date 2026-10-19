@@ -125,7 +125,7 @@ export class Play {
     const h = this.world.ballCarrier, d = this.cfg.difficulty;
     if (h === i) return new CarrierBrain(rng, d, this.cfg.carrierGait);
     if (h >= 0 && this.team(h) === this.team(i)) return new BlockerBrain(rng, d);
-    return new TacklerBrain(rng, d);
+    return new TacklerBrain(rng, this.cfg.defense ?? d);
   }
 
   /** Every bot thinks again for its new role (possession changed). */

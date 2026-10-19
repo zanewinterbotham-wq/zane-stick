@@ -30,6 +30,8 @@ export interface PlayConfig {
   toughness?: number;
   /** Arcade hit power (WorldSetup.hitPower; 1 = pure physics). */
   hitPower?: number;
+  /** Defenders' difficulty (TacklerBrain: the AI tackling setting); absent = difficulty. */
+  defense?: BotDifficulty;
   /** Bone strength of the human and of every bot (AthleteSetup.boneStrength; 1 = the measured tolerances). */
   boneStrength?: number; aiBoneStrength?: number;
 }

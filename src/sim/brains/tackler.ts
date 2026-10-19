@@ -42,6 +42,10 @@ const PLANT_ANGLE = 0.6, PLANT_RUN = 2.5, PLANT_HOLD = 0.1, PLANT_GAP = 0.6;
 /** Sideways acceleration a run can turn with (m/s², ~0.6 g) and the fastest heading change (rad/s): at speed a
  *  heading swung faster than the feet can follow leaves the body facing off its run, and it falls. */
 const LAT_ACCEL = 3.5, TURN_MAX = 6;
+/** AI tackling skill 0..1 (difficulty): how late the tackler sees a cut (reaction, s) and how noisy his angles and
+ *  reads are. 0.5 is about the old fixed bot; 1 reads a juke within ~0.12 s. Nothing else about him changes. */
+export const tacklerSkill = (k: number): BotDifficulty => ({ reaction: 0.12 + 0.28 * (1 - k), noise: 0.08 + 0.4 * (1 - k) });
+
 export const turnRate = (speed: number) => Math.min(TURN_MAX, LAT_ACCEL / Math.max(speed, 1));
 
 type Phase = 'pursue' | 'breakdown' | 'strike';
