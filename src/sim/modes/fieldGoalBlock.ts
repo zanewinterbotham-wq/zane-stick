@@ -22,7 +22,8 @@ export function fieldGoal(o: ModeOptions, rng: Rng, aim?: number): PlaySetup {
   const vel: [number, number, number] = [-Math.sin(e) * v * c, v * Math.sin(ELEVATION), -Math.cos(e) * v * c];
   // you and your rushers on the line, the protection across from you, the kicker behind the spot
   const kicker = 1 + +o.rush;
-  const players: PlayerSpec[] = [...row(0, 1 + +o.rush, los - 1, 2.5, rng.range(-0.5, 0.5)), { team: K, pos: [-1, spot + 2.2] }, ...row(K, +o.protect, los + 0.6, 2)];
+  const players: PlayerSpec[] = [...row(0, 1 + +o.rush, los - 1, 2.5, rng.range(-0.5, 0.5), 'Rusher', 'Rush'), { team: K, label: 'Kicker', group: 'Kicking team', pos: [-1, spot + 2.2] },
+    ...row(K, +o.protect, los + 0.6, 2, 0, 'Protector', 'Kicking team')];
   let kicked = false, flight = false, kickedAt = 0, blocked = false, prevZ = spot;
   return {
     players, ball: { at: [0, BALL_REST_Y, spot], impetus: K }, rules: KICK_RULES, props: goalposts(),
@@ -64,8 +65,8 @@ export const FIELD_GOAL_BLOCK: ModeDef = {
   id: 'fieldGoalBlock', title: 'Field Goal Block', preview: 'modes/fieldGoalBlock.jpg',
   pitch: 'They line up for three. Get penetration, get your hands up in the kick\'s path, and the ball is anyone\'s.',
   options: [
-    { id: 'rush', label: 'Your teammates', kind: 'range', min: 0, max: 4, step: 1, default: 1 },
-    { id: 'protect', label: 'Their protectors', kind: 'range', min: 0, max: 4, step: 1, default: 1 },
+    { id: 'rush', label: 'Your teammates', kind: 'range', min: 0, max: 8, step: 1, default: 1 },
+    { id: 'protect', label: 'Their protectors', kind: 'range', min: 0, max: 8, step: 1, default: 1 },
     { id: 'distance', label: 'Field goal', kind: 'range', min: 20, max: 55, step: 5, default: 35, unit: 'yd' },
     { id: 'kickTime', label: 'Snap to kick', kind: 'range', min: 1.0, max: 1.8, step: 0.1, default: 1.3, unit: 's' },
   ],

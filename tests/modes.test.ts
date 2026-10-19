@@ -37,7 +37,7 @@ describe('registry', () => {
 
   it('stored options are validated: out of range clamps to the step, wrong types and unknown choices fall back', () => {
     const carry = MODES.find((m) => m.id === 'carry')!, ok = MODES.find((m) => m.id === 'oklahoma')!;
-    expect(resolveOptions(carry, { tacklers: 9, blockers: 1.4, outOfBounds: 'yes', timeLimit: 33 })).toEqual({ tacklers: 3, blockers: 1, outOfBounds: false, timeLimit: 35 });
+    expect(resolveOptions(carry, { tacklers: 9, blockers: 1.4, outOfBounds: 'yes', timeLimit: 33 })).toEqual({ tacklers: 5, blockers: 1, outOfBounds: false, timeLimit: 35 });
     expect(resolveOptions(ok, { role: 'quarterback', width: -2 })).toEqual({ role: 'defender', width: 3, blocker: true, outOfBounds: true });
   });
 });
@@ -74,11 +74,11 @@ const testMode = (players: PlayerSpec[], ball: BallStart, bots: Brain[] = []): M
 async function play(def: ModeDef, human: Brain) { return Play.create(mujocoEngine, CFG, def, {}, human, 0); }
 function run(p: Play, seconds: number, each?: () => void) { while (!p.ended && p.repTime < seconds) { p.step(); each?.(); } }
 /** Far away and still: an opponent so the field has two teams. */
-const FAR: PlayerSpec = { team: 1, pos: [-15, 0] };
+const FAR: PlayerSpec = { team: 1, label: 'Opponent', pos: [-15, 0] };
 
 describe('rules (headless)', () => {
   it('a touchdown counts when the ball breaks the plane, while the runner\'s body is still short of it', async () => {
-    const p = await play(testMode([{ team: 0, pos: [0, GOAL_LINE - 3] }, FAR], { holder: 0 }), script((_t, c) => { c.move = { x: 0, z: 1 }; c.gait = 'jog'; }));
+    const p = await play(testMode([{ team: 0, label: 'Runner', pos: [0, GOAL_LINE - 3] }, FAR], { holder: 0 }), script((_t, c) => { c.move = { x: 0, z: 1 }; c.gait = 'jog'; }));
     run(p, 10);
     const ball = p.ballPos()[2], body = p.world.scene.athletes[0].state.com[2];
     console.log('touchdown: ended', p.ended, 'at', p.repTime.toFixed(2), 's, ball z', ball.toFixed(3), 'body z', body.toFixed(3), 'goal', GOAL_LINE.toFixed(3));
@@ -91,7 +91,7 @@ describe('rules (headless)', () => {
 
   it('a runner who steps on or over the sideline is out of bounds; the play ends there', async () => {
     let maxX = 0;
-    const p = await play(testMode([{ team: 0, pos: [HALF_WIDTH - 3, 0], yaw: Math.PI / 2 }, FAR], { holder: 0 }), script((_t, c) => { c.move = { x: 1, z: 0 }; c.gait = 'jog'; }));
+    const p = await play(testMode([{ team: 0, label: 'Runner', pos: [HALF_WIDTH - 3, 0], yaw: Math.PI / 2 }, FAR], { holder: 0 }), script((_t, c) => { c.move = { x: 1, z: 0 }; c.gait = 'jog'; }));
     run(p, 10, () => { maxX = Math.max(maxX, p.world.scene.athletes[0].state.com[0]); });
     console.log('sideline: ended', p.ended, 'at', p.repTime.toFixed(2), 's, body x', maxX.toFixed(2), 'sideline', HALF_WIDTH.toFixed(2));
     expect(p.ended).toBe('out');
@@ -102,7 +102,7 @@ describe('rules (headless)', () => {
   });
 
   it('a runner who leaves his own end zone out the back gives up a safety', async () => {
-    const p = await play(testMode([{ team: 0, pos: [0, -GOAL_LINE - 4], yaw: Math.PI }, FAR], { holder: 0 }), script((_t, c) => { c.move = { x: 0, z: -1 }; c.gait = 'jog'; }));
+    const p = await play(testMode([{ team: 0, label: 'Runner', pos: [0, -GOAL_LINE - 4], yaw: Math.PI }, FAR], { holder: 0 }), script((_t, c) => { c.move = { x: 0, z: -1 }; c.gait = 'jog'; }));
     run(p, 10);
     console.log('own end line: ended', p.ended, 'at', p.repTime.toFixed(2), 's, body z', p.world.scene.athletes[0].state.com[2].toFixed(2));
     expect(p.ended).toBe('safety');
@@ -115,7 +115,7 @@ describe('rules (headless)', () => {
   async function pickupInEndZone(impetus: 0 | 1) {
     let mine = false;
     const human = script((_t, c) => { if (mine) { c.move = { x: 0, z: -1 }; c.gait = 'jog'; } else { c.armR = 1; c.gripR = true; } });
-    const p = await play(testMode([{ team: 0, pos: [0, -GOAL_LINE - 2], yaw: Math.PI }, FAR], { at: [3, BALL.diameter / 2 + 0.01, -GOAL_LINE - 2], impetus }), human);
+    const p = await play(testMode([{ team: 0, label: 'Runner', pos: [0, -GOAL_LINE - 2], yaw: Math.PI }, FAR], { at: [3, BALL.diameter / 2 + 0.01, -GOAL_LINE - 2], impetus }), human);
     run(p, 0.6); // the arm comes up
     const w = p.world, s = w.scene.athletes[0].state, h = w.athletes[0].handSegs[1];
     w.scene.placeProp(p.ball, [s.segPos[3 * h], s.segPos[3 * h + 1] + 0.12, s.segPos[3 * h + 2]], [0, 0, 0, 1]);
@@ -140,7 +140,7 @@ describe('rules (headless)', () => {
   it('a loose ball out of bounds is dead: out the back after a kick a touchback, after an own fumble a safety', async () => {
     const cases: [Vec3, 0 | 1, string][] = [[[0, 0.09, -END_LINE - 1], 1, 'touchback'], [[0, 0.09, -END_LINE - 1], 0, 'safety'], [[HALF_WIDTH + 1, 0.09, 0], 0, 'out']];
     for (const [at, impetus, end] of cases) {
-      const p = await play(testMode([{ team: 0, pos: [0, -30] }, FAR], { at, impetus }), script(() => {}));
+      const p = await play(testMode([{ team: 0, label: 'Runner', pos: [0, -30] }, FAR], { at, impetus }), script(() => {}));
       run(p, 1);
       expect(p.ended, `${at} impetus ${impetus}`).toBe(end);
       p.destroy();
@@ -151,7 +151,7 @@ describe('rules (headless)', () => {
     let t0 = -1;
     // he dives (untouched before) at the opponent's feet, 2.5 m in front of him
     const diver = script((t, c) => { if (t0 < 0) t0 = t; if (t > t0 + 0.3) { c.move = { x: 0, z: -1 }; c.gait = 'jog'; c.dive = t < t0 + 0.4; } c.carry = 2; });
-    const p = await play(testMode([{ team: 0, pos: [0, 0] }, { team: 1, pos: [0, 2.6] }], { holder: 1 }, [diver]), script(() => {}));
+    const p = await play(testMode([{ team: 0, label: 'Runner', pos: [0, 0] }, { team: 1, label: 'Opponent', pos: [0, 2.6] }], { holder: 1 }, [diver]), script(() => {}));
     let touched = false;
     run(p, 6, () => { touched ||= p.world.athletes[1].touching.includes(0); });
     console.log('dive into an opponent: ended', p.ended, 'at', p.repTime.toFixed(2), 's, touched', touched, ', on the turf by', p.world.athletes[1].downBy);

@@ -14,7 +14,7 @@ import type { Vec3 } from '../math';
 import type { PropDesc } from '../physics/engine';
 import type { Rng } from '../rng';
 import type { Play } from './play';
-import { attackDir, END_LINE, GOAL_LINE, inOwnEndZone, NFL, YD } from './rules';
+import { attackDir, END_LINE, GOAL_LINE, inOwnEndZone, NFL, nth, YD } from './rules';
 import type { PlayerSpec, PlaySetup, Rules } from './types';
 
 const G = 9.81;
@@ -100,11 +100,12 @@ export function near(play: Play, team: 0 | 1, at: Vec3, r: number) {
 }
 
 /** Every bot thinks again: the kick came down, so roles change without a change of possession. */
-export function rethink(play: Play) { for (let i = 1; i < play.brains.length; i++) play.brains[i] = play.roleBrain(i); }
+export function rethink(play: Play) { play.reassign(); }
 
-/** n players of `team` in a row across the field at z: from x0 outward, alternating sides, `gap` m apart. */
-export function row(team: 0 | 1, n: number, z: number, gap: number, x0 = 0): PlayerSpec[] {
-  return Array.from({ length: n }, (_, k) => ({ team, pos: [x0 + (k % 2 ? -1 : 1) * gap * Math.ceil(k / 2), z] as [number, number] }));
+/** n players of `team` in a row across the field at z: from x0 outward, alternating sides, `gap` m apart; labelled
+ *  `label`, numbered when there are several, in `group`. */
+export function row(team: 0 | 1, n: number, z: number, gap: number, x0: number, label: string, group?: string): PlayerSpec[] {
+  return Array.from({ length: n }, (_, k) => ({ team, label: nth(label, k, n), group, pos: [x0 + (k % 2 ? -1 : 1) * gap * Math.ceil(k / 2), z] as [number, number] }));
 }
 
 /** The result card's title from the player's side, with the spot. '' leaves the game's own title. */
@@ -158,7 +159,7 @@ export function returnPlay(s: ReturnSpec): PlaySetup {
   const K = s.kicking, R = K === 0 ? 1 : 0, punt = s.kind === 'punt', lanes = coverLanes(s.players, K, s.safety);
   let kicked = false, flight = false, kickedAt = 0, received = false;
   return {
-    players: s.players,
+    players: s.players.map((p) => ({ group: p.team === K ? 'Kicking team' : 'Return team', ...p })),
     ball: punt ? { holder: s.punter! } : { at: s.from, impetus: K },
     rules: KICK_RULES,
     props: goalposts(),

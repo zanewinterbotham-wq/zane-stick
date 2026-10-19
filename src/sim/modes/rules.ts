@@ -29,6 +29,11 @@ export function barrierProps(): PropDesc[] {
   ];
 }
 
+/** A position's label: "Tackler" when he is the only one, "Tackler 2" of several. */
+export const nth = (name: string, k: number, n: number) => (n > 1 ? `${name} ${k + 1}` : name);
+/** The side a man at x is on, as his team faces its attack (+X is the left of a team facing +Z). */
+export const side = (team: 0 | 1, x: number): 'L' | 'R' => (x * attackDir(team) >= 0 ? 'L' : 'R');
+
 /** The way a team attacks along Z. */
 export const attackDir = (team: 0 | 1): 1 | -1 => (team === 0 ? 1 : -1);
 /** The goal line a team attacks. */

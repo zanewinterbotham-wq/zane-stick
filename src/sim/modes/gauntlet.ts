@@ -6,7 +6,7 @@ import { BlockerBrain } from '../brains/blocker';
 import { GateBrain } from '../brains/gate';
 import { IdleBrain } from '../brains/idle';
 import { TacklerBrain } from '../brains/tackler';
-import { GOAL_LINE, NFL, YD } from './rules';
+import { GOAL_LINE, NFL, nth, YD } from './rules';
 import type { ModeDef, PlayerSpec } from './types';
 
 /** First tackler this far ahead of the runner, the last this far short of the goal line (yd). */
@@ -21,15 +21,15 @@ export const GAUNTLET: ModeDef = {
     { id: 'tacklers', label: 'Tacklers', kind: 'range', min: 2, max: 4, step: 1, default: 3 },
     { id: 'spacing', label: 'Gap between tacklers', kind: 'range', min: 10, max: 20, step: 1, default: 15, unit: 'yd' },
     { id: 'wake', label: 'Wake-up distance', kind: 'range', min: 6, max: 20, step: 1, default: 12, unit: 'm' },
-    { id: 'blockers', label: 'Your blockers', kind: 'range', min: 0, max: 2, step: 1, default: 0 },
+    { id: 'blockers', label: 'Your blockers', kind: 'range', min: 0, max: 4, step: 1, default: 0 },
     { id: 'outOfBounds', label: 'Out of bounds ends the run', kind: 'toggle', default: true },
   ],
   athletes: (o) => 1 + +o.tacklers + +o.blockers,
   setup(o, rng, cfg) {
     const n = +o.tacklers, gap = +o.spacing, start = Math.max(-GOAL_LINE + 3 * YD, GOAL_LINE - (LEAD + (n - 1) * gap + RUNWAY) * YD);
-    const players: PlayerSpec[] = [{ team: 0, pos: [rng.range(-1, 1), start] }];
-    for (let k = 0; k < n; k++) players.push({ team: 1, pos: [(k % 2 ? 1 : -1) * rng.range(1.5, 6), start + (LEAD + k * gap) * YD] });
-    for (let k = 0; k < +o.blockers; k++) players.push({ team: 0, pos: [(k % 2 ? -1 : 1) * 2, start - 1] });
+    const players: PlayerSpec[] = [{ team: 0, label: 'Runner', pos: [rng.range(-1, 1), start] }], nb = +o.blockers;
+    for (let k = 0; k < n; k++) players.push({ team: 1, label: nth('Tackler', k, n), pos: [(k % 2 ? 1 : -1) * rng.range(1.5, 6), start + (LEAD + k * gap) * YD] });
+    for (let k = 0; k < nb; k++) players.push({ team: 0, label: nth('Blocker', k, nb), pos: [(k % 2 ? -1 : 1) * 2 * Math.ceil((k + 1) / 2), start - 1] });
     return {
       players, ball: { holder: 0 }, rules: { ...NFL, outOfBounds: !!o.outOfBounds, timeLimit: 60 },
       // the tackler waits for the human's run; after a turnover everyone plays the default roles

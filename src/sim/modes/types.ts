@@ -61,9 +61,13 @@ export interface Rules {
   points: { touchdown: number; safety: number; fieldGoal: number };
 }
 
-/** One athlete. Index 0 is always the human, on team 0. */
+/** One athlete. Index 0 is the single player's human, on team 0. */
 export interface PlayerSpec {
   team: 0 | 1;
+  /** The position's name in the lobby's position menu ('Returner', 'Blocker 2', 'Gunner L'), unique within his team. */
+  label: string;
+  /** The unit it belongs to there ('Kicking team', 'Offense'); absent: just its team. */
+  group?: string;
   /** Start position on the turf (x, z), m. */
   pos: [number, number];
   /** Facing (rad, 0 = +Z); default: toward the goal his team attacks. */

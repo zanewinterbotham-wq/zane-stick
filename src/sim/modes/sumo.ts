@@ -4,7 +4,7 @@
 import { BALL } from '../anatomy/equipment';
 import { PushBrain } from '../brains/push';
 import type { PropDesc } from '../physics/engine';
-import { END_LINE, HALF_WIDTH, NFL } from './rules';
+import { END_LINE, HALF_WIDTH, NFL, nth } from './rules';
 import type { ModeDef, PlayerSpec } from './types';
 
 const MARK_LEN = 0.6, MARK: [number, number] = [0.05, 0.012];
@@ -14,7 +14,7 @@ export const SUMO: ModeDef = {
   pitch: 'Shove the other side out of the circle, or onto the turf. Grip, sink your hips and drive with your legs.',
   options: [
     { id: 'radius', label: 'Ring radius', kind: 'range', min: 2.5, max: 6, step: 0.5, default: 3.5, unit: 'm' },
-    { id: 'perSide', label: 'Wrestlers per side', kind: 'range', min: 1, max: 2, step: 1, default: 1 },
+    { id: 'perSide', label: 'Wrestlers per side', kind: 'range', min: 1, max: 3, step: 1, default: 1 },
     { id: 'fall', label: 'Touching down loses', kind: 'toggle', default: true },
     { id: 'timeLimit', label: 'Time limit', kind: 'range', min: 10, max: 60, step: 5, default: 30, unit: 's' },
   ],
@@ -28,7 +28,7 @@ export const SUMO: ModeDef = {
         quat: [0, Math.sin(phi / 2), 0, Math.cos(phi / 2)], friction: 0.8, soft: true });
     }
     const players: PlayerSpec[] = [];
-    for (const team of [0, 1] as const) for (let k = 0; k < n; k++) players.push({ team, pos: [(k - (n - 1) / 2) * 1.6 + rng.range(-0.2, 0.2), (team === 0 ? -1 : 1) * R * 0.45] });
+    for (const team of [0, 1] as const) for (let k = 0; k < n; k++) players.push({ team, label: nth('Wrestler', k, n), pos: [(k - (n - 1) / 2) * 1.6 + rng.range(-0.2, 0.2), (team === 0 ? -1 : 1) * R * 0.45] });
     return {
       players, props: ring, ball: { at: [-HALF_WIDTH + 3, BALL.diameter / 2 + 0.01, -END_LINE + 3], impetus: 0 },
       rules: { ...NFL, outOfBounds: false, timeLimit: +o.timeLimit },
