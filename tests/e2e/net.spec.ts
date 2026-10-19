@@ -14,7 +14,9 @@ async function open(page: Page, code: string | null, noRtc = false): Promise<str
     if (noRtc) delete w.RTCPeerConnection; // a network that blocks WebRTC, as far as the transport can tell
     const mod = '/src/net/room.ts';
     const net = await import(/* @vite-ignore */ mod);
-    w.room = code ? await net.joinRoom(code, 'Guest') : await net.createRoom('Host');
+    // straight to the room server: the dev server's /api proxy does not always pass a closing socket on
+    const server = 'http://127.0.0.1:8787';
+    w.room = code ? await net.joinRoom(code, 'Guest', server) : await net.createRoom('Host', server);
     w.got = []; w.ended = [];
     w.room.onMessage((_: string, d: string | ArrayBuffer) => w.got.push(typeof d === 'string' ? d : [...new Uint8Array(d)]));
     w.room.onClose((r: string) => w.ended.push(r));

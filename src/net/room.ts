@@ -119,6 +119,7 @@ class Room implements NetRoom {
     try { m = JSON.parse(data); } catch { return; }
     if (m.t === 'peers') this.setPeers(m.peers);
     else if (m.t === 'signal') this.onSignal(m.from, m.data as RtcSignal);
+    else if (m.t === 'bye') this.end(m.reason);
   }
 
   private deliver(from: string, data: ArrayBuffer | string) {

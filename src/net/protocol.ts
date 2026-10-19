@@ -33,7 +33,10 @@ export type ServerMsg =
   | { t: 'hello'; code: string; id: string; host: boolean; peers: WirePeer[] }
   | { t: 'peers'; peers: WirePeer[] }
   | { t: 'signal'; from: string; data: unknown }
-  | { t: 'pong'; ts: number };
+  | { t: 'pong'; ts: number }
+  /** The room is over (the host left): sent before the close frame, which a hibernating socket's runtime may never
+   *  finish delivering. */
+  | { t: 'bye'; reason: 'host-left' };
 export type ClientMsg = { t: 'signal'; to: string; data: unknown } | { t: 'ping'; ts: number };
 
 // Relay frames (binary WebSocket frames): [kind u8][id length u8][id utf-8][payload]. The sender puts the target id

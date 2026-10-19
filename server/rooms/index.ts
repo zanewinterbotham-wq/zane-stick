@@ -126,7 +126,8 @@ export class RoomDO {
     if (!me.host) return this.announce(ws, true);
     await this.state.storage.put('closed', true); // joiners now get "room closed" instead of "not found"
     await this.state.storage.setAlarm(Date.now() + 10 * 60_000);
-    for (const s of this.state.getWebSockets()) if (s !== ws) try { s.close(CLOSE.hostLeft, 'host-left'); } catch { /* gone */ }
+    // the message first: a guest's close event may never come (the close handshake can stall), the message does
+    for (const s of this.state.getWebSockets()) if (s !== ws) { say(s, { t: 'bye', reason: 'host-left' }); try { s.close(CLOSE.hostLeft, 'host-left'); } catch { /* gone */ } }
   }
 
   async webSocketError(ws: CfSocket) { return this.webSocketClose(ws); }
