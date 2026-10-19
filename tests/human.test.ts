@@ -8,7 +8,7 @@ import { STD } from './helpers/scenario';
 
 const view = (x: number, z: number, heading = 0): AthleteView => ({ com: [x, 1, z], comVel: [0, 0, 0], pelvis: [x, 1, z], head: [x, 1.8, z], heading, down: false, hasBall: false, team: 1 });
 const perceive = (carrier: AthleteView): Perception => ({ time: 0, self: 0, athletes: [{ ...view(0, 0), team: 0 }, { ...carrier, hasBall: true }],field: { halfWidth: 24, goalZ: 50, dirZ: 1 } });
-const input = (o: Partial<HumanInput> = {}): HumanInput => ({ move: { x: 0, y: 1 }, torso: 0, sprint: 0, sink: 0, armL: 0, armR: 0, held: new Set(), cameraYaw: 0, aimPitch: 0, ...o });
+const input = (o: Partial<HumanInput> = {}): HumanInput => ({ move: { x: 0, y: 1 }, torso: 0, sprint: 0, armL: 0, armR: 0, held: new Set(), cameraYaw: 0, aimPitch: 0, ...o });
 
 describe('HumanBrain', () => {
   it('switches contact mode on near a target ahead, with hysteresis, and off behind or far', () => {
@@ -23,10 +23,16 @@ describe('HumanBrain', () => {
     expect(b.think(perceive(view(0, -2))).contactMode).toBe(false);   // behind
   });
 
-  it('thrust overrides sink and torso; an arm button raises and grips toward the camera aim', () => {
+  it('lowering the pads leans and sinks together; thrust overrides both; an arm button raises and grips toward the camera aim', () => {
     const b = new HumanBrain();
-    b.latest = input({ sink: 1, torso: 1, held: new Set(['thrust']) });
-    let c = b.think(perceive(view(0, 3)));
+    b.latest = input({ torso: 0.5 });
+    let c = b.think(perceive(view(0, 20)));
+    expect([c.lean.fwd, c.sink]).toEqual([0.5, 0.3]);
+    b.latest = input({ torso: -0.5 });
+    c = b.think(perceive(view(0, 20)));
+    expect([c.lean.fwd, c.sink]).toEqual([-0.5, 0]);                    // raised pads: upright, no sink
+    b.latest = input({ torso: 1, held: new Set(['thrust']) });
+    c = b.think(perceive(view(0, 3)));
     expect([c.thrustHips, c.sink, c.lean.fwd]).toEqual([true, 0, 0]);
     b.latest = input({ armL: 1, cameraYaw: Math.PI / 2, aimPitch: 0.3 });
     c = b.think(perceive(view(0, 20)));

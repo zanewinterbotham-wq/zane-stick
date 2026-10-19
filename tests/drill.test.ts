@@ -109,7 +109,7 @@ describe('fumble recovery', () => {
 
   it('a walking human with the arms on auto picks up a ball in his path without diving', async () => {
     const human = new HumanBrain();
-    human.latest = { move: { x: 0, y: 0.5 }, torso: 0, sprint: 0, sink: 0, armL: 0, armR: 0, held: new Set(), cameraYaw: 0, aimPitch: 0 };
+    human.latest = { move: { x: 0, y: 0.5 }, torso: 0, sprint: 0, armL: 0, armR: 0, held: new Set(), cameraYaw: 0, aimPitch: 0 };
     let dived = false;
     const d = await OpenFieldDrill.create(mujocoEngine, { ...DEFAULT_OPEN_FIELD, physics: STD }, { think: (p) => { const c = human.think(p); dived ||= c.dive; return c; } }, 0);
     d.brains[d.carrier] = still();

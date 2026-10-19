@@ -97,15 +97,13 @@ class App {
   scored = false;
   startHeld = 0;
   pausedAt = 0;
-  /** Keyboard lock is active (fullscreen): Ctrl+W reaches the game instead of closing the tab. */
-  kbLocked = false;
   private padPrev: boolean[] = [];
 
   async boot() {
     this.input.capture = false;
     this.cam.mode = this.settings.camera;
     this.cam.follow = this.input.autoCamera = this.settings.autoCamera;
-    this.input.sprintToggle = this.settings.sprintToggle; this.input.sinkToggle = this.settings.sinkToggle;
+    this.input.sprintToggle = this.settings.sprintToggle;
     this.input.setKeyboard(this.settings.bindings);
     this.audio.muted = this.settings.mute;
     this.audio.onVoice = (v) => this.renderer?.voice(v);
@@ -113,7 +111,7 @@ class App {
     window.addEventListener('blur', () => this.lostFocus());
     canvas.addEventListener('click', () => { if (!this.paused) this.lockPointer(); });
     document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement) this.lostFocus(); });
-    document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) { this.kbLocked = false; this.lostFocus(); } });
+    document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) this.lostFocus(); });
     window.addEventListener('resize', () => this.renderer?.resize());
     window.addEventListener('keydown', (e) => this.onKey(e));
     window.addEventListener('pointerdown', () => this.audio.unlock(), { once: false });
@@ -239,8 +237,8 @@ class App {
 
   resume() { this.layer.hide(); this.input.capture = true; this.paused = false; this.last = performance.now(); this.enterPlay(); }
 
-  /** Playing: pointer lock for mouse look, and fullscreen with keyboard lock so Ctrl+W (sink + forward) cannot
-   *  close the tab. Each can be refused (no user gesture, headless, unsupported); the game works without them. */
+  /** Playing: pointer lock for mouse look, and fullscreen with keyboard lock so the bound keys reach the game.
+   *  Each can be refused (no user gesture, headless, unsupported); the game works without them. */
   enterPlay() {
     this.lockPointer();
     if (document.fullscreenElement) { void this.lockKeys(); return; } // bindings may have changed while paused
@@ -251,7 +249,7 @@ class App {
   /** Lock only the bound keys: a bare lock() would also take Alt+Tab and the Windows key from the system. */
   lockKeys() {
     const kb = (navigator as Navigator & { keyboard?: { lock?: (keys?: string[]) => Promise<void> } }).keyboard;
-    return kb?.lock?.(this.input.lockKeys()).then(() => { this.kbLocked = !!document.fullscreenElement; }).catch(() => {});
+    return kb?.lock?.(this.input.lockKeys()).catch(() => {});
   }
 
   lockPointer() {
@@ -273,9 +271,9 @@ class App {
     const k = this.input.bindings.keyboard, t = (a: string) => keysText(k[a] ?? []);
     const move = ['moveUp', 'moveLeft', 'moveDown', 'moveRight'].map((a) => k[a]?.[0] ? keyName(k[a][0]) : '—').join(' ');
     return [
-      ['Move', move], ['Sprint', t('sprint')], ['Sink', t('sink')], ['Thrust', t('thrust')], ['Dive', t('dive')],
+      ['Move', move], ['Sprint', t('sprint')], ['Thrust', t('thrust')], ['Dive', t('dive')],
       ['Left arm, grab', t('armL')], ['Right arm, grab', t('armR')],
-      ['Torso down / up (scroll up = down)', `Scroll, ${t('torsoDown')} / ${t('torsoUp')}`],
+      ['Pads down / up: torso and hips (scroll up = down)', `Scroll, ${t('torsoDown')} / ${t('torsoUp')}`],
       ['Side shuffle (toggle)', t('shiftLock')],
       ...(this.settings.autoCamera ? [] : [['Look', 'Mouse'] as [string, string]]),
     ];
@@ -383,7 +381,7 @@ class App {
       if (!this.paused) {
         const f: InputFrame = this.input.read(0, dtReal);
         if (!this.cam.follow) this.cam.look(f.look.x, f.look.y);
-        this.human.latest = { move: f.move, torso: f.torso, sprint: f.sprint, sink: f.sink, armL: f.armL, armR: f.armR, held: f.held, cameraYaw: this.cam.yaw, aimPitch: this.cam.aimPitch, shiftLock: f.shiftLock };
+        this.human.latest = { move: f.move, torso: f.torso, sprint: f.sprint, armL: f.armL, armR: f.armR, held: f.held, cameraYaw: this.cam.yaw, aimPitch: this.cam.aimPitch, shiftLock: f.shiftLock };
         if (f.pressed.has('shiftLock')) this.hud.flash(`Side shuffle ${f.shiftLock ? 'on' : 'off'}`);
         if (now / 1000 > this.slowUntil) this.timeScale = 1;
         // hit-stop freezes wall time only: the same fixed steps run afterwards, none are skipped mid-step
@@ -461,7 +459,7 @@ class App {
         : `Balance assist ${(this.settings.assist * 100).toFixed(0)}%${me.assistLevel < 1 ? ` (fading ${(me.assistLevel * 100).toFixed(0)}%)` : ''}`,
     ]);
     this.hud.setSpeed(this.speed, this.speed * MPH);
-    this.hud.setControls(this.controlRows().map(([h, k]) => [k, h]),this.kbLocked ? '' : 'Ctrl+W can close the tab here: C also sinks');
+    this.hud.setControls(this.controlRows().map(([h, k]) => [k, h]));
     if (this.settings.overlay) {
       const st = w.scene.stats();
       this.hud.setOverlay([

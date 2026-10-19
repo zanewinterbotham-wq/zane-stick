@@ -26,7 +26,7 @@ test('settings: title menu has Settings and no skin button; every tab opens, a v
 
   await tab(page, 'Controls');
   await page.screenshot({ path: 'test-results/settings-controls.png' });
-  await page.getByRole('button', { name: 'Sink hips: toggle (press on / off)' }).click();
+  await page.getByRole('button', { name: 'Sprint: toggle (press on / off)' }).click();
 
   await tab(page, 'Camera');
   await page.screenshot({ path: 'test-results/settings-camera.png' });
@@ -49,7 +49,7 @@ test('settings: title menu has Settings and no skin button; every tab opens, a v
   await page.screenshot({ path: 'test-results/settings-advanced.png' });
   await page.getByRole('button', { name: 'Performance overlay: On' }).click();
 
-  expect(await stored(page)).toMatchObject({ hitPower: 2.5, sinkToggle: true, camera: 'helmet', preset: 'high', effortShading: false, mute: true, goreLevel: 3, overlay: true });
+  expect(await stored(page)).toMatchObject({ hitPower: 2.5, sprintToggle: true, camera: 'helmet', preset: 'high', effortShading: false, mute: true, goreLevel: 3, overlay: true });
 
   // a reload keeps all of it
   await page.reload();
@@ -57,7 +57,7 @@ test('settings: title menu has Settings and no skin button; every tab opens, a v
   await openSettings(page);
   await expect(page.getByRole('slider', { name: 'Hit power' })).toHaveValue('2.5');
   await tab(page, 'Controls');
-  await expect(page.getByRole('button', { name: 'Sink hips: toggle (press on / off)' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Sprint: toggle (press on / off)' })).toHaveAttribute('aria-pressed', 'true');
   await tab(page, 'Camera');
   await expect(page.getByRole('button', { name: 'Camera view: Helmet' })).toHaveAttribute('aria-pressed', 'true');
   await tab(page, 'Graphics');

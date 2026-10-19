@@ -11,9 +11,9 @@ function watchErrors(page: Page) {
 
 /** The human's latest input snapshot, as the brain sees it. */
 const latest = (page: Page) => page.evaluate(() => {
-  const app = (window as unknown as { __app: { human: { contact: boolean; latest: { torso: number; sink: number; armL: number; armR: number; held: Set<string>; cameraYaw: number; shiftLock?: boolean } | null } } }).__app;
-  const l = app.human.latest ?? { torso: 0, sink: 0, armL: 0, armR: 0, held: new Set<string>(), cameraYaw: 0 }; // before the first frame
-  return { contact: app.human.contact, torso: l.torso, sink: l.sink, armL: l.armL, armR: l.armR, thrust: l.held.has('thrust'), yaw: l.cameraYaw, held: [...l.held], shiftLock: !!l.shiftLock };
+  const app = (window as unknown as { __app: { human: { contact: boolean; latest: { torso: number; armL: number; armR: number; held: Set<string>; cameraYaw: number; shiftLock?: boolean } | null } } }).__app;
+  const l = app.human.latest ?? { torso: 0, armL: 0, armR: 0, held: new Set<string>(), cameraYaw: 0 }; // before the first frame
+  return { contact: app.human.contact, torso: l.torso, armL: l.armL, armR: l.armR, thrust: l.held.has('thrust'), yaw: l.cameraYaw, held: [...l.held], shiftLock: !!l.shiftLock };
 });
 
 type AppHandle = {
@@ -63,21 +63,19 @@ test('title loads, drill starts, mouse and keyboard controls reach the brain, co
   const box = (await list.boundingBox())!;
   expect(box.x).toBeLessThan(40);
   expect(box.height).toBeGreaterThan(box.width * 0.6);
-  // arms on the mouse buttons, torso on the wheel (scroll up = down), sink on Ctrl (and C), thrust on Space overriding sink
+  // arms on the mouse buttons, the pads on the wheel (scroll up = down: the trunk leans and the hips sink together),
+  // thrust on Space overriding both; there is no separate sink key
+  await expect(list).not.toContainText('Sink');
   await page.mouse.down({ button: 'left' });
   await page.mouse.down({ button: 'right' });
   await page.mouse.wheel(0, -300);
-  await page.keyboard.down('KeyC');
-  await page.waitForTimeout(250);
-  let l = await latest(page);
-  expect(l.sink).toBeGreaterThan(0.85); // full sink in about a quarter second
-  await page.waitForTimeout(250);
-  l = await latest(page);
+  await page.waitForTimeout(500);
+  const l = await latest(page);
   expect([l.armL, l.armR]).toEqual([1, 1]);
   expect(l.torso).toBeGreaterThan(0.2);
-  await page.keyboard.up('KeyC');
-  await page.waitForTimeout(150);
-  expect((await latest(page)).sink).toBeLessThan(0.05);
+  const cmd = await page.evaluate(() => { const d = (window as unknown as { __app: { drill: { human: number; world: { athletes: { cmd: { sink: number; lean: { fwd: number } } }[] } } } }).__app.drill; const c = d.world.athletes[d.human].cmd; return { sink: c.sink, lean: c.lean.fwd }; });
+  expect(cmd.lean).toBeGreaterThan(0.2);
+  expect(cmd.sink).toBeGreaterThan(0.1);
   // about ten notches up reach a level trunk (torso 1); scrolling down raises it again
   for (let i = 0; i < 9; i++) await page.mouse.wheel(0, -100);
   await expect.poll(async () => (await latest(page)).torso).toBeGreaterThan(0.97);
@@ -89,10 +87,6 @@ test('title loads, drill starts, mouse and keyboard controls reach the brain, co
   await page.waitForTimeout(100);
   expect((await latest(page)).thrust).toBe(true);
   await page.keyboard.up('Space');
-  await page.keyboard.down('ControlLeft');
-  await page.waitForTimeout(300);
-  expect((await latest(page)).sink).toBeGreaterThan(0.2);
-  await page.keyboard.up('ControlLeft');
   // run at the carrier: contact mode switches itself on
   await page.keyboard.down('KeyW');
   await expect.poll(async () => (await latest(page)).contact, { timeout: 20_000 }).toBe(true);
@@ -131,15 +125,10 @@ test('title loads, drill starts, mouse and keyboard controls reach the brain, co
 
 test('J / L and I / K always work alongside the mouse, with or without the automatic camera', async ({ page }) => {
   const errors = watchErrors(page);
-  // a browser without keyboard lock (Firefox, Safari): the HUD says how to sink without Ctrl+W
+  // a browser without keyboard lock (Firefox, Safari) plays the same: no key needs the lock
   await page.addInitScript(() => Object.defineProperty(navigator, 'keyboard', { value: undefined }));
   await startRep(page);
-  await expect(page.locator('.keylist')).toContainText('C also sinks');
-  await expect(page.locator('.keylist')).toContainText('Ctrl / C');
-  await page.keyboard.down('KeyC');
-  await page.waitForTimeout(300);
-  expect((await latest(page)).sink).toBeGreaterThan(0.2);
-  await page.keyboard.up('KeyC');
+  await expect(page.locator('.keylist .note')).toHaveCount(0);
   // the Chromebook keys work with the mouse camera too
   await expect(page.locator('.keylist')).toContainText('K / I');
   await page.keyboard.down('KeyL'); await page.keyboard.down('KeyK');
@@ -205,7 +194,7 @@ test('side shuffle toggles on middle click and ;, Alt+Tab is never blocked, swit
   // keyboard lock takes only the bound keys, never Alt, Tab, the Windows key or Esc
   await page.evaluate(() => (window as unknown as AppHandle).__app.lockKeys());
   const locked = await page.evaluate(() => (window as unknown as AppHandle).__lockKeys);
-  expect(locked).toEqual(expect.arrayContaining(['KeyW', 'ControlLeft', 'Space', 'KeyJ', 'Semicolon']));
+  expect(locked).toEqual(expect.arrayContaining(['KeyW', 'ShiftLeft', 'Space', 'KeyJ', 'Semicolon']));
   for (const k of locked!) expect(k).not.toMatch(/^(Alt|Tab|Meta|Escape|Mouse)/);
   // switching away (Alt+Tab) pauses and frees the mouse
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
@@ -338,7 +327,8 @@ test('controls screen lists the mouse controls and the game keys', async ({ page
   await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
   await page.goto('/');
   await settingsTab(page, 'Controls');
-  for (const t of ['Left click', 'Right click', 'Scroll', 'Ctrl', 'Space', 'Shift', 'Esc', 'Enter']) await expect(page.locator('.menu')).toContainText(t);
+  for (const t of ['Left click', 'Right click', 'Scroll', 'Lower the pads', 'Space', 'Shift', 'Esc', 'Enter']) await expect(page.locator('.menu')).toContainText(t);
+  await expect(page.locator('.menu')).not.toContainText('Ctrl'); // no sink key any more
   await expect(page.locator('.menu')).toContainText('Dive forward'); // owner asked for dive on E
   await page.screenshot({ path: 'test-results/10-controls.png', fullPage: true });
   expect(errors).toEqual([]);

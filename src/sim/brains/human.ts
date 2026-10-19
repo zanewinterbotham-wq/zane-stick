@@ -7,8 +7,8 @@ import type { Brain, Perception } from './types';
 /** Device-independent input snapshot (what the shell's InputFrame boils down to). */
 export interface HumanInput {
   move: { x: number; y: number };   // x right, y forward, relative to the camera's heading
-  torso: number;                    // torso angle −1 (up) .. 1 (down)
-  sprint: number; sink: number; armL: number; armR: number;
+  torso: number;                    // torso angle −1 (up) .. 1 (down); lowering the pads also sinks the hips
+  sprint: number; armL: number; armR: number;
   held: ReadonlySet<string>;
   cameraYaw: number;                // heading the camera looks along (rad, 0 = +Z)
   aimPitch: number;                 // elevation of the camera's aim above the horizontal (rad)
@@ -21,6 +21,8 @@ export interface HumanInput {
 const CONTACT_ON = 4, CONTACT_OFF = 5, AHEAD_ON = 0.3, AHEAD_OFF = -0.2;
 /** Approach posture in contact mode: a little hip sink. */
 const READY_SINK = 0.25;
+/** One control gets low: hip sink per unit of torso down (a full lowering of the pads is a 0.6 sink). */
+const TORSO_SINK = 0.6;
 /** Arms reach toward a point this far along the camera's aim, from chest height (m). */
 const AIM_DIST = 1.5, CHEST_BELOW_HEAD = 0.3;
 /** Steer assist: farthest target it turns toward (m), and the cosine of the widest angle between the stick and the
@@ -57,7 +59,8 @@ export class HumanBrain implements Brain {
     // runs a whole thrust either way)
     c.thrustHips = h.has('thrust');
     c.dive = h.has('dive'); // one press runs a whole dive; holding changes nothing
-    c.sink = c.thrustHips ? 0 : this.contact ? Math.max(i.sink, READY_SINK) : i.sink;
+    const sink = TORSO_SINK * Math.max(0, i.torso);
+    c.sink = c.thrustHips ? 0 : this.contact ? Math.max(sink, READY_SINK) : sink;
     c.lean = { fwd: c.thrustHips ? 0 : i.torso, side: 0 };
     // Gang Beasts arms: holding a button raises that arm toward the aim and grabs whatever the hand touches
     c.armL = i.armL; c.armR = i.armR;

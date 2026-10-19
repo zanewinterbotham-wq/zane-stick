@@ -1,9 +1,8 @@
 {
-  "_note": "Default bindings; the player can rebind keyboard and mouse actions on the Controls screen (saved in settings). Keyboard values are KeyboardEvent.code; Mouse0 / Mouse1 / Mouse2 are the left / middle / right mouse buttons and the wheel also sets the torso angle (scroll up = torso down). The J / L and I / K keys are always bound alongside the mouse so a Chromebook touchpad works too. C also sinks because Ctrl+W closes the tab unless the browser grants keyboard lock. Gamepad uses the W3C standard mapping (buttons b0..b16, axes a0..a3).",
+  "_note": "Default bindings; the player can rebind keyboard and mouse actions on the Controls screen (saved in settings). Keyboard values are KeyboardEvent.code; Mouse0 / Mouse1 / Mouse2 are the left / middle / right mouse buttons and the wheel also sets the torso angle (scroll up = torso down). The J / L and I / K keys are always bound alongside the mouse so a Chromebook touchpad works too. Gamepad uses the W3C standard mapping (buttons b0..b16, axes a0..a3).",
   "keyboard": {
     "moveUp": ["KeyW"], "moveDown": ["KeyS"], "moveLeft": ["KeyA"], "moveRight": ["KeyD"],
     "sprint": ["ShiftLeft", "ShiftRight"],
-    "sink": ["ControlLeft", "ControlRight", "KeyC"],
     "thrust": ["Space"],
     "dive": ["KeyE"],
     "armL": ["Mouse0", "KeyJ"], "armR": ["Mouse2", "KeyL"],
@@ -14,11 +13,11 @@
   "gamepad": {
     "moveX": ["a0"], "moveY": ["a1"],
     "lookX": ["a2"], "lookY": ["a3"],
-    "sprint": ["b7"], "sink": ["b6"], "thrust": ["b0"], "dive": ["b1"],
+    "sprint": ["b7"], "thrust": ["b0"], "dive": ["b1"],
     "armL": ["b4"], "armR": ["b5"],
-    "torsoUp": ["b12"], "torsoDown": ["b13"],
+    "torsoUp": ["b12"], "torsoDown": ["b13", "b6"],
     "shiftLock": ["b10"],
     "reset": ["b9"]
   },
-  "options": { "deadzone": 0.15, "sinkRampPerSecond": 4, "mouseSensitivity": 0.0025, "padLookRate": 3, "wheelPerFullTorso": 1000, "torsoRatePerSecond": 1.5 }
+  "options": { "deadzone": 0.15, "mouseSensitivity": 0.0025, "padLookRate": 3, "wheelPerFullTorso": 1000, "torsoRatePerSecond": 1.5 }
 }
