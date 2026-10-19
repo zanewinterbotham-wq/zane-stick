@@ -1,0 +1,21 @@
+{
+ "label": "Dolphin Hills Stadium",
+ "pitch": "A coastal high-school stadium down in a bowl: blue end zones, a red eight-lane track, a big blue home stand built into the hill with a press box on top, the school, a baseball diamond, the snack bar and sand seating, and the Pacific right behind.",
+ "scene": {
+  "sky": "#a5cbe8",
+  "fog": [
+   "#bfd6e8",
+   170,
+   560
+  ],
+  "hemi": [
+   "#e8f1ff",
+   "#6a7a4a",
+   1.1
+  ],
+  "sun": [
+   "#fff4e0",
+   2.3
+  ]
+ }
+}

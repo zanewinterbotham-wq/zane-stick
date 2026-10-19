@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy  # noqa: E402
 from mathutils import Vector  # noqa: E402
 
+import stadium_dolphinhills as dolphinhills  # noqa: E402
 import stadium_lib as S  # noqa: E402
 from stadium_lib import HX, HY, Mesh  # noqa: E402
 
@@ -361,120 +362,14 @@ def crater(m):
                 cam=((-28, -54, 14), (16, 18, 6)))
 
 
-def palm(m, x, y, s, rnd):
-    m.cyl(x, y, 0, 8.5 * s, 0.34 * s, 'palm_t', 5, 0.2 * s, cap=False)
-    top = 8.5 * s
-    a0 = rnd.random() * 6.28
-    for i in range(7):  # drooping fronds: a thin triangle from the crown, tip below the base
-        a = a0 + i * 2 * math.pi / 7
-        ca, sa = math.cos(a), math.sin(a)
-        L = 3.6 * s * rnd.uniform(0.85, 1.15)
-        m.tri([(x - 0.3 * sa * s, y + 0.3 * ca * s, top + 0.2), (x + 0.3 * sa * s, y - 0.3 * ca * s, top + 0.2), (x + ca * L, y + sa * L, top - 1.7 * s)], 'frond')
-
-
-def coastal(m):
-    """A coastal Southern California high-school stadium: red 8-lane track round a blue-and-silver field, a large dark
-    home grandstand on one side and a short silver visitor stand on the other, blue padded wall, tall light poles,
-    palms, and a hillside of stucco houses behind. Layout from public photos and descriptions (see the report)."""
-    rnd = random.Random(71)
-    for k, v in dict(lawn='#7f9a55', apron='#3c7a3a', track='#a9432f', line='#f0ece4', blue='#1d3f96', navy='#132a64', silver='#b4bac2',
-                     steel='#4d535c', steel_d='#383d45', white='#efefe8', plaza='#c8c2b4', pole='#a3a9b0', stucco1='#eadfc6', stucco2='#d9c3a0',
-                     stucco3='#f2ecde', stucco4='#c9d4d6', tile='#b4573a', tile2='#9a4a32', flat='#8e949a', palm_t='#8d6d4a', frond='#3f8a3a',
-                     bush='#4f7d3c', hill='#93a65e', hill2='#728c54', ridge='#7c8f7a', board='#12214d', face='#0b1738', glass='#5c7a92',
-                     runway='#b9bdc2', sand='#dcc590', brown='#6f5a40').items():
-        m.mat(k, v)
-    m.mat('lit', '#ffd45a', emit=1.0)
-    m.mat('lamp', '#fff6d8', emit=2.0)
-    crowd = crowd_for(m, 'coastal', '#4d535c', ['#1d3f96', '#b4bac2', '#ffffff', '#1d3f96', '#132a64', '#e7c34a'], SKINS, empty=0.5, seed=19)
-    ground(m, 'lawn')
-    N = 12  # segments per half circle: the track and its lines share the same polygon family
-    C, RI, RO = 48.0, 33.0, 33.0 + 8 * 1.22          # 400 m oval: straights 96 m, inner radius 33 m, eight 1.22 m lanes
-    m.oval_fill(RI, C, -0.055, 'apron', n=N)
-    wall(m, 'blue', 'silver', ('blue', 'white', 'navy'), h=1.2)
-    m.oval(RI, RO, C, -0.05, -0.04, 'track', ('top',), n=N)
-    for i in range(9):
-        r = RI + i * 1.22
-        m.oval(r - 0.04, r + 0.04, C, -0.045, -0.035, 'line', ('top',), n=N)
-    for y in (-20.0, 6.0):  # finish and start lines across the lanes on the home straight
-        m.box((RI + RO) / 2, y, -0.04, RO - RI, 0.12, 0.01, 'line')
-    # long-jump runway and pit in the infield beyond the south end line
-    m.box(-9, -70, -0.04, 20, 1.3, 0.03, 'runway')
-    m.box(3.5, -70, -0.04, 4.5, 3.4, 0.03, 'sand')
-    # low wall round the outside of the track (white panels, blue cap), concrete walkway beyond it
-    m.oval(RO + 0.5, RO + 0.8, C, 0, 1.0, 'white', ('top', 'inner', 'outer'), n=N)
-    m.oval(RO + 0.45, RO + 0.85, C, 1.0, 1.12, 'blue', ('top', 'inner', 'outer'), n=N)
-    m.oval(RO + 0.85, RO + 6.5, C, -0.05, -0.04, 'plaza', ('top',), n=N)
-    # home grandstand (dark steel, large) on the west side with a press box; visitor stand (silver, short) on the east
-    d0 = RO + 1.2 - S.HX
-    d, z = m.stand(['W'], d0, 18, 0.5, 0.75, 0, 'steel', 'steel_d', crowd, rnd, L=34, back='steel_d')
-    d2, z2 = m.stand(['E'], d0, 9, 0.5, 0.75, 0, 'silver', 'steel_d', crowd, rnd, L=22, back='steel_d')
-    for sd, dd, zz, LL in (('W', d, z, 34), ('E', d2, z2, 22)):
-        T = S.FRAMES[sd]
-        for u in range(-LL, LL + 1, 11):
-            m.solid(T, u - 0.05, u + 0.05, S.HALF[sd][0] + dd - 0.1, S.HALF[sd][0] + dd, zz, zz + 1.1, 'pole')
-        m.solid(T, -LL, LL, S.HALF[sd][0] + dd - 0.1, S.HALF[sd][0] + dd, zz + 1.0, zz + 1.08, 'pole')
-    px = -(S.HX + d - 3.0)
-    m.box(px, 0, z + 0.4, 6.4, 15, 3.4, 'white')
-    m.box(px + 3.23, 0, z + 0.7, 0.1, 13, 1.5, 'glass')
-    m.box(px, 0, z + 2.3, 7.4, 16, 0.35, 'blue')
-    for y in (-7, 7):
-        m.box(px + 3.0, y, z - 0.6, 0.3, 0.3, 1.4, 'pole')
-    # small blue-and-white building behind the north end of the home stand (concessions / storage)
-    m.box(-(S.HX + d + 6), 40, 2.0, 7, 12, 4.0, 'stucco3')
-    m.box(-(S.HX + d + 6), 40, 4.15, 8, 13, 0.3, 'blue')
-    # field house at the south end: stucco with a blue band
-    m.box(14, -(C + RO + 12), 2.4, 34, 9, 4.8, 'stucco2')
-    m.box(14, -(C + RO + 12) + 4.55, 3.7, 34.4, 0.12, 1.2, 'blue')
-    m.box(14, -(C + RO + 12), 5.0, 35, 10, 0.4, 'flat')
-    # scoreboard on legs behind the north end
-    scoreboard(m, 0, C + RO + 10, 14, 5.5, 5.0, 'board', 'face', 'lit', legs='pole')
-    m.box(0, C + RO + 10.8, 4.1, 15, 0.4, 0.8, 'blue')
-    # four tall light poles outside the track corners
-    for sx, sy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
-        x, y = sx * (RO + 4) * math.cos(math.pi / 4), sy * ((RO + 4) * math.sin(math.pi / 4) + C)
-        mast(m, x, y, 26, 'pole', 'lamp', 'steel_d', 3, 2)
-    # palms on the walkway round both ends, and more behind the stands
-    for k in range(7):
-        a = math.pi * (0.15 + 0.7 * k / 6)
-        r = RO + 3.5
-        palm(m, math.cos(a) * r, -C - math.sin(a) * r, rnd.uniform(0.9, 1.15), rnd)
-        palm(m, math.cos(a) * r * 0.97, C + math.sin(a) * r * 0.97, rnd.uniform(0.9, 1.15), rnd)
-    for i in range(16):
-        side = rnd.choice((-1, 1))
-        palm(m, side * rnd.uniform(60, 78), rnd.uniform(-70, 70), rnd.uniform(1.0, 1.4), rnd)
-    # hillside neighbourhoods: gentle cones with stucco houses on the flanks, a hazy ridge beyond
-    hills = [(0, 330, 210, 90, 34, 'hill'), (340, 10, 230, 100, 40, 'hill'), (-340, 0, 230, 100, 38, 'hill'),
-             (60, -440, 300, 150, 30, 'hill2')]
-    for cx, cy, R0, R1, H, mat in hills:
-        m.cyl(cx, cy, -0.5, H, R0, mat, 12, R1)
-    placed = []
-    stuccos, tiles = ('stucco1', 'stucco2', 'stucco3', 'stucco4'), ('tile', 'tile2')
-    for cx, cy, R0, R1, H, mat in hills:
-        for _ in range(60 if cy > 200 else 30 if abs(cx) > 300 else 6):
-            rho = rnd.uniform(R1 + 8, R0 - 14)
-            a = rnd.random() * 2 * math.pi
-            x, y = cx + rho * math.cos(a), cy + rho * math.sin(a)
-            if abs(x) < 85 and abs(y) < 125 or any((x - px_) ** 2 + (y - py_) ** 2 < 16 ** 2 for px_, py_ in placed):
-                continue
-            placed.append((x, y))
-            h0 = (R0 - rho) / (R0 - R1) * H
-            w, dp, hh = rnd.uniform(8, 12), rnd.uniform(8, 11), rnd.uniform(4.2, 6)
-            m.box(x, y, h0 + hh / 2 - 0.9, w, dp, hh + 1.8, rnd.choice(stuccos))
-            m.roof(x, y, w + 0.8, dp + 0.8, h0 + hh - 0.9, h0 + hh + 1.4, rnd.choice(tiles), rnd.choice(tiles), 'y' if rnd.random() < 0.5 else 'x')
-    for i in range(7):  # far coastal ridge, mostly lost in the haze
-        a = math.pi * (0.1 + 0.8 * i / 6) + math.pi
-        m.cyl(math.cos(a) * 300, math.sin(a) * 320, -0.5, rnd.uniform(40, 70), 110, 'ridge', 8, 30)
-    return dict(sky='#8cc4ee', fog=['#c9dfec', 110, 340], hemi=['#e6f0ff', '#5a6b3a', 1.1], sun=['#fff6e0', 2.2],
-                cam=((-10, -88, 15), (4, 22, 3)))
-
-
 STADIUMS = {
     'highschool': (highschool, 'Hometown High', 'Friday-afternoon high school field: silver bleachers, a track, chain-link fence and a hand-lit scoreboard.'),
     'college': (college, 'State U Bowl', 'Two-deck college bowl in maroon and gold: banners over the rim, a video board and a full house.'),
     'pro': (pro, 'Metro Dome', 'Pro arena with suites, a steep upper deck, a roof ring with a video band and tall light towers.'),
     'night': (night, 'Under the Lights', 'Night game: floodlight masts, a glowing rim, stars and phone lights in the stands.'),
     'backyard': (backyard, 'Backyard Sandlot', 'Neighbourhood backyard behind a picket fence: lawn chairs, houses, a pickup truck and a swing set.'),
-    'coastal': (coastal, 'Coastal Hills Field', 'A coastal Southern California high-school stadium: blue padded wall, a red eight-lane track, a tall dark grandstand, palms and a hillside of stucco homes.'),
+    'dolphinhills': (lambda m: dolphinhills.build(m, sys.modules[__name__]), 'Dolphin Hills Stadium',
+                     'A coastal high-school stadium down in a bowl: blue end zones, a red eight-lane track, a big blue home stand built into the hill with a press box on top, the school, a baseball diamond, the snack bar and sand seating, and the Pacific right behind.'),
     'crater': (crater, 'Crater Rim', 'Volcanic arena: black rock tiers, lava streams, glowing crystals and a moat of fire.'),
 }
 
@@ -521,8 +416,8 @@ def render(sid, cfg):
     sun.rotation_euler = (math.radians(50), math.radians(10), math.radians(-35))
     sc.collection.objects.link(sun)
     cam = bpy.data.objects.new('cam', bpy.data.cameras.new('cam'))
-    cam.data.lens = 22
-    cam.data.clip_end = 600
+    cam.data.lens = cfg.get('lens', 22)
+    cam.data.clip_end = cfg.get('clip', 600)
     sc.collection.objects.link(cam)
     sc.camera = cam
     eye, target = cfg['cam']
@@ -547,6 +442,11 @@ def main():
         os.makedirs(os.path.join(OUT, sid), exist_ok=True)
         cfg = build(m)
         tris = len(m.bm.faces)
+        if '--stats' in args:  # loops per material: where the file size goes
+            per = {}
+            for f in m.bm.faces:
+                per[m.mats[f.material_index].name] = per.get(m.mats[f.material_index].name, 0) + len(f.loops)
+            print(sorted(per.items(), key=lambda kv: -kv[1]))
         ob = m.build()
         textured = m.textured
         bpy.ops.object.select_all(action='DESELECT')

@@ -132,6 +132,15 @@ class Mesh:
     def tri(self, pts, mat):
         return self.quad(pts, mat)
 
+    def shared(self, verts, faces, mat, smooth=True):
+        """Faces over shared vertices (terrain, foliage, lettering): far smaller in the glb than a vertex per face.
+        mat: one material, or one per face."""
+        vs = [self.bm.verts.new(p) for p in verts]
+        for i, f in enumerate(faces):
+            bf = self.bm.faces.new([vs[k] for k in f])
+            bf.material_index = self.slot[mat if isinstance(mat, str) else mat[i]]
+            bf.smooth = smooth
+
     def solid(self, T, u0, u1, v0, v1, z0, z1, mat, skip=()):
         """Box in a local frame (T maps (u, v) to world x, y). skip: faces not drawn, from top bot lo_u hi_u lo_v hi_v."""
         P = lambda u, v, z: (*T(u, v), z)  # noqa: E731
@@ -248,10 +257,11 @@ class Mesh:
     def oval(self, r0, r1, c, z0, z1, mat, faces=('top',), inner_mat=None, n=24):
         """Ring between two oval outlines (radii r0 < r1, semicircle centres (0, +-c)). faces: top, bot, inner, outer."""
         a, b = self.oval_pts(r0, c, n), self.oval_pts(r1, c, n)
+        k = len(a)
+        if 'top' in faces:  # one flat ring over shared vertices
+            self.shared([(*p, z1) for p in a + b], [(i, k + i, k + (i + 1) % k, (i + 1) % k) for i in range(k)], mat, smooth=False)
         for i in range(len(a)):
             j = (i + 1) % len(a)
-            if 'top' in faces:
-                self.quad([(*a[i], z1), (*b[i], z1), (*b[j], z1), (*a[j], z1)], mat)
             if 'bot' in faces:
                 self.quad([(*a[j], z0), (*b[j], z0), (*b[i], z0), (*a[i], z0)], mat)
             if 'outer' in faces:
