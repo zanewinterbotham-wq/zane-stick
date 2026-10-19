@@ -85,9 +85,9 @@ describe('bot juking', () => {
     if (d0 < 2.5) { c.contactMode = true; c.armL = c.armR = 1; c.gripL = c.gripR = true; c.wrap = d0 < 1.4; }
   });
   it('a straight chase with a decent angle tackles an easy carrier most reps and a hard one rarely', async () => {
-    const tackled = async (juking: number) => {
+    const tackled = async (juking: number, reps = 8) => {
       let n = 0;
-      for (let rep = 0; rep < 8; rep++) {
+      for (let rep = 0; rep < reps; rep++) {
         const d = await OpenFieldDrill.create(mujocoEngine, { ...DEFAULT_OPEN_FIELD, physics: STD, timeLimit: 8, difficulty: carrierSkill(juking) }, chaser(), rep);
         while (!d.ended) d.step();
         n += +(d.ended === 'down');
@@ -95,8 +95,9 @@ describe('bot juking', () => {
       }
       return n;
     };
-    const easy = await tackled(0), normal = await tackled(0.5), hard = await tackled(1);
-    console.log(`tackled of 8 by a straight chase: easy ${easy}, normal ${normal}, hard ${hard}`);
+    // the hard carrier over 16 reps: his rate (~1 in 4) sits on the bound, 8 reps made it a coin toss
+    const easy = await tackled(0), normal = await tackled(0.5), hard = await tackled(1, 16) / 2;
+    console.log(`tackled of 8 by a straight chase: easy ${easy}, normal ${normal}, hard ${hard} (of 16, halved)`);
     expect(easy).toBeGreaterThanOrEqual(5);
     expect(easy).toBeGreaterThanOrEqual(normal);
     expect(normal).toBeGreaterThanOrEqual(hard);

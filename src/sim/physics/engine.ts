@@ -13,6 +13,9 @@ export interface PropDesc {
   friction?: number;
   soft?: boolean;          // padded (bags, dummies)
   hidden?: boolean;        // collision only, never drawn (the stadium art shows the wall)
+  /** Its own contact with the turf (a ball): stiffest stable compliance, this damping ratio, torsional and
+   *  rolling friction (m). Every other contact keeps the shared rules. */
+  turf?: { dampRatio: number; torsional: number; rolling: number };
 }
 export interface SceneDesc { hz: number; iterations: number; athletes: AthleteDesc[]; props: PropDesc[]; /** Cleat–turf friction override (tuning panel). */ traction?: number }
 

@@ -10,7 +10,7 @@
 //   has not left it since, else a safety.
 // A ball knocked loose stays live: any athlete recovers it by touching it with his trunk (diving on it) or with a
 // raised hand (picking it up, or catching it), then attacks his own way.
-import { BALL } from '../anatomy/equipment';
+import { BALL, BALL_TURF } from '../anatomy/equipment';
 import { BlockerBrain } from '../brains/blocker';
 import { CarrierBrain } from '../brains/carrier';
 import { TacklerBrain } from '../brains/tackler';
@@ -92,9 +92,10 @@ export class Play {
         params: s.params ?? (i === 0 ? cfg.human : cfg.bot), pos: [s.pos[0], 0, s.pos[1]], yaw: s.yaw ?? (s.team === 0 ? 0 : Math.PI), team: s.team,
         controller: ctl, brain: possess(i), hasBall: i === holder, ...(i > 0 && { toughness: cfg.toughness }), boneStrength: i === 0 ? cfg.boneStrength : cfg.aiBoneStrength,
       })),
-      // a held ball is parked under the field until its holder has tucked his arm (setup only)
+      // a held ball is parked out of reach above its holder until he has tucked his arm (setup only; under the field the
+      // turf shot it up through him)
       props: [{ name: 'ball', shape: 'ellipsoid', size: [BALL.diameter / 2, BALL.diameter / 2, BALL.length / 2], mass: BALL.mass,
-        pos: 'holder' in b0 ? [ps.players[holder].pos[0], -5, ps.players[holder].pos[1]] : b0.at, friction: 0.8 }, ...barrierProps(), ...(ps.props ?? [])],
+        pos: 'holder' in b0 ? [ps.players[holder].pos[0], 6, ps.players[holder].pos[1]] : b0.at, friction: 0.8, turf: BALL_TURF }, ...barrierProps(), ...(ps.props ?? [])],
       support: cfg.support && { ...cfg.support },
     };
     const world = await World.create(engine, setup);
