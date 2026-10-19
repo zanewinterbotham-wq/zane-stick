@@ -9,7 +9,7 @@ test('Play: mode cards with previews, a setup with options that are remembered, 
   await page.getByRole('button', { name: /^Play/ }).click({ timeout: 60_000 });
   const cards = page.locator('.mode-card');
   await expect(cards).toHaveCount(MODES.length);
-  for (const id of ['tackle', 'carry', 'oklahoma']) {
+  for (const id of ['tackle', 'carry', 'oklahoma', 'kickoffReturn', 'gauntlet', 'sumo', 'keepaway', 'scramble', 'goalline', 'hitstick']) {
     const img = page.locator(`.mode-card[data-mode=${id}] img`);
     await expect(img).toHaveJSProperty('complete', true);
     expect(await img.evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);

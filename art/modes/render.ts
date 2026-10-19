@@ -9,6 +9,7 @@ import { MODES } from '../../src/sim/modes/registry';
 /** Seconds of play before the picture (default AT_DEFAULT): the moment that shows what the mode is about. */
 const AT: Record<string, number> = { tackle: 1.4, carry: 1.2, oklahoma: 0.5, kickoffReturn: 4, kickoff: 1.4, puntReturn: 4.2, puntBlock: 1.8, fieldGoalBlock: 1.5 };
 const AT_DEFAULT = 1;
+Object.assign(AT, { gauntlet: 3, sumo: 1.3, keepaway: 0.6, scramble: 2.2, goalline: 1, hitstick: 2.6 });
 const PORT = 4191;
 
 const ids = process.argv.slice(2).length ? process.argv.slice(2) : MODES.map((m) => m.id);
