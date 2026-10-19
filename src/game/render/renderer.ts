@@ -138,6 +138,7 @@ export class GameRenderer {
       const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.8 }));
       mesh.castShadow = true;
       mesh.position.set(...p.pos);
+      if (p.quat) mesh.quaternion.set(...p.quat); // static props are never re-posed per frame (the sumo ring's tangent rails)
       this.scene.add(mesh);
       return mesh;
     });
