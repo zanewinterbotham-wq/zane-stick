@@ -280,7 +280,7 @@ export class QBBrain implements Brain {
     if (el < 0) { c.face = down; return c; }
     if (this.phase === 'thrown') { const at = this.lastPass!.cmd.at; this.faceTo(me, at, c); return c; }
     // past the line he can no longer throw: a runner
-    if (rel(f, me.com).depth > -0.5) return this.scramble(p, dt);
+    if (rel(f, me.com).depth > 0) return this.scramble(p, dt);
     const heat = sackTime(seen, this.self), n = a.reads.length;
     if (this.phase === 'pre') { this.phase = 'drop'; this.dropSpot = toWorld(f, rel(f, me.com).depth - DROP_DEPTH[a.drop], me.com[0]); }
     if (this.phase === 'drop') {
