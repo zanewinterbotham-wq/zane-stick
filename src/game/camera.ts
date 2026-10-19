@@ -46,9 +46,10 @@ export class ChaseCamera {
     this.punchOff.set(x / n, 0, z / n).multiplyScalar(amount);
   }
 
-  update(cam: THREE.PerspectiveCamera, w: World, dt: number, heading: number) {
+  /** `pose`: the target athlete's segment poses this frame (the renderer's interpolated ones), else his physics state. */
+  update(cam: THREE.PerspectiveCamera, w: World, dt: number, heading: number, pose?: { segPos: ArrayLike<number>; segQuat: ArrayLike<number> }) {
     const a = w.athletes[this.target];
-    const s = w.scene.athletes[this.target].state;
+    const s = pose ?? w.scene.athletes[this.target].state;
     const pi = a.segIndex.get('pelvis')!;
     const p = new THREE.Vector3(s.segPos[3 * pi], s.segPos[3 * pi + 1], s.segPos[3 * pi + 2]);
     if (this.follow) {

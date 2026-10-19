@@ -1,12 +1,13 @@
 // Player settings, remembered per browser. Storage can be unavailable (school-managed profiles, private
 // windows), so every read and write is guarded and the defaults always work.
 import { DEFAULT_SUPPORT, type SupportSettings } from '../sim/anim/types';
-import type { PresetName } from './presets';
+import { cleanPerf, PRESETS, type PerfOverrides, type PresetName } from './presets';
 import skins from './skins.json';
 import stadiums from './stadiums.json';
 
 export interface Settings {
   preset: PresetName | null;     // null = not chosen yet (run the first-launch benchmark)
+  perf: PerfOverrides;           // the Graphics tab's Advanced overrides on top of the preset ({} = the preset as is)
   assist: number;                // balance assist 0..1 (hand controller without support)
   support: SupportSettings;      // active-ragdoll support (tuning)
   version?: number;               // stored layout (see VERSION)
@@ -42,11 +43,12 @@ export interface Settings {
 export const PLAYER_BASE = { strength: 1.5, speed: 1.29 };
 export const GAME_SUPPORT = { ...DEFAULT_SUPPORT, carryAccel: 10.5 };
 /** Stored settings layout; 2 = strength/speed are multipliers on PLAYER_BASE; 3 = gore levels, owner's new default
- *  skin and stadium; 4 = no sink control (lowering the pads sinks the hips). */
-const VERSION = 5;
+ *  skin and stadium; 4 = no sink control (lowering the pads sinks the hips); 5 = thrust on Q, Space jumps; 6 = the
+ *  quality ladder (Potato … Ultra; the stored 'minimum' and 'high' keep their meaning) and its Advanced overrides. */
+const VERSION = 6;
 
 export const DEFAULT_SETTINGS: Settings = {
-  version: VERSION, preset: null, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
+  version: VERSION, preset: null, perf: {}, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
   slowMo: true, autoCamera: false, sprintToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: skins[0]?.id ?? 'classic', goreLevel: 1, stadium: stadiums[0]?.id ?? 'field', // the owner's picks are first in the lists
 };
 
@@ -84,10 +86,13 @@ export function loadSettings(): Settings {
       // version 5: thrust moved to Q and Space jumps; a saved rebind keeps its key, and the new default it clashes
       // with gives that key up (as a rebind does), so one key never does two things
       if ((s.version ?? 1) < 5 && s.bindings) migrateJumpKeys(s.bindings);
+      // version 6: more levels; an unknown one (an edited or newer file) is chosen again by the benchmark
+      if (s.preset != null && !(s.preset in PRESETS)) s.preset = null;
+      s.perf = cleanPerf(s.perf);
       return { ...DEFAULT_SETTINGS, ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support } };
     }
   } catch { /* storage unavailable: use defaults */ }
-  return { ...DEFAULT_SETTINGS, support: { ...GAME_SUPPORT } };
+  return { ...DEFAULT_SETTINGS, perf: {}, support: { ...GAME_SUPPORT } };
 }
 
 /** v4 → v5 keyboard rebinds: Space leaves a saved thrust rebind (dropped if nothing is left), and a key another saved

@@ -429,6 +429,6 @@ test('first launch runs the benchmark and picks a preset', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 90_000 });
   const preset = await page.evaluate(() => JSON.parse(localStorage.getItem('zane-stick-settings-v1') ?? '{}').preset);
-  expect(['minimum', 'high']).toContain(preset);
+  expect(['potato', 'minimum', 'medium', 'high', 'ultra']).toContain(preset);
   expect(errors).toEqual([]);
 });

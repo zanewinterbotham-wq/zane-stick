@@ -78,6 +78,8 @@ interface Pin { node: THREE.Object3D; pose: () => { pos: Vec3; quat: Quat } | nu
 export class InjuryEffects {
   readonly root = new THREE.Group();
   style: EffectStyle = DEFAULT_STYLE;
+  /** Share of each burst's particles drawn (the quality level's `effects`). */
+  density = 1;
   private parts!: THREE.InstancedMesh;
   private decals!: THREE.InstancedMesh;
   private p = { pos: new Float32Array(3 * MAX_PARTICLES), vel: new Float32Array(3 * MAX_PARTICLES), size: new Float32Array(MAX_PARTICLES), spin: new Float32Array(MAX_PARTICLES), n: 0 };
@@ -115,6 +117,7 @@ export class InjuryEffects {
 
   private spray(at: Vec3, count: number, speed: number, carry: Vec3 = [0, 0, 0]) {
     const st = this.style, P = this.p;
+    count = count > 0 ? Math.max(1, Math.round(count * this.density)) : 0;
     for (let k = 0; k < count && P.n < MAX_PARTICLES; k++, P.n++) {
       const i = P.n, a = this.rand() * Math.PI * 2, up = 0.3 + 0.7 * this.rand(), sp = speed * (0.4 + 0.6 * this.rand());
       P.pos.set(at, 3 * i);

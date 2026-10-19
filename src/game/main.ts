@@ -13,13 +13,13 @@ import { mujocoEngine } from '../sim/physics/mujoco';
 import { carrierVsTacklerScenario, pushScenario, runScenario, standScenario, type Scenario } from '../sim/scenarios';
 import { World, type PhysicsSettings } from '../sim/world';
 import { Audio } from './audio';
-import { chooseBest, reportText, runBenchmark } from './benchmark';
+import { autoChoose, chooseBest, reportText, runBenchmark } from './benchmark';
 import { ChaseCamera } from './camera';
 import { SoundCues } from './cues';
 import { HitMeter, hitFeel, MPH } from './feel';
 import { InputManager, keyName, keysText, type InputFrame } from './input/input';
-import { PRESETS, type PresetName } from './presets';
-import { GameRenderer, RENDER_PRESETS } from './render/renderer';
+import { effectivePreset, PRESETS, type PresetName } from './presets';
+import { GameRenderer } from './render/renderer';
 import { DEFAULT_SETTINGS, GAME_SUPPORT, PLAYER_BASE, loadSettings, saveSettings, type Settings } from './settings';
 import { CATEGORIES, equipItem } from './inventory';
 import { modeMenu, savedOptions } from './modes';
@@ -48,7 +48,7 @@ async function devScenario(name: string) {
     : name === 'cut' ? runScenario(physics, 'jog', { assist, cutAt: 3 })
     : name === 'hit' ? carrierVsTacklerScenario(physics, { hitPower: +(params.get('hp') ?? 1) }) : standScenario(physics, assist);
   const world = await World.create(mujocoEngine, sc.setup);
-  const r = new GameRenderer(canvas, RENDER_PRESETS[(params.get('gfx') as 'minimum' | 'high') ?? 'high']);
+  const r = new GameRenderer(canvas, PRESETS[(params.get('gfx') as PresetName) ?? 'high']?.render ?? PRESETS.high.render);
   await r.setSkin(params.get('skin') ?? DEFAULT_SETTINGS.skin);
   await r.setStadium(params.get('stadium') ?? 'field'); // the dev scenarios have no barrier in their physics
   r.setWorld(world);
@@ -80,7 +80,10 @@ class App {
   hud = new Hud();
   layer = new Layer();
   renderer: GameRenderer | null = null;
-  rendererPreset: PresetName | null = null;
+  /** The graphics settings the renderer was built with (rebuilt when they change). */
+  rendererPreset: string | null = null;
+  /** Frame cap (the level's maxFps): when the last frame ran (performance.now ms). */
+  private lastShown = 0;
   drill: Play | null = null;
   human = new HumanBrain();
   cam = new ChaseCamera();
@@ -163,18 +166,18 @@ class App {
   /** First launch: a short benchmark picks the highest preset that holds its target frame rate. */
   async autoPreset() {
     const el0 = document.getElementById('loading')!;
-    el0.textContent = 'Measuring your device (5 s)…';
+    el0.textContent = 'Measuring your device (a few seconds)…';
     try {
-      const rs = await runBenchmark(canvas);
-      this.settings.preset = chooseBest(rs);
+      this.settings.preset = await autoChoose(canvas);
     } catch (e) {
-      console.warn('benchmark failed, using Minimum', e);
+      console.warn('benchmark failed, using Low', e);
       this.settings.preset = 'minimum';
     }
     saveSettings(this.settings);
   }
 
-  get preset() { return PRESETS[this.settings.preset ?? 'minimum']; }
+  /** The quality level with the player's Advanced overrides. */
+  get preset() { return effectivePreset(this.settings.preset, this.settings.perf); }
 
   // ---------------------------------------------------------------- screens
   /** Off the field: no play running for this screen, the cursor free. */
@@ -383,10 +386,11 @@ class App {
     const p = this.preset, s = this.settings;
     // the player's own athlete (multiplayer: any slot; a spectator: the one he watches)
     this.cam.target = play.human >= 0 ? play.human : Math.min(this.spectate, play.world.athletes.length - 1);
-    if (!this.renderer || this.rendererPreset !== p.name) {
+    const gfx = JSON.stringify(p.render);
+    if (!this.renderer || this.rendererPreset !== gfx) {
       this.renderer?.renderer.dispose();
       this.renderer = new GameRenderer(canvas, p.render);
-      this.rendererPreset = p.name;
+      this.rendererPreset = gfx;
     }
     await this.renderer.setSkin(s.skin);
     await this.renderer.setStadium(params.get('stadium') ?? s.stadium);
@@ -498,7 +502,7 @@ class App {
   async benchmark() {
     const box = el('div', { class: 'panel menu wide' }, el('h1', { text: 'Benchmark' }));
     const out = el('textarea', { readonly: 'true', 'aria-label': 'Benchmark results' });
-    out.value = 'Running… (about 6 seconds)';
+    out.value = 'Running… (about 10 seconds)';
     box.append(out);
     this.layer.show(box);
     const rs = await runBenchmark(canvas);
@@ -565,6 +569,10 @@ class App {
 
   // ---------------------------------------------------------------- loop
   frame(now: number) {
+    // a frame cap (the level's maxFps) skips whole frames: the fixed steps they owed run in the next one
+    const cap = this.drill && !this.paused ? this.preset.render.maxFps : 0;
+    if (cap > 0 && now - this.lastShown < 1000 / cap - 2) { requestAnimationFrame((t) => this.frame(t)); return; }
+    this.lastShown = now;
     const dtReal = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
     this.fps += (1 / Math.max(dtReal, 1e-3) - this.fps) * 0.05;
@@ -583,7 +591,9 @@ class App {
         if (this.net && !this.net.isHost) this.guestFrame(dtReal);
         else this.simulate(now, dtReal);
       }
-      this.cam.update(r.camera, w, dtReal, this.humanHeading());
+      // drawn between the last two fixed steps (render only), so motion is smooth at any frame rate
+      r.lerp(w, Math.min(1, this.acc / w.dt)); // (a multiplayer guest's replica never steps: its latest pose)
+      this.cam.update(r.camera, w, dtReal, this.humanHeading(), r.poses[this.cam.target]);
       r.hideHeadOf = this.cam.mode === 'helmet' ? this.cam.target : -1;
       const m = r.camera.matrixWorld.elements; // column 0: the camera's right axis
       this.audio.listen([r.camera.position.x, r.camera.position.y, r.camera.position.z], [m[0], m[1], m[2]]);
@@ -608,6 +618,7 @@ class App {
     const t0 = performance.now();
     let steps = 0;
     while (this.acc >= w.dt && steps < 40) {
+      this.renderer?.snapshot(w); // the pose the step starts from, for render interpolation
       if (net) net.step(); else d.step(); // the host's step also sends the snapshots
       this.acc -= w.dt; steps++;
       if (this.feedback(now)) { this.acc = 0; break; }
@@ -709,9 +720,10 @@ class App {
     if (this.settings.overlay) {
       const st = w.scene.stats();
       this.hud.setOverlay([
-        `FPS        ${this.fps.toFixed(0)}`, `physics    ${this.physMs.toFixed(2)} ms/frame`, `render     ${this.renderer!.lastMs.toFixed(2)} ms/frame`,
+        `level      ${this.preset.label}${Object.keys(this.settings.perf).length ? ' (custom)' : ''}`,
+        `FPS        ${this.fps.toFixed(0)}`, `physics    ${this.physMs.toFixed(2)} ms/frame (${(this.physMs * this.fps / 10).toFixed(0)}% of a core)`, `render     ${this.renderer!.lastMs.toFixed(2)} ms/frame`,
         `bodies     ${st.bodies}`, `contacts   ${st.contacts}`, `step rate  ${Math.round(1 / w.dt)} Hz`,
-        `assist     ${(this.settings.assist * me.assistLevel * 100).toFixed(0)}%`, `preset     ${this.preset.label}`,
+        `assist     ${(this.settings.assist * me.assistLevel * 100).toFixed(0)}%`,
       ]);
     } else this.hud.setOverlay(null);
     this.netHud();

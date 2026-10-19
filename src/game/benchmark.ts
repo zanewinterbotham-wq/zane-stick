@@ -1,12 +1,12 @@
-// In-game benchmark: physics cost with three athletes and render cost, per preset. Used for the
-// first-launch automatic preset choice and for the copyable report on the benchmark screen.
+// In-game benchmark: physics cost with three athletes and render cost, per quality level. Used for the
+// first-launch automatic level choice and for the copyable report on the benchmark screen.
 import { DEFAULT_ATHLETE } from '../sim/anatomy/body';
 import { ScriptBrain } from '../sim/brains/script';
 import { DEFAULT_SUPPORT } from '../sim/anim/types';
 import { makeController } from '../sim/drills/controllers';
 import { mujocoEngine } from '../sim/physics/mujoco';
 import { World } from '../sim/world';
-import { PRESETS, type Preset, type PresetName } from './presets';
+import { PRESET_ORDER, PRESETS, type Preset, type PresetName } from './presets';
 import { GameRenderer } from './render/renderer';
 import { DEFAULT_SETTINGS } from './settings';
 
@@ -59,22 +59,40 @@ export async function benchRender(canvas: HTMLCanvasElement, p: Preset, seconds 
   return frames[Math.floor(frames.length * 0.5)] ?? 16.7; // median frame interval
 }
 
-export async function runBenchmark(canvas: HTMLCanvasElement, presets: PresetName[] = ['minimum', 'high'], skin = DEFAULT_SETTINGS.skin): Promise<BenchResult[]> {
+async function benchOne(canvas: HTMLCanvasElement, name: PresetName, seconds: number, skin: string): Promise<BenchResult> {
+  const p = PRESETS[name];
+  const phys = await benchPhysics(p, seconds);
+  const frame = await benchRender(canvas, p, seconds, skin);
+  return { preset: name, physicsMsPerSimSecond: phys, physicsRealtimeShare: phys / 1000, renderMsPerFrame: frame, fpsEstimate: 1000 / Math.max(frame, (phys / 1000) * frame + frame * 0.1) };
+}
+
+/** Every level (the benchmark screen and its report). */
+export async function runBenchmark(canvas: HTMLCanvasElement, presets: PresetName[] = PRESET_ORDER, skin = DEFAULT_SETTINGS.skin, seconds = 1): Promise<BenchResult[]> {
   const out: BenchResult[] = [];
-  for (const name of presets) {
-    const p = PRESETS[name];
-    const phys = await benchPhysics(p);
-    const frame = await benchRender(canvas, p, 1.5, skin);
-    out.push({ preset: name, physicsMsPerSimSecond: phys, physicsRealtimeShare: phys / 1000, renderMsPerFrame: frame, fpsEstimate: 1000 / Math.max(frame, (phys / 1000) * frame + frame * 0.1) });
-  }
+  for (const name of presets) out.push(await benchOne(canvas, name, seconds, skin));
   return out;
 }
 
-/** Highest preset that holds its target frame rate with physics comfortably in real time. */
+/** A level holds up on this device when its physics leaves the frame enough time to render (a third of real time
+ *  at 60 fps, half at 30) and a frame renders within its target frame rate (15 % slack). */
+export function fits(r: BenchResult): boolean {
+  const p = PRESETS[r.preset];
+  return r.physicsRealtimeShare < (p.targetFps >= 60 ? 0.35 : 0.5) && r.renderMsPerFrame < 1000 / p.targetFps * 1.15;
+}
+
+/** Highest level that holds up (Potato when none does). */
 export function chooseBest(rs: BenchResult[]): PresetName {
-  const high = rs.find((r) => r.preset === 'high');
-  if (high && high.physicsRealtimeShare < 0.35 && high.renderMsPerFrame < 1000 / PRESETS.high.targetFps * 1.15) return 'high';
-  return 'minimum';
+  return [...PRESET_ORDER].reverse().find((n) => { const r = rs.find((x) => x.preset === n); return r && fits(r); }) ?? 'potato';
+}
+
+/** First launch: measure from the top of the ladder down and stop at the first level that holds up (a fast device
+ *  measures one level, a slow one all of them). */
+export async function autoChoose(canvas: HTMLCanvasElement, skin = DEFAULT_SETTINGS.skin): Promise<PresetName> {
+  for (const name of [...PRESET_ORDER].reverse()) {
+    if (name === 'potato') break;
+    if (fits(await benchOne(canvas, name, 0.8, skin))) return name;
+  }
+  return 'potato';
 }
 
 export function reportText(rs: BenchResult[]): string {
@@ -87,8 +105,8 @@ export function reportText(rs: BenchResult[]): string {
     `browser: ${navigator.userAgent}`,
     `cores: ${navigator.hardwareConcurrency ?? '?'}  memory: ${nav.deviceMemory ?? '?'} GB  screen: ${screen.width}x${screen.height} @${devicePixelRatio}x`,
     `gpu: ${gpu}`,
-    ...rs.map((r) => `${PRESETS[r.preset].label.padEnd(8)} physics ${PRESETS[r.preset].physics.hz} Hz x3 athletes: ${r.physicsMsPerSimSecond.toFixed(0)} ms per sim-second (${(r.physicsRealtimeShare * 100).toFixed(0)}% of real time); render: ${r.renderMsPerFrame.toFixed(1)} ms/frame (~${(1000 / r.renderMsPerFrame).toFixed(0)} fps)`),
-    `chosen: ${chooseBest(rs)}`,
+    ...rs.map((r) => `${PRESETS[r.preset].label.padEnd(7)} physics ${PRESETS[r.preset].physics.hz} Hz x3 athletes: ${r.physicsMsPerSimSecond.toFixed(0)} ms per sim-second (${(r.physicsRealtimeShare * 100).toFixed(0)}% of real time); render: ${r.renderMsPerFrame.toFixed(1)} ms/frame (~${(1000 / r.renderMsPerFrame).toFixed(0)} fps)${fits(r) ? '' : '  (too slow here)'}`),
+    `chosen: ${PRESETS[chooseBest(rs)].label}`,
   ];
   return lines.join('\n');
 }

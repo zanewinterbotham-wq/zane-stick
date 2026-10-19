@@ -3,7 +3,7 @@
 import type { SupportSettings } from '../sim/anim/types';
 import { DEFAULT_GAINS } from '../sim/control/hand';
 import { keyName, keysText, RESERVED, type InputManager } from './input/input';
-import { PRESETS, type Preset, type PresetName } from './presets';
+import { PERF_KNOBS, PRESET_ORDER, PRESETS, type Preset, type PresetName } from './presets';
 import { GORE_LEVELS } from './render/effects';
 import type { GameRenderer } from './render/renderer';
 import { DIFFICULTY_PRESETS, GAME_SUPPORT, PLAYER_BASE, difficultyOf, type Settings } from './settings';
@@ -211,19 +211,41 @@ function cameraTab({ host, status }: Ctx) {
       onOff('Automatic camera', () => s.autoCamera, (v) => host.setAutoCamera(v))))];
 }
 
-function graphicsTab({ host, status }: Ctx) {
+function graphicsTab({ host, status, reopen }: Ctx) {
   const s = host.settings;
   const r = host.renderer;
-  status.textContent = 'Quality applies from the next rep.';
+  status.textContent = 'Quality applies from the next rep (physics settings never change mid-rep).';
   const xray = onOff('Anatomy view', () => !!host.renderer?.xray, (v) => host.renderer?.setXray(v));
   if (!r) xray.querySelectorAll('button').forEach((b) => b.setAttribute('aria-disabled', 'true'));
   xray.addEventListener('click', (e) => { if (!host.renderer) { e.stopPropagation(); status.textContent = 'Anatomy view can be switched on once a rep has started.'; } }, true);
+  // the ladder: one line per level, the chosen one marked
+  const ladder = el('ul', { class: 'ladder', 'aria-label': 'Quality levels' }, ...PRESET_ORDER.map((k) => el('li', { 'aria-current': String(k === host.preset.name) },
+    el('b', { text: PRESETS[k].label }), el('span', { text: ` ${PRESETS[k].desc}` }))));
+  // Advanced: single knobs over the level ('Level' = the level's own value; absent physics options are the exact ones)
+  const level = PRESETS[host.preset.name], EXACT: Record<string, unknown> = { tolerance: 1e-8, lod: 0, cone: 'elliptic' };
+  const own = (k: (typeof PERF_KNOBS)[number]) => {
+    const v = ((k.physics ? level.physics : level.render) as unknown as Record<string, unknown>)[k.key];
+    return v === Infinity ? 999 : v ?? EXACT[k.key];
+  };
+  const knob = (k: (typeof PERF_KNOBS)[number]) => {
+    const cur = k.choices.find((c) => c.value === own(k))?.text ?? String(own(k));
+    const perf = s.perf as Record<string, unknown>;
+    return setRow(k.label, k.desc, seg<string>(k.label, [{ value: 'level', text: `Level (${cur})` }, ...k.choices.map((c) => ({ value: JSON.stringify(c.value), text: c.text }))],
+      () => (k.key in perf ? JSON.stringify(perf[k.key]) : 'level'),
+      (v) => { if (v === 'level') delete perf[k.key]; else perf[k.key] = JSON.parse(v); host.save(); }));
+  };
+  const reset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Use the level\'s values');
+  reset.addEventListener('click', () => { s.perf = {}; host.save(); reopen(); });
   return [el('div', { class: 'set-list' },
-    setRow('Quality', 'Physics precision, body detail and graphics together; on High, waiting defenders play the wait instead of idling at their spot. Minimum suits school laptops.',
-      seg<PresetName>('Quality', (Object.keys(PRESETS) as PresetName[]).map((k) => ({ value: k, text: PRESETS[k].label })), () => host.preset.name, (v) => { s.preset = v; host.save(); })),
+    setRow('Quality', 'Physics precision, body detail and graphics together. High and Ultra run the same physics; the lower levels trade precision for speed.',
+      seg<PresetName>('Quality', PRESET_ORDER.map((k) => ({ value: k, text: PRESETS[k].label })), () => host.preset.name, (v) => { s.preset = v; host.save(); }, () => reopen())),
+    ladder,
     setRow('Anatomy view', 'Shows the muscles and skeleton instead of the skin.', xray),
     setRow('Effort shading (anatomy view)', 'Colours each muscle by how hard it is working.',
-      onOff('Effort shading', () => s.effortShading, (v) => { s.effortShading = v; if (host.renderer) host.renderer.effortShading = v; host.save(); })))];
+      onOff('Effort shading', () => s.effortShading, (v) => { s.effortShading = v; if (host.renderer) host.renderer.effortShading = v; host.save(); }))),
+  el('h2', { class: 'set-h', text: 'Advanced: physics' }), el('div', { class: 'set-list' }, ...PERF_KNOBS.filter((k) => k.physics).map(knob)),
+  el('h2', { class: 'set-h', text: 'Advanced: graphics' }), el('div', { class: 'set-list' }, ...PERF_KNOBS.filter((k) => !k.physics).map(knob)),
+  el('div', { class: 'items' }, reset)];
 }
 
 function audioTab({ host, status }: Ctx) {

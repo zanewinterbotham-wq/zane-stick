@@ -49,6 +49,7 @@ export class AthleteMesh {
   mouth: Mouth | null = null;
   /** The face's eyebrows, which carry the mood (render/brows.ts). */
   brows: Brows | null = null;
+  private headOn = true; private shaded = false;
 
   constructor(private plan: BodyPlan, team: TeamColors, quality: 'low' | 'high', skin: SkinTemplate | null = null) {
     this.root.add(this.classic, this.skin);
@@ -160,6 +161,8 @@ export class AthleteMesh {
 
   /** Show or hide the head, neck, helmet and facemask (classic and skin): the helmet camera sits inside them. */
   setHeadVisible(on: boolean) {
+    if (on === this.headOn) return; // called every frame
+    this.headOn = on;
     const head = (i: number) => /^(head|neck)$/.test(this.plan.segments[i].name);
     this.segs.forEach((g, i) => { if (head(i)) g.visible = on; });
     for (const p of this.parts) if (head(p.seg)) p.node.visible = on;
@@ -168,6 +171,8 @@ export class AthleteMesh {
   /** Effort shading: tint each segment toward hot orange as its muscles near their limit (0..1). */
   private static HOT = new THREE.Color(0xff5a1f);
   shade(effortPerSeg: ArrayLike<number> | null) {
+    if (!effortPerSeg && !this.shaded) return; // the base colours already (every frame outside the anatomy view)
+    this.shaded = !!effortPerSeg;
     this.materials.forEach((mats, i) => mats.forEach((m, k) => {
       const e = effortPerSeg ? Math.max(0, (effortPerSeg[i] - 0.55) / 0.45) : 0;
       m.color.copy(this.base[i][k]).lerp(AthleteMesh.HOT, Math.min(1, e) * 0.75);
