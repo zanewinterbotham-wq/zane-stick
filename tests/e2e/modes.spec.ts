@@ -11,7 +11,8 @@ test('Play: mode cards with previews, a setup with options that are remembered, 
   await expect(cards).toHaveCount(MODES.length);
   for (const id of ['tackle', 'carry', 'oklahoma', 'kickoffReturn', 'gauntlet', 'sumo', 'keepaway', 'scramble', 'goalline', 'hitstick']) {
     const img = page.locator(`.mode-card[data-mode=${id}] img`);
-    await expect(img).toHaveJSProperty('complete', true);
+    await img.scrollIntoViewIfNeeded(); // lazy images load once on screen
+    await expect(img).toHaveJSProperty('complete', true, { timeout: 30_000 });
     expect(await img.evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
   }
   await page.screenshot({ path: 'test-results/20-modes.png' });
