@@ -130,6 +130,21 @@ test('title loads, drill starts, mouse and keyboard controls reach the brain, co
   expect(errors).toEqual([]);
 });
 
+test('Space jumps: a physics take-off, through the air and back down on his feet', async ({ page }) => {
+  const errors = watchErrors(page);
+  await startRep(page);
+  const jump = () => page.evaluate(() => { const d = (window as unknown as { __app: { drill: { human: number; world: { athletes: { controller: { frame: { root: { jump: string } } } }[] } } } }).__app.drill; return d.world.athletes[d.human].controller.frame.root.jump; });
+  await page.keyboard.down('Space');
+  await page.waitForTimeout(100);
+  expect((await latest(page)).held).toContain('jump');
+  await page.keyboard.up('Space');
+  await expect.poll(jump, { intervals: [20] }).toBe('flight');
+  await page.waitForTimeout(250); // about the top of the flight
+  await page.screenshot({ path: 'test-results/02-jump.png' });
+  await expect.poll(jump, { timeout: 5_000 }).toBe('none');
+  expect(errors).toEqual([]);
+});
+
 test('J / L and I / K always work alongside the mouse, with or without the automatic camera', async ({ page }) => {
   const errors = watchErrors(page);
   // a browser without keyboard lock (Firefox, Safari) plays the same: no key needs the lock
