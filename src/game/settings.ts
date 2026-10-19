@@ -4,6 +4,7 @@ import { DEFAULT_SUPPORT, type SupportSettings } from '../sim/anim/types';
 import { cleanPerf, PRESETS, type PerfOverrides, type PresetName } from './presets';
 import skins from './skins.json';
 import stadiums from './stadiums.json';
+import { SCHEME_IDS } from './passing/schemes';
 
 export interface Settings {
   preset: PresetName | null;     // null = not chosen yet (run the first-launch benchmark)
@@ -36,6 +37,7 @@ export interface Settings {
   mode?: string;                 // last game mode played (src/sim/modes/registry.ts id)
   modeOptions?: Record<string, Record<string, unknown>>; // each mode's options as last set in the mode menu
   netName?: string;              // multiplayer display name (the room server trims it to 24 characters)
+  throwScheme: string;           // the QB throw scheme (passing/schemes.ts SCHEME_IDS)
 }
 
 /** Owner's tuned baseline for Normal (2026-10-18): the player's strength and speed at 1x, and the carry
@@ -44,12 +46,13 @@ export const PLAYER_BASE = { strength: 1.5, speed: 1.29 };
 export const GAME_SUPPORT = { ...DEFAULT_SUPPORT, carryAccel: 10.5 };
 /** Stored settings layout; 2 = strength/speed are multipliers on PLAYER_BASE; 3 = gore levels, owner's new default
  *  skin and stadium; 4 = no sink control (lowering the pads sinks the hips); 5 = thrust on Q, Space jumps; 6 = the
- *  quality ladder (Potato … Ultra; the stored 'minimum' and 'high' keep their meaning) and its Advanced overrides. */
-const VERSION = 6;
+ *  quality ladder (Potato … Ultra; the stored 'minimum' and 'high' keep their meaning) and its Advanced overrides; 7 = the
+ *  QB throw controls (F, R, G, V) and the throw scheme. */
+const VERSION = 7;
 
 export const DEFAULT_SETTINGS: Settings = {
   version: VERSION, preset: null, perf: {}, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
-  slowMo: true, autoCamera: false, sprintToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: skins[0]?.id ?? 'classic', goreLevel: 1, stadium: stadiums[0]?.id ?? 'field', // the owner's picks are first in the lists
+  slowMo: true, autoCamera: false, sprintToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: skins[0]?.id ?? 'classic', goreLevel: 1, stadium: stadiums[0]?.id ?? 'field', throwScheme: 'lock', // the owner's picks are first in the lists
 };
 
 /** Difficulty presets: each axis moves on its own (AI toughness, AI juking, the player's strength and speed). */
@@ -86,6 +89,9 @@ export function loadSettings(): Settings {
       // version 5: thrust moved to Q and Space jumps; a saved rebind keeps its key, and the new default it clashes
       // with gives that key up (as a rebind does), so one key never does two things
       if ((s.version ?? 1) < 5 && s.bindings) migrateJumpKeys(s.bindings);
+      // version 7: the throw controls' new default keys give way to a saved rebind that holds them
+      if ((s.version ?? 1) < 7 && s.bindings) yieldNewKeys(s.bindings, [['throw', 'KeyF'], ['lob', 'KeyR'], ['target', 'KeyG'], ['scheme', 'KeyV']]);
+      if (!SCHEME_IDS.includes(s.throwScheme)) delete s.throwScheme;
       // version 6: more levels; an unknown one (an edited or newer file) is chosen again by the benchmark
       if (s.preset != null && !(s.preset in PRESETS)) s.preset = null;
       s.perf = cleanPerf(s.perf);
@@ -99,7 +105,12 @@ export function loadSettings(): Settings {
  *  rebind holds leaves the new default that also has it (thrust Q, jump Space). */
 function migrateJumpKeys(b: Record<string, string[]>) {
   if (Array.isArray(b.thrust)) { b.thrust = b.thrust.filter((k) => k !== 'Space'); if (!b.thrust.length) delete b.thrust; }
-  for (const [action, key] of [['thrust', 'KeyQ'], ['jump', 'Space']] as const) {
+  yieldNewKeys(b, [['thrust', 'KeyQ'], ['jump', 'Space']]);
+}
+
+/** A new default key another saved rebind already holds is left off that new action (as a rebind takes it). */
+function yieldNewKeys(b: Record<string, string[]>, defaults: [string, string][]) {
+  for (const [action, key] of defaults) {
     if (b[action]) continue;
     if (Object.entries(b).some(([a, v]) => a !== action && Array.isArray(v) && v.includes(key))) b[action] = [];
   }

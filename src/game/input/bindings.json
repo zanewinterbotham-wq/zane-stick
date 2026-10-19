@@ -1,5 +1,5 @@
 {
-  "_note": "Default bindings; the player can rebind keyboard and mouse actions on the Controls screen (saved in settings). Keyboard values are KeyboardEvent.code; Mouse0 / Mouse1 / Mouse2 are the left / middle / right mouse buttons and the wheel also sets the torso angle (scroll up = torso down). The J / L and I / K keys are always bound alongside the mouse so a Chromebook touchpad works too. Gamepad uses the W3C standard mapping (buttons b0..b16, axes a0..a3).",
+  "_note": "Default bindings; the player can rebind keyboard and mouse actions on the Controls screen (saved in settings). Keyboard values are KeyboardEvent.code; Mouse0 / Mouse1 / Mouse2 are the left / middle / right mouse buttons and the wheel also sets the torso angle (scroll up = torso down). The J / L and I / K keys are always bound alongside the mouse so a Chromebook touchpad works too. Gamepad uses the W3C standard mapping (buttons b0..b16, axes a0..a3). Throw, lob, target and scheme are the QB throw controls (docs/passing.md): they act only while you hold the ball.",
   "keyboard": {
     "moveUp": ["KeyW"], "moveDown": ["KeyS"], "moveLeft": ["KeyA"], "moveRight": ["KeyD"],
     "sprint": ["ShiftLeft", "ShiftRight"],
@@ -9,7 +9,8 @@
     "armL": ["Mouse0", "KeyJ"], "armR": ["Mouse2", "KeyL"],
     "torsoUp": ["KeyI"], "torsoDown": ["KeyK"],
     "shiftLock": ["Mouse1", "Semicolon"],
-    "reset": ["Enter"], "pause": ["Escape"], "overlay": ["Backquote"], "tuning": ["KeyT"]
+    "reset": ["Enter"], "pause": ["Escape"], "overlay": ["Backquote"], "tuning": ["KeyT"],
+    "throw": ["KeyF"], "lob": ["KeyR"], "target": ["KeyG"], "scheme": ["KeyV"]
   },
   "gamepad": {
     "moveX": ["a0"], "moveY": ["a1"],
@@ -18,7 +19,8 @@
     "armL": ["b4"], "armR": ["b5"],
     "torsoUp": ["b12"], "torsoDown": ["b13", "b6"],
     "shiftLock": ["b10"],
-    "reset": ["b9"]
+    "reset": ["b9"],
+    "throw": ["b3"], "lob": ["b14"], "target": ["b15"], "scheme": ["b8"]
   },
   "options": { "deadzone": 0.15, "mouseSensitivity": 0.0025, "padLookRate": 3, "wheelPerFullTorso": 1000, "torsoRatePerSecond": 1.5 }
 }
