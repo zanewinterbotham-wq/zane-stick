@@ -10,7 +10,7 @@ import { modeById } from '../sim/modes/registry';
 import type { ModeDef, ModeOptions } from '../sim/modes/types';
 import { headingOf, qrot } from '../sim/math';
 import { mujocoEngine } from '../sim/physics/mujoco';
-import { carrierVsTacklerScenario, pushScenario, runScenario, standScenario, type Scenario } from '../sim/scenarios';
+import { carrierVsTacklerScenario, pushScenario, runScenario, standScenario, thrustHitScenario, type Scenario } from '../sim/scenarios';
 import { World, type PhysicsSettings } from '../sim/world';
 import { Audio } from './audio';
 import { chooseBest, reportText, runBenchmark } from './benchmark';
@@ -46,7 +46,8 @@ async function devScenario(name: string) {
   const sc: Scenario = name === 'push' ? pushScenario(physics, +(params.get('dir') ?? 0), +(params.get('imp') ?? 60), assist)
     : name === 'walk' || name === 'jog' || name === 'sprint' ? runScenario(physics, name, { assist })
     : name === 'cut' ? runScenario(physics, 'jog', { assist, cutAt: 3 })
-    : name === 'hit' ? carrierVsTacklerScenario(physics, { hitPower: +(params.get('hp') ?? 1) }) : standScenario(physics, assist);
+    : name === 'hit' ? carrierVsTacklerScenario(physics, { hitPower: +(params.get('hp') ?? 1) })
+    : name === 'thrust' ? thrustHitScenario(physics, +(params.get('torso') ?? 1)) : standScenario(physics, assist);
   const world = await World.create(mujocoEngine, sc.setup);
   const r = new GameRenderer(canvas, RENDER_PRESETS[(params.get('gfx') as 'minimum' | 'high') ?? 'high']);
   await r.setSkin(params.get('skin') ?? DEFAULT_SETTINGS.skin);

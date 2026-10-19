@@ -174,6 +174,21 @@ power, which is why the launch stands in, as it does for the dive. Known shortfa
 stride touches down on the toes for only ~0.03 s, so a one-foot take-off at 10 m/s lifts the body ~0.1–0.17 m (a real
 one ~0.4–0.5 m) and a jog's ~0.15–0.3 m; the hurdle's tuck still lifts the feet ~0.37–0.5 m, over a diver.
 
+Hip thrust from lowered pads (`THRUST` in anim/procedural.ts; owner request 2026-10-18, not yet through the
+fact-checking pass):
+
+| Quantity | Target | Basis |
+|---|---|---|
+| Trunk lean firing out of a low stance | ~40–50° forward over the first steps, rising toward ~20–25° by the third or fourth | sprint-start kinematics (block clearance and first steps; e.g. Mero, Komi & Gregor 1992, Sports Med 13:376; Slawinski et al. 2010, J Strength Cond Res 24:896); the thrust caps the pads' angle at 0.8 rad (~46°) and comes up 0.3 rad over it |
+| Contact with the shoulder, head up and to the side | the near shoulder leads, the head goes past the ball carrier, never the crown first | tackling technique taught to cut head contact (USA Football Heads Up Football; World Rugby Tackle Ready; the helmet-first "spearing" rules, NCAA/NFHS since 1976) |
+| Thoracic rotation, side bend; scapular protraction; neck extension | ±30°, ±20° (lumbar ±18°); ~15°; ~60° | the S3 joint ranges the body already has; the strike's turn (0.5 rad), side bend (0.6 rad) and neck targets stay within them |
+
+Measured (tests/thrust.test.ts): from lowered pads (0.6 / 1) the trunk's mean lean through the drive is 15° / 38° (was
+4° / 16°, standing up) and the COM's rise over its forward travel 0.03 / 0.07 (was 0.11 / 0.28); over 60 hits on a
+standing or jogging-in opponent the pads take 0.72 of the contact impulse (was 0.50) and the head 0.00 (was 0.07).
+Assumption: which shoulder leads is the brain's choice of the near one (`Commands.shoulder`); the forward foot's when
+the opponent is dead ahead.
+
 ## S5 — Equipment, ball, turf, impacts
 
 | Item | Value used | Source |
