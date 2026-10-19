@@ -34,7 +34,15 @@ test('settings: title menu has Settings and no skin button; every tab opens, a v
 
   await tab(page, 'Graphics');
   await page.screenshot({ path: 'test-results/settings-graphics.png' });
+  // the ladder, one line per level, and the Advanced overrides over the chosen one
+  await expect(page.getByRole('group', { name: 'Quality', exact: true }).getByRole('button')).toHaveText(['Potato', 'Low', 'Medium', 'High', 'Ultra']);
+  await expect(page.getByRole('list', { name: 'Quality levels' }).getByRole('listitem')).toHaveCount(5);
   await page.getByRole('button', { name: 'Quality: High' }).click();
+  await expect(page.getByRole('listitem').filter({ hasText: /^High/ })).toHaveAttribute('aria-current', 'true');
+  await expect(page.getByRole('button', { name: 'Physics rate: Level (480 Hz)' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Shadow quality: 1024' }).click();
+  await page.getByRole('button', { name: 'Shadow quality: 1024' }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'test-results/settings-graphics-advanced.png' });
   await page.getByRole('button', { name: 'Effort shading: Off' }).click();
 
   await tab(page, 'Audio');
@@ -49,7 +57,7 @@ test('settings: title menu has Settings and no skin button; every tab opens, a v
   await page.screenshot({ path: 'test-results/settings-advanced.png' });
   await page.getByRole('button', { name: 'Performance overlay: On' }).click();
 
-  expect(await stored(page)).toMatchObject({ hitPower: 2.5, sprintToggle: true, camera: 'helmet', preset: 'high', effortShading: false, mute: true, goreLevel: 3, overlay: true });
+  expect(await stored(page)).toMatchObject({ hitPower: 2.5, sprintToggle: true, camera: 'helmet', preset: 'high', perf: { shadowMap: 1024 }, effortShading: false, mute: true, goreLevel: 3, overlay: true });
 
   // a reload keeps all of it
   await page.reload();
@@ -62,6 +70,7 @@ test('settings: title menu has Settings and no skin button; every tab opens, a v
   await expect(page.getByRole('button', { name: 'Camera view: Helmet' })).toHaveAttribute('aria-pressed', 'true');
   await tab(page, 'Graphics');
   await expect(page.getByRole('button', { name: 'Quality: High' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Shadow quality: 1024' })).toHaveAttribute('aria-pressed', 'true');
   await tab(page, 'Audio');
   await expect(page.getByRole('button', { name: 'Sound: Off' })).toHaveAttribute('aria-pressed', 'true');
   await tab(page, 'Gore');

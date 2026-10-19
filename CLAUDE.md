@@ -2,7 +2,7 @@
 
 Physics-only football hitting/tackling simulator. TypeScript, Vite, Three.js (WebGL2), Vitest,
 Playwright. Full design: `docs/design.md`. Sources for every number: `docs/realism-sources.md`.
-Engine comparison: `docs/physics-benchmark.md`.
+Engine comparison: `docs/physics-benchmark.md`. Quality levels and optimizations: `docs/performance.md`.
 
 ## Goals (priority order)
 1. Anatomical accuracy and physical realism. 2. Controls and feel. 3. Performance on any hardware
@@ -65,7 +65,11 @@ Engine comparison: `docs/physics-benchmark.md`.
   The game uses its own origin's room API; `?server=<url>` overrides (GitHub Pages has no API: use
   `?server=https://zane-stick.pages.dev`). `test:e2e` starts it itself (tests/e2e/net.spec.ts).
 - `npm run bench:engines` — physics engine comparison; `npx tsx bench/presets/run.ts` — per-preset cost
-  at 1x/4x/6x CPU throttling (needs a build)
+  at 1x/4x/6x CPU throttling (needs a build; `PORT=` when 4174 is taken)
+- Quality ladder Potato/Low/Medium/High/Ultra (`src/game/presets.ts`, `docs/performance.md`): Low, Medium, High and
+  Ultra must stay bit-identical to their recorded hashes (realism suite). `npx tsx bench/perf/sim.ts` — Node cost per
+  level with state hashes (check an optimization is exact); `npx tsx bench/perf/levels.ts` — gameplay metrics per
+  level; `bench/perf/worker.ts` — page vs physics Worker (needs a build)
 - `npx tsx bench/tune/run.ts <generations> <workers> <population>` — CMA-ES controller gain tuning;
   best result in `bench/out/gains-best.json`
 - `npx tsx bench/tune/score.ts '<gains json>' --avg` — score one gain set; the objective is chaotic, so

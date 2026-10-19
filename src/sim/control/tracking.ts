@@ -46,6 +46,7 @@ export class TrackingController implements MotorController {
   supportSettings: SupportSettings = DEFAULT_SUPPORT;
   /** 0..1 stun from the world (a big hit received): scales all muscle output down by up to STUN_LOOSE. */
   stun = 0;
+  lod = false;
   private prevStun = 0;
   readonly frame: AnimFrame;
   readonly hand: HandController;
@@ -115,7 +116,6 @@ export class TrackingController implements MotorController {
     Object.assign(this.handCmd, cmd).dive = cmd.dive && !this.prevDive;
     this.handCmd.thrustHips = r.thrust > 0.05;
     this.prevDive = cmd.dive;
-    this.hand.compute(v, this.handCmd, this.handOut);
     // The carry fades through a running stride's flight; off contact that is no reason to hand the legs to the balance
     // controller (it did, every long stride, and the landing came on legs placed for a different gait).
     const flying = !v.playerContact && !v.feet[0].touching && !v.feet[1].touching && Math.hypot(r.vel[0], r.vel[2]) > 3;
@@ -125,6 +125,8 @@ export class TrackingController implements MotorController {
     want = r.dive === 'flight' || r.jump === 'flight' ? 0 : Math.min(want, 1 - sup.posture * r.thrust);
     // injured or knocked out: no balance reaction, only the animation's loose hold on where the body lies
     if (sup.out) want = 0;
+    // (far from play, on a low preset, the balance controller rests while it is blended out and nothing calls it in)
+    if (!this.lod || want > 0 || this.blend !== 0) this.hand.compute(v, this.handCmd, this.handOut);
     // in quickly (a hit; at once on the jolt of a big one, so the body reacts the step it lands, not to a shove's
     // slowly growing stun), out slowly (the animation takes over again once the support is back), except a thrust
     const jolt = this.stun - this.prevStun > JOLT;

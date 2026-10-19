@@ -47,3 +47,10 @@ it('version 5: Space leaves a saved thrust rebind for the new jump, and a key an
   store.set('zane-stick-settings-v1', JSON.stringify({ version: 5, bindings: { thrust: ['Space'] } }));
   expect(loadSettings().bindings).toEqual({ thrust: ['Space'] });   // chosen after the upgrade: kept
 });
+
+it('version 6: the stored Low and High keep their meaning, an unknown level is chosen again, overrides are validated', () => {
+  store.set('zane-stick-settings-v1', JSON.stringify({ version: 5, preset: 'high' }));
+  expect([loadSettings().preset, loadSettings().perf]).toEqual(['high', {}]);
+  store.set('zane-stick-settings-v1', JSON.stringify({ version: 6, preset: 'turbo', perf: { hz: 200, scale: 7, shadows: 'yes', lod: 12, bogus: 1 } }));
+  expect([loadSettings().preset, loadSettings().perf]).toEqual([null, { hz: 200, lod: 12 }]);
+});

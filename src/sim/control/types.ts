@@ -75,4 +75,7 @@ export interface MotorController {
   debug?(): Record<string, number | string>;
   /** Where the world's support should carry the body this step (active ragdoll); null = no support. */
   root?(): RootTarget | null;
+  /** Set by the world on low presets (athlete level of detail): the athlete is far from play, so work whose output
+   *  goes unused (a balance layer blended out) may rest. */
+  lod?: boolean;
 }

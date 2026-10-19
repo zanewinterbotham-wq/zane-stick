@@ -18,7 +18,7 @@ import { neutralCommands, type BodyView, type Commands } from '../control/types'
 import { HOBBLE } from '../injury';
 import { clamp, lerp, qconj, qrot, wrapAngle, type Quat, type Vec3 } from '../math';
 import type { MuscleSet } from '../muscles';
-import { legIK } from './ik';
+import { legIKInto } from './ik';
 import { rootQuat } from './kinematics';
 import type { AnimFrame, Animator, SupportState } from './types';
 
@@ -196,16 +196,19 @@ export class ProceduralAnimator implements Animator {
   /** Add `v` to a dof by name; a dof fused away at this detail level passes its share to the joint that
    *  inherited its range (thoracic → lumbar, neckUp → neckLow, sc → shoulder), so both levels look alike. */
   private add(name: string, v: number) {
-    let i = this.I(name);
-    if (i < 0) {
-      const [j, d] = name.split('.'), base = j.replace(/[LR]$/, ''), sx = j.slice(base.length);
-      const t = FUSE_RANGE_TRANSFER[base]?.[d];
-      if (!t) return;
-      const [tj, td] = t.split('.');
-      i = this.I(`${tj}${sx}.${td}`);
-      if (i < 0) return;
-    }
-    this.q[i] += v;
+    let i = this.addTo.get(name);
+    if (i === undefined) this.addTo.set(name, (i = this.addIndex(name))); // looked up once per name, not every step
+    if (i >= 0) this.q[i] += v;
+  }
+  private addTo = new Map<string, number>();
+  private addIndex(name: string) {
+    const i = this.I(name);
+    if (i >= 0) return i;
+    const [j, d] = name.split('.'), base = j.replace(/[LR]$/, ''), sx = j.slice(base.length);
+    const t = FUSE_RANGE_TRANSFER[base]?.[d];
+    if (!t) return -1;
+    const [tj, td] = t.split('.');
+    return this.I(`${tj}${sx}.${td}`);
   }
 
   private resetFeet() {
@@ -218,15 +221,9 @@ export class ProceduralAnimator implements Animator {
   private legPhase(L: Leg) { const p = this.phase + (L.side > 0 ? 0 : 0.5); return p - Math.floor(p); }
 
   // ------------------------------------------------------------------ leg geometry
-  /** Ankle point (heading frame, x left, y up from the turf, z forward) for a planted foot whose flat-foot
-   *  ankle projection is F, yawed by `yaw`, rolled toe-up by `g` about the heel (g > 0) or the ball (g < 0). */
-  private rocker(F: [number, number], yaw: number, g: number): Vec3 {
-    const fx = Math.sin(yaw), fz = Math.cos(yaw), a = this.ankleH;
-    const piv = g >= 0 ? -this.heel : this.ball;            // pivot ahead (+) or behind (−) the ankle
-    const c = Math.cos(g), s = Math.sin(g);
-    const along = piv - (piv * c + a * s), up = -piv * s + a * c;
-    return [F[0] + fx * along, up, F[1] + fz * along];
-  }
+  /** The root's inverse orientation for the last (pitch, roll) solve() was given, and the IK output buffer. */
+  private invCache = { pp: NaN, roll: NaN, q: [0, 0, 0, 1] as Quat };
+  private ik = [0, 0, 0];
 
   /** Leg angles that put the foot at F/yaw/toe-up g with the pelvis at the current root pose. When the leg
    *  cannot reach the flat or heel-down foot (ankle out of dorsiflexion, hip out of extension, leg too short)
@@ -234,17 +231,28 @@ export class ProceduralAnimator implements Animator {
    *  when even that fails (with margin `m` for planning). With `prevG`, the heel comes back down by at most
    *  `maxStep` from it (it rises as fast as the leg needs; easing it down avoids flips between solutions). */
   private solve(L: Leg, F: [number, number], yaw: number, g: number, m = 0, prevG = NaN, maxStep = Infinity, h = this.height, pp = this.pitch - this.bend): { q: LegQ; ok: boolean } {
-    const inv = qconj(rootQuat(0, pp, this.roll));
-    const rot = clamp(-L.side * yaw, this.lo[L.rot], this.hi[L.rot]);
+    // (the animator's hot loop: up to ~15 trials per call and many calls per step, so no allocation per trial; the
+    // numbers are those of qrot() and legIK(), bit for bit)
+    const c = this.invCache;
+    if (c.pp !== pp || c.roll !== this.roll) { c.pp = pp; c.roll = this.roll; c.q = qconj(rootQuat(0, pp, this.roll)); }
+    const [x, y, z, w] = c.q, ik = this.ik, ho = L.hipOff;
+    const rot = clamp(-L.side * yaw, this.lo[L.rot], this.hi[L.rot]), sr = Math.sin(rot), cr = Math.cos(rot);
     const reach = (L.L1 + L.L2) * (0.99 - 0.015 * m), hfMin = this.lo[L.hf] + 0.01 + 0.05 * m, dmax = this.hi[L.dor] - 0.02;
-    const r: LegQ = [0, 0, 0, 0, 0, yaw, g];
+    const r: LegQ = [0, 0, 0, 0, 0, yaw, g], fx = Math.sin(yaw), fz = Math.cos(yaw), a = this.ankleH;
     const at = (gg: number) => {
-      const a = this.rocker(F, yaw, gg);
-      const p = qrot(inv, [a[0], a[1] - h, a[2]]);
-      const rel: Vec3 = [p[0] - L.hipOff[0], p[1] - L.hipOff[1], p[2] - L.hipOff[2]];
-      const [hf, ab, kn] = legIK(L, rel, rot);
-      r[0] = hf; r[1] = ab; r[2] = kn; r[3] = gg + this.pitch - hf + kn; r[4] = Math.max(0, -gg); r[6] = gg;
-      return Math.hypot(rel[0], rel[1], rel[2]) <= reach && hf >= hfMin && r[3] <= dmax;
+      // The rocker: the ankle point (heading frame, x left, y up from the turf, z forward) of a foot whose flat-foot
+      // ankle projection is F, yawed by `yaw`, rolled toe-up by gg about the heel (gg > 0) or the ball (gg < 0);
+      // then relative to the pelvis at height h, in the pelvis frame, and to the hip.
+      const piv = gg >= 0 ? -this.heel : this.ball, cg = Math.cos(gg), sg = Math.sin(gg); // pivot ahead (+) or behind (−) the ankle
+      const along = piv - (piv * cg + a * sg), up = -piv * sg + a * cg;
+      const v0 = F[0] + fx * along, v1 = up - h, v2 = F[1] + fz * along;
+      const tx = 2 * (y * v2 - z * v1), ty = 2 * (z * v0 - x * v2), tz = 2 * (x * v1 - y * v0);
+      const r0 = v0 + w * tx + (y * tz - z * ty) - ho[0], r1 = v1 + w * ty + (z * tx - x * tz) - ho[1], r2 = v2 + w * tz + (x * ty - y * tx) - ho[2];
+      const n = Math.hypot(r0, r1, r2);
+      legIKInto(L, r0, r1, r2, n, sr, cr, ik);
+      const hf = ik[0], kn = ik[2];
+      r[0] = hf; r[1] = ik[1]; r[2] = kn; r[3] = gg + this.pitch - hf + kn; r[4] = Math.max(0, -gg); r[6] = gg;
+      return n <= reach && hf >= hfMin && r[3] <= dmax;
     };
     let ok = true;
     if (!at(g)) {

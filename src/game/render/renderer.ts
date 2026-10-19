@@ -9,14 +9,14 @@ import { buildBarrier, buildField } from './field';
 import { LandingMarker } from './landing';
 import { loadStadium, OPEN_FIELD, stadiumById, type Stadium, type StadiumScene } from './stadium';
 import { ExpressionTracker } from '../expressions';
+import type { Expression } from './brows';
 import type { Voice } from './mouth';
 import { CLASSIC, loadSkin, skinById, type Skin, type SkinTemplate } from './skin';
 
-export interface RenderQuality { scale: number; shadows: boolean; detail: 'low' | 'high'; antialias: boolean }
-export const RENDER_PRESETS: Record<'minimum' | 'high', RenderQuality> = {
-  minimum: { scale: 0.6, shadows: false, detail: 'low', antialias: false },
-  high: { scale: 1, shadows: true, detail: 'high', antialias: true },
-};
+/** Graphics knobs of a quality level (presets.ts). `scale`: resolution × the device pixel ratio, which is first capped
+ *  at `pixelCap`; `shadowMap`: shadow map size (px); `effects`: share of the injury particles drawn; `faces`: farthest
+ *  athlete from the camera (m) whose mouth and brows animate; `maxFps`: frame cap (0 = the display's rate). */
+export interface RenderQuality { scale: number; shadows: boolean; detail: 'low' | 'high'; antialias: boolean; shadowMap: number; pixelCap: number; effects: number; faces: number; maxFps: number }
 
 /** The Open Field's sky and light (what the renderer starts with). */
 const OPEN_SCENE: StadiumScene = { sky: '#9cc3e4', fog: ['#9cc3e4', 80, 220], hemi: ['#dfeeff', '#3c5a2c', 1.1], sun: ['#ffffff', 2.2] };
@@ -58,7 +58,8 @@ export class GameRenderer {
 
   constructor(canvas: HTMLCanvasElement, public quality: RenderQuality) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality.antialias, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * quality.scale);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.pixelCap) * quality.scale);
+    this.effects.density = quality.effects;
     this.renderer.shadowMap.enabled = quality.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.scene.background = new THREE.Color(0x9cc3e4);
@@ -68,7 +69,7 @@ export class GameRenderer {
     this.sun = new THREE.DirectionalLight(0xffffff, 2.2);
     this.sun.position.set(-20, 40, 15);
     this.sun.castShadow = quality.shadows;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(quality.shadowMap, quality.shadowMap);
     this.sun.shadow.normalBias = 0.02; // no self-shadow acne on the skins' faceted and cel-shaded surfaces
     const sc = this.sun.shadow.camera as THREE.OrthographicCamera;
     sc.left = -12; sc.right = 12; sc.top = 12; sc.bottom = -12; sc.near = 1; sc.far = 100;
@@ -126,6 +127,9 @@ export class GameRenderer {
     this.faces.step(w, dt).forEach((e, i) => { const b = this.athletes[i]?.brows; if (b) b.driver.target = e; });
   }
 
+  /** Worker mode: the athletes' moods, worked out where the steps ran (one per athlete, as stepFaces gives). */
+  setFaces(e: Expression[]) { e.forEach((x, i) => { const b = this.athletes[i]?.brows; if (b) b.driver.target = x; }); }
+
   setWorld(w: World) {
     this.world = w;
     this.faces = new ExpressionTracker();
@@ -164,21 +168,66 @@ export class GameRenderer {
     this.camera.updateProjectionMatrix();
   }
 
+  // ---------------------------------------------------------------- render interpolation
+  /** The pose before the latest fixed step (athletes' segments, dynamic props) and the step count it belongs to. */
+  private prev: { w: World; steps: number; pos: Float64Array[]; quat: Float64Array[]; props: (Vec7 | null)[] } | null = null;
+  /** This frame's poses, between the last two steps (lerp(), read by render() and the camera). */
+  readonly poses: { segPos: Float64Array; segQuat: Float64Array }[] = [];
+  private posed: World | null = null;
+
+  /** Call before each fixed step: keeps the pose the step starts from (render only; the sim never sees it). */
+  snapshot(w: World) {
+    if (this.prev?.w !== w) this.prev = { w, steps: -1, pos: w.scene.athletes.map((a) => new Float64Array(a.state.segPos.length)), quat: w.scene.athletes.map((a) => new Float64Array(a.state.segQuat.length)), props: [] };
+    const p = this.prev;
+    w.scene.athletes.forEach((a, i) => { p.pos[i].set(a.state.segPos); p.quat[i].set(a.state.segQuat); });
+    p.props = (w.setup.props ?? []).map((d, i) => (d.mass > 0 ? (({ pos, quat }) => [...pos, ...quat] as Vec7)(w.scene.propPose(i)) : null));
+    p.steps = w.steps;
+  }
+
+  /** This frame's poses at `alpha` (0..1) of the way from the pose before the last step to the latest one, so the
+   *  motion is smooth whatever the frame rate is against the physics rate; the latest pose when there is no previous
+   *  one (a multiplayer replica, the first frame). Call once a frame before the camera and render(). */
+  lerp(w: World, alpha: number) {
+    const p = this.prev, on = !!p && p.w === w && p.steps === w.steps - 1 && alpha < 1;
+    this.posed = w;
+    w.scene.athletes.forEach((a, i) => {
+      const s = a.state;
+      if (!on) { this.poses[i] = { segPos: s.segPos, segQuat: s.segQuat }; return; }
+      let o = this.poses[i];
+      if (!o || o.segPos === s.segPos || o.segPos.length !== s.segPos.length) o = this.poses[i] = { segPos: new Float64Array(s.segPos.length), segQuat: new Float64Array(s.segQuat.length) };
+      lerpPose(p.pos[i], p.quat[i], s.segPos, s.segQuat, alpha, o.segPos, o.segQuat);
+    });
+    this.poses.length = w.scene.athletes.length;
+    this.propAlpha = on ? alpha : 1;
+  }
+  private propAlpha = 1;
+
   /** `focus`: the athlete the shadow camera stays on (the one the view follows). */
   render(w: World, focus = 0) {
     if (w !== this.world) return; // a new rep whose skin is still loading
     const t0 = performance.now(), dt = (t0 - this.lastFrame) / 1000;
     this.lastFrame = t0;
+    if (this.posed !== w) this.lerp(w, 1);
+    this.posed = null;
+    const cam = this.camera.position, far = this.quality.faces;
     w.athletes.forEach((a, i) => {
-      const s = w.scene.athletes[i].state, mesh = this.athletes[i];
+      const s = this.poses[i], mesh = this.athletes[i], k = 3 * (a.segIndex.get('head') ?? 0);
       mesh.pose(s.segPos, s.segQuat);
-      mesh.mouth?.update(dt); mesh.brows?.update(dt);
+      // far faces keep their last expression: a mouth or brow a few pixels tall is not worth its update
+      if (far === Infinity || Math.hypot(s.segPos[k] - cam.x, s.segPos[k + 1] - cam.y, s.segPos[k + 2] - cam.z) < far) { mesh.mouth?.update(dt); mesh.brows?.update(dt); }
       mesh.setHeadVisible(i !== this.hideHeadOf);
       mesh.shade(this.xray && this.effortShading ? segmentEffort(a) : null);
     });
+    const pa = this.propAlpha, pp = this.prev?.props;
     (w.setup.props ?? []).forEach((p, i) => {
       if (p.mass <= 0) return;
-      const { pos, quat } = w.scene.propPose(i);
+      const { pos, quat } = w.scene.propPose(i), q0 = pa < 1 ? pp?.[i] : null;
+      if (q0) {
+        lerpPose(q0.slice(0, 3), q0.slice(3), pos, quat, pa, tmpPos, tmpQuat);
+        this.props[i].position.set(tmpPos[0], tmpPos[1], tmpPos[2]);
+        this.props[i].quaternion.set(tmpQuat[0], tmpQuat[1], tmpQuat[2], tmpQuat[3]);
+        return;
+      }
       this.props[i].position.set(...pos);
       this.props[i].quaternion.set(...quat);
     });
@@ -191,6 +240,22 @@ export class GameRenderer {
     this.sun.position.set(c[0] - 20, 40, c[2] + 15);
     this.renderer.render(this.scene, this.camera);
     this.lastMs = performance.now() - t0;
+  }
+}
+
+type Vec7 = [number, number, number, number, number, number, number];
+const tmpPos = new Float64Array(3), tmpQuat = new Float64Array(4);
+
+/** Poses `alpha` of the way from (p0, q0) to (p1, q1): positions lerped, quaternions (x y z w) nlerped along the
+ *  shorter arc, per segment. */
+export function lerpPose(p0: ArrayLike<number>, q0: ArrayLike<number>, p1: ArrayLike<number>, q1: ArrayLike<number>, alpha: number, po: Float64Array, qo: Float64Array) {
+  for (let i = 0; i < po.length; i++) po[i] = p0[i] + (p1[i] - p0[i]) * alpha;
+  for (let i = 0; i < qo.length; i += 4) {
+    const sg = q0[i] * q1[i] + q0[i + 1] * q1[i + 1] + q0[i + 2] * q1[i + 2] + q0[i + 3] * q1[i + 3] < 0 ? -1 : 1;
+    let n = 0;
+    for (let j = i; j < i + 4; j++) n += (qo[j] = q0[j] + (sg * q1[j] - q0[j]) * alpha) ** 2;
+    n = Math.sqrt(n) || 1;
+    for (let j = i; j < i + 4; j++) qo[j] /= n;
   }
 }
 

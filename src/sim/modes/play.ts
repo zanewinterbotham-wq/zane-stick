@@ -123,7 +123,7 @@ export class Play {
       field: { halfWidth: r.halfWidth, goalZ: r.goal[team], dirZ: attackDir(team) },
       athletes: ps.players.map((s, i) => ({
         params: s.params ?? (fixed[i] ? cfg.human : cfg.bot), pos: [s.pos[0], 0, s.pos[1]], yaw: s.yaw ?? (s.team === 0 ? 0 : Math.PI), team: s.team,
-        controller: ctl, brain: possess(i), hasBall: i === holder, ...(!fixed[i] && { toughness: cfg.toughness }), boneStrength: fixed[i] ? cfg.boneStrength : cfg.aiBoneStrength,
+        controller: ctl, brain: possess(i), hasBall: i === holder, ...(fixed[i] ? { player: true } : { toughness: cfg.toughness }), boneStrength: fixed[i] ? cfg.boneStrength : cfg.aiBoneStrength,
       })),
       // a held ball is parked out of reach above its holder until he has tucked his arm (setup only; under the field the
       // turf shot it up through him)

@@ -17,6 +17,22 @@ const LIMIT_SOLIMP = '0.3 0.99 0.17';
 const LIMIT_TIMECONST = 0.03;
 const FRICTION = { ground: 0.6, body: 0.6, hand: 1.0 }; // [S5]
 
+/** Fast contact reads (MujocoScene.contacts()): byte offsets of the fields in this MuJoCo build's mjContact and its
+ *  size, and how many more reads are checked against the binding's slow path (−1: the layout did not match, always
+ *  the slow path). One build per page, so measured and checked once for every scene. */
+let CON: { pos: number; frame: number; geom: number; efc: number; dim: number; size: number; check: [number, number] } | null = null;
+
+/** mjContact field offsets from the views of the binding's copy of a contact. efc_address and dim have no view:
+ *  their places in the 3.x struct (after vert[2] and exclude, its last field; before geom1 and geom2, which precede
+ *  geom[2]); the struct is padded to 8 bytes. */
+function contactLayout(list: Any): NonNullable<typeof CON> {
+  const c = list.get(0), at = (v: { byteOffset: number }) => v.byteOffset, b0 = at(c.pos) - 8; // pos follows dist (one double)
+  const efc = at(c.vert) - b0 + 12;
+  const lay = { pos: 8, frame: at(c.frame) - b0, geom: at(c.geom) - b0, efc, dim: at(c.geom) - b0 - 12, size: (efc + 4 + 7) & ~7, check: [50, 50] as [number, number] }; // per cone: the pyramid's force decode reads dim
+  c.delete();
+  return lay;
+}
+
 const f = (v: readonly number[]) => v.map((x) => +x.toFixed(7)).join(' ');
 
 export const mujocoEngine: PhysicsEngine = {
@@ -55,13 +71,18 @@ class MujocoScene implements PhysicsScene {
   /** The state before the current step, restored if it diverges; divergence count and bookkeeping. */
   private good!: { qpos: Float64Array; qvel: Float64Array; eq: Uint8Array; time: number };
   private instab = 0; private warned = 0; private steps = 0; private lastBad = -9;
+  private pyramidal = false;
+  private heap: { f64: Float64Array; i32: Int32Array } | null = null;
 
   constructor(desc: SceneDesc) {
     if (!mj) throw new Error('mujocoEngine.init() must be awaited first');
     this.dt = 1 / desc.hz;
-    const dt = this.dt;
+    const dt = this.dt, o = desc.opts ?? {};
+    this.pyramidal = o.cone === 'pyramidal';
+    // only the options a preset sets: absent ones leave the model (and its results) exactly as before
+    const opt = o.tolerance !== undefined ? ` tolerance="${o.tolerance}"` : '';
     let xml = `<mujoco model="zane-stick"><compiler angle="radian" inertiafromgeom="auto" autolimits="true"/>
-<option timestep="${dt}" gravity="0 -9.81 0" integrator="implicitfast" cone="elliptic" iterations="${desc.iterations}"/>
+<option timestep="${dt}" gravity="0 -9.81 0" integrator="implicitfast" cone="${o.cone ?? 'elliptic'}" iterations="${desc.iterations}"${opt}/>
 <size memory="32M"/><worldbody>
 <geom name="ground" type="plane" size="200 200 0.1" zaxis="0 1 0" friction="${FRICTION.ground} 0.005 0.0001" condim="3"/>`;
     const excludes: string[] = [];
@@ -154,8 +175,9 @@ class MujocoScene implements PhysicsScene {
     this.good.qpos.set(qpos); this.good.qvel.set(qvel); this.good.eq.set(eq); this.good.time = d.time;
     mj.mj_step(this.m, d);
     // a diverged solve makes MuJoCo reset everyone to the spawn pose (a mid-rep teleport, injuries kept): undo it,
-    // back to the last good state with the motion damped out (halved; stopped if it diverges again at once)
-    const n = this.warnings();
+    // back to the last good state with the motion damped out (halved; stopped if it diverges again at once). A reset
+    // sets the clock back to 0, so the warning counters (slow to read) are read only when it did not advance.
+    const n = d.time > this.good.time ? this.warned : this.warnings();
     if (n > this.warned) {
       this.views();
       const k = this.lastBad === this.steps - 1 ? 0 : 0.5;
@@ -232,17 +254,58 @@ class MujocoScene implements PhysicsScene {
 
   contacts(): ContactReport[] {
     if (this.cache) return this.cache;
-    const d = this.d, out: ContactReport[] = [];
+    const d = this.d, n = d.ncon;
+    if (n === 0) return (this.cache = []);
     const list = d.contact;
-    for (let i = 0; i < d.ncon; i++) {
+    CON ??= contactLayout(list);
+    // Fast path: the contacts are one array of mjContact structs at the start of MuJoCo's arena, so their fields are
+    // read off the heap and the normal force off efc_force (what mj_contactForce returns), instead of a binding copy of
+    // each, two views and a WASM call per contact. The first reads are compared with the slow path; a mismatch (a
+    // MuJoCo build with another layout) turns the fast path off for good.
+    let out: ContactReport[] | null = null;
+    const k = +this.pyramidal;
+    if (CON.check[k] >= 0) {
+      out = this.fastContacts((d.arena as Uint8Array).byteOffset, n);
+      if (CON.check[k] > 0) {
+        CON.check[k]--;
+        const slow = this.slowContacts(list, n);
+        if (JSON.stringify(slow) !== JSON.stringify(out)) { CON.check[k] = -1; out = slow; }
+      }
+    }
+    out ??= this.slowContacts(list, n);
+    list.delete();
+    return (this.cache = out);
+  }
+
+  private slowContacts(list: Any, n: number): ContactReport[] {
+    const d = this.d, out: ContactReport[] = [];
+    for (let i = 0; i < n; i++) {
       const c = list.get(i);
       mj.mj_contactForce(this.m, d, i, this.forceBuf);
       const fr = c.frame, p = c.pos;
       out.push({ a: this.geomLink[c.geom1], b: this.geomLink[c.geom2], pos: [p[0], p[1], p[2]], normal: [fr[0], fr[1], fr[2]], force: Math.abs(this.forceBuf.GetView()[0]) });
       c.delete();
     }
-    list.delete();
-    return (this.cache = out);
+    return out;
+  }
+
+  private fastContacts(base: number, n: number): ContactReport[] {
+    const ef = this.d.efc_force as Float64Array, C = CON!;
+    if (this.heap?.f64.buffer !== ef.buffer) this.heap = { f64: new Float64Array(ef.buffer), i32: new Int32Array(ef.buffer) };
+    const { f64, i32 } = this.heap, e0 = ef.byteOffset >> 3, out: ContactReport[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const b = base + i * C.size, p = (b + C.pos) >> 3, fr = (b + C.frame) >> 3, g = (b + C.geom) >> 2, e = i32[(b + C.efc) >> 2];
+      // mj_contactForce's normal force: none for an excluded contact, an elliptic cone's first row, or a pyramid's
+      // edges summed in mju_decodePyramid's order
+      let force = 0;
+      if (e >= 0) {
+        const dim = i32[(b + C.dim) >> 2];
+        if (!this.pyramidal || dim === 1) force = f64[e0 + e];
+        else for (let k = 0; k < 2 * (dim - 1); k++) force += f64[e0 + e + k];
+      }
+      out[i] = { a: this.geomLink[i32[g]], b: this.geomLink[i32[g + 1]], pos: [f64[p], f64[p + 1], f64[p + 2]], normal: [f64[fr], f64[fr + 1], f64[fr + 2]], force: Math.abs(force) };
+    }
+    return out;
   }
 
   gripOn(ai: number, hand: 0 | 1, target: LinkRef, pointWorld: Vec3, timeconst: number) {

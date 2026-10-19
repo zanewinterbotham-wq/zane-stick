@@ -13,13 +13,13 @@ import { mujocoEngine } from '../sim/physics/mujoco';
 import { carrierVsTacklerScenario, pushScenario, runScenario, standScenario, thrustHitScenario, type Scenario } from '../sim/scenarios';
 import { World, type PhysicsSettings } from '../sim/world';
 import { Audio } from './audio';
-import { chooseBest, reportText, runBenchmark } from './benchmark';
+import { autoChoose, chooseBest, reportText, runBenchmark } from './benchmark';
 import { ChaseCamera } from './camera';
 import { SoundCues } from './cues';
 import { HitMeter, hitFeel, MPH } from './feel';
 import { InputManager, keyName, keysText, type InputFrame } from './input/input';
-import { PRESETS, type PresetName } from './presets';
-import { GameRenderer, RENDER_PRESETS } from './render/renderer';
+import { effectivePreset, PRESETS, type PresetName } from './presets';
+import { GameRenderer } from './render/renderer';
 import { DEFAULT_SETTINGS, GAME_SUPPORT, PLAYER_BASE, loadSettings, saveSettings, type Settings } from './settings';
 import { CATEGORIES, equipItem } from './inventory';
 import { modeMenu, savedOptions } from './modes';
@@ -31,6 +31,7 @@ import type { PlayConfig } from '../sim/modes/types';
 import { TEAM_NAMES, type NetEvent, type StartMsg } from './net/lobby';
 import { lobbyPanel, mpScreen, netMessage, pingText, rosterRows, type LobbyView } from './net/lobby-ui';
 import { COUNTDOWN, Session } from './net/session';
+import { SimClient } from './worker/client';
 
 const params = new URLSearchParams(location.search);
 /** A multiplayer guest's input while his menu is open: stand still (the shared play goes on). */
@@ -49,7 +50,7 @@ async function devScenario(name: string) {
     : name === 'hit' ? carrierVsTacklerScenario(physics, { hitPower: +(params.get('hp') ?? 1) })
     : name === 'thrust' ? thrustHitScenario(physics, +(params.get('torso') ?? 1)) : standScenario(physics, assist);
   const world = await World.create(mujocoEngine, sc.setup);
-  const r = new GameRenderer(canvas, RENDER_PRESETS[(params.get('gfx') as 'minimum' | 'high') ?? 'high']);
+  const r = new GameRenderer(canvas, PRESETS[(params.get('gfx') as PresetName) ?? 'high']?.render ?? PRESETS.high.render);
   await r.setSkin(params.get('skin') ?? DEFAULT_SETTINGS.skin);
   await r.setStadium(params.get('stadium') ?? 'field'); // the dev scenarios have no barrier in their physics
   r.setWorld(world);
@@ -81,7 +82,10 @@ class App {
   hud = new Hud();
   layer = new Layer();
   renderer: GameRenderer | null = null;
-  rendererPreset: PresetName | null = null;
+  /** The graphics settings the renderer was built with (rebuilt when they change). */
+  rendererPreset: string | null = null;
+  /** Frame cap (the level's maxFps): when the last frame ran (performance.now ms). */
+  private lastShown = 0;
   drill: Play | null = null;
   human = new HumanBrain();
   cam = new ChaseCamera();
@@ -122,6 +126,9 @@ class App {
   nextQueued = false;
   hiddenAt = 0;
   private ticker: Worker | null = null;
+  /** Worker mode (the level's Physics thread): the Worker running single-player reps (multiplayer never uses it). */
+  sim: SimClient | null = null;
+  private noWorker = false;
 
   async boot() {
     this.input.capture = false;
@@ -164,18 +171,18 @@ class App {
   /** First launch: a short benchmark picks the highest preset that holds its target frame rate. */
   async autoPreset() {
     const el0 = document.getElementById('loading')!;
-    el0.textContent = 'Measuring your device (5 s)…';
+    el0.textContent = 'Measuring your device (a few seconds)…';
     try {
-      const rs = await runBenchmark(canvas);
-      this.settings.preset = chooseBest(rs);
+      this.settings.preset = await autoChoose(canvas);
     } catch (e) {
-      console.warn('benchmark failed, using Minimum', e);
+      console.warn('benchmark failed, using Low', e);
       this.settings.preset = 'minimum';
     }
     saveSettings(this.settings);
   }
 
-  get preset() { return PRESETS[this.settings.preset ?? 'minimum']; }
+  /** The quality level with the player's Advanced overrides. */
+  get preset() { return effectivePreset(this.settings.preset, this.settings.perf); }
 
   // ---------------------------------------------------------------- screens
   /** Off the field: no play running for this screen, the cursor free. */
@@ -223,6 +230,7 @@ class App {
   }
 
   openNet(room: NetRoom, name: string) {
+    this.sim?.stop(); // multiplayer runs its own plays
     const mode = modeById(this.settings.mode ?? 'tackle');
     const net = this.net = new Session(room, mujocoEngine, name, { mode: mode.id, options: savedOptions(this.settings, mode), steer: this.settings.steerAssist });
     net.onLobby = (l) => {
@@ -351,7 +359,21 @@ class App {
     }
     this.drill?.destroy();
     this.freshRep();
-    this.drill = await Play.create(mujocoEngine, this.playConfig(), this.mode, this.modeOpts, this.human, this.rep++);
+    const cfg = this.playConfig(), rep = this.rep++;
+    this.drill = null;
+    if (this.preset.worker && !this.noWorker && typeof Worker !== 'undefined') {
+      // worker mode (docs/performance.md): the rep runs in the physics Worker; the drill here is its replica
+      try {
+        this.sim ??= new SimClient(mujocoEngine);
+        this.drill = await this.sim.start(cfg, this.mode.id, this.modeOpts, rep, this.settings.steerAssist);
+        this.netBig = this.netBest = null;
+      } catch (e) {
+        if (e instanceof Error && e.message === 'superseded') return; // a newer rep is on its way
+        console.warn('physics worker failed: running on the page', e);
+        this.sim?.dispose(); this.sim = null; this.noWorker = true;
+      }
+    } else this.sim?.stop();
+    this.drill ??= await Play.create(mujocoEngine, cfg, this.mode, this.modeOpts, this.human, rep);
     await this.attach(this.drill);
   }
 
@@ -384,10 +406,11 @@ class App {
     const p = this.preset, s = this.settings;
     // the player's own athlete (multiplayer: any slot; a spectator: the one he watches)
     this.cam.target = play.human >= 0 ? play.human : Math.min(this.spectate, play.world.athletes.length - 1);
-    if (!this.renderer || this.rendererPreset !== p.name) {
+    const gfx = JSON.stringify(p.render);
+    if (!this.renderer || this.rendererPreset !== gfx) {
       this.renderer?.renderer.dispose();
       this.renderer = new GameRenderer(canvas, p.render);
-      this.rendererPreset = p.name;
+      this.rendererPreset = gfx;
     }
     await this.renderer.setSkin(s.skin);
     await this.renderer.setStadium(params.get('stadium') ?? s.stadium);
@@ -424,7 +447,7 @@ class App {
       { label: 'Reset rep', hint: 'Enter', sfx: 'ui_confirm', action: () => { this.resume(); void this.newRep(); } },
       { label: 'Settings', action: () => this.settingsMenu(() => this.pauseMenu()) },
       { label: 'Inventory', hint: 'next rep', action: () => this.inventory(() => this.pauseMenu(), false) },
-      { label: 'Quit to title', sfx: 'ui_back', action: () => { this.drill?.destroy(); this.drill = null; this.title(); } },
+      { label: 'Quit to title', sfx: 'ui_back', action: () => { this.sim?.stop(); this.drill?.destroy(); this.drill = null; this.title(); } },
     ]));
   }
 
@@ -499,7 +522,7 @@ class App {
   async benchmark() {
     const box = el('div', { class: 'panel menu wide' }, el('h1', { text: 'Benchmark' }));
     const out = el('textarea', { readonly: 'true', 'aria-label': 'Benchmark results' });
-    out.value = 'Running… (about 6 seconds)';
+    out.value = 'Running… (about 10 seconds)';
     box.append(out);
     this.layer.show(box);
     const rs = await runBenchmark(canvas);
@@ -566,6 +589,10 @@ class App {
 
   // ---------------------------------------------------------------- loop
   frame(now: number) {
+    // a frame cap (the level's maxFps) skips whole frames: the fixed steps they owed run in the next one
+    const cap = this.drill && !this.paused ? this.preset.render.maxFps : 0;
+    if (cap > 0 && now - this.lastShown < 1000 / cap - 2) { requestAnimationFrame((t) => this.frame(t)); return; }
+    this.lastShown = now;
     const dtReal = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
     this.fps += (1 / Math.max(dtReal, 1e-3) - this.fps) * 0.05;
@@ -582,9 +609,12 @@ class App {
           if (this.net && d.human < 0) this.spectateKeys(f);
         } else this.human.latest = null; // in the menu he stands still
         if (this.net && !this.net.isHost) this.guestFrame(dtReal);
+        else if (this.sim && d === this.sim.play) this.workerFrame(now, dtReal);
         else this.simulate(now, dtReal);
       }
-      this.cam.update(r.camera, w, dtReal, this.humanHeading());
+      // drawn between the last two fixed steps (render only), so motion is smooth at any frame rate
+      r.lerp(w, Math.min(1, this.acc / w.dt)); // (a multiplayer guest's replica never steps: its latest pose)
+      this.cam.update(r.camera, w, dtReal, this.humanHeading(), r.poses[this.cam.target]);
       r.hideHeadOf = this.cam.mode === 'helmet' ? this.cam.target : -1;
       const m = r.camera.matrixWorld.elements; // column 0: the camera's right axis
       this.audio.listen([r.camera.position.x, r.camera.position.y, r.camera.position.z], [m[0], m[1], m[2]]);
@@ -609,6 +639,7 @@ class App {
     const t0 = performance.now();
     let steps = 0;
     while (this.acc >= w.dt && steps < 40) {
+      this.renderer?.snapshot(w); // the pose the step starts from, for render interpolation
       if (net) net.step(); else d.step(); // the host's step also sends the snapshots
       this.acc -= w.dt; steps++;
       if (this.feedback(now)) { this.acc = 0; break; }
@@ -616,6 +647,41 @@ class App {
     if (steps >= 40) this.acc = 0; // never spiral: drop time rather than fall behind
     this.physMs += (performance.now() - t0 - this.physMs) * 0.1;
     if (net && d.ended && w.time - d.endTime > AUTO_NEXT && !this.nextQueued) { this.nextQueued = true; void this.newRep(); }
+  }
+
+  /** Worker mode: show what the physics Worker sent since the last frame, with the sounds, moods and big hits its steps
+   *  made, then ask it for the fixed steps real time owes (two requests out at most, so the Worker never waits on the
+   *  page; a slow Worker gets bigger requests, never a longer queue; past 40 steps time is dropped, as on the page).
+   *  Slow motion and hit-stop work as on the page, a frame or two later. */
+  workerFrame(now: number, dtReal: number) {
+    const sim = this.sim!, d = this.drill!, w = d.world;
+    if (sim.failed) { // the Worker died (out of memory, a browser without module workers): this session plays on the page
+      console.warn('physics worker failed: running on the page', sim.failed);
+      this.hud.flash('Physics worker failed: playing on the page');
+      sim.dispose(); this.sim = null; this.noWorker = true;
+      void this.newRep();
+      return;
+    }
+    for (const f of sim.take()) {
+      this.physMs += (f.ms - this.physMs) * 0.1;
+      for (const s of f.sounds) this.audio.hit(s);
+      for (const c of f.cues) this.audio.play(c.cat, c.loud, c.pos, c.athlete);
+      this.renderer?.setFaces(f.faces);
+      this.human.contact = f.contact;
+      this.netBig = f.first; this.netBest = f.best;
+      if (!f.big) {
+        const loud = Math.max(0, ...f.sounds.map((s) => s.loud));
+        if (loud > 0.1) { this.cam.addShake(0.04 * loud * loud); this.rumble({ duration: 60, strong: 0.3 * loud, weak: 0.5 * loud }); }
+        continue;
+      }
+      const fx = this.bigHit(d, f.big);
+      if (fx.slowMo && this.settings.slowMo && now / 1000 > this.slowUntil) { this.timeScale = 0.3; this.slowUntil = now / 1000 + 0.9; }
+      if (fx.stopMs && now >= this.nextStop) { this.freezeUntil = now + fx.stopMs; this.nextStop = now + 500; this.acc = 0; }
+    }
+    if (now / 1000 > this.slowUntil) this.timeScale = 1;
+    if (now >= this.freezeUntil) this.acc += dtReal * this.timeScale;
+    const n = Math.min(40, Math.floor(this.acc / w.dt));
+    if (sim.free && n > 0) { sim.step(n, this.human.latest, now >= this.nextStop); this.acc = n === 40 ? 0 : this.acc - n * w.dt; }
   }
 
   /** A multiplayer guest's frame: send the input, show the host's play (interpolated), and the sounds and faces it
@@ -710,9 +776,10 @@ class App {
     if (this.settings.overlay) {
       const st = w.scene.stats();
       this.hud.setOverlay([
-        `FPS        ${this.fps.toFixed(0)}`, `physics    ${this.physMs.toFixed(2)} ms/frame`, `render     ${this.renderer!.lastMs.toFixed(2)} ms/frame`,
-        `bodies     ${st.bodies}`, `contacts   ${st.contacts}`, `step rate  ${Math.round(1 / w.dt)} Hz`,
-        `assist     ${(this.settings.assist * me.assistLevel * 100).toFixed(0)}%`, `preset     ${this.preset.label}`,
+        `level      ${this.preset.label}${Object.keys(this.settings.perf).length ? ' (custom)' : ''}`,
+        `FPS        ${this.fps.toFixed(0)}`, `physics    ${this.physMs.toFixed(2)} ms/frame (${(this.physMs * this.fps / 10).toFixed(0)}% of a core)`, `render     ${this.renderer!.lastMs.toFixed(2)} ms/frame`,
+        `bodies     ${st.bodies}`, `contacts   ${st.contacts}`, `step rate  ${Math.round(1 / w.dt)} Hz${d === this.sim?.play ? ' (physics Worker)' : ''}`,
+        `assist     ${(this.settings.assist * me.assistLevel * 100).toFixed(0)}%`,
       ]);
     } else this.hud.setOverlay(null);
     this.netHud();
@@ -727,7 +794,8 @@ class App {
       // impulse over 30 ms, and the mean force it implies; the per-step peak force is a stiff-contact spike
       const J = (h: { impulse: number }) => `${h.impulse.toFixed(0)} N·s in 30 ms (${(h.impulse / 30).toFixed(1)} kN avg)`;
       // a guest's big hits are the host's (replica contact forces are an estimate)
-      const big = guest ? this.netBig : this.meter.big, best = guest ? this.netBest ?? this.meter.best : this.meter.best;
+      const remote = guest || d === this.sim?.play; // big hits measured elsewhere: the host's, or the physics Worker's
+      const big = remote ? this.netBig : this.meter.big, best = remote ? this.netBest ?? this.meter.best : this.meter.best;
       const points: [string, string] = net ? ['Points', `${d.points} to the ${TEAM_NAMES[d.scorer as 0 | 1]}  ·  ${score}`] : ['Points', `${d.points} to ${d.scorer === 0 ? 'you' : 'the bots'}  ·  score: you ${this.score[0]}, bots ${this.score[1]}`];
       this.hud.showResult({
         title,
@@ -765,7 +833,7 @@ if (params.get('bench') === '1') {
   void (async () => {
     await mujocoEngine.init();
     document.getElementById('loading')!.textContent = 'Benchmarking…';
-    const rs = await runBenchmark(canvas, undefined, params.get('skin') ?? undefined);
+    const rs = await runBenchmark(canvas, undefined, params.get('skin') ?? undefined, 1.5);
     (window as unknown as { __bench: unknown }).__bench = { results: rs, report: reportText(rs) };
     document.getElementById('loading')!.textContent = reportText(rs);
   })().catch((e) => console.error(e));
