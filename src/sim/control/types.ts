@@ -8,6 +8,11 @@ import type { Hurt } from '../injury';
 
 export type Gait = 'walk' | 'jog' | 'sprint';
 
+/** Throw the ball held now so it arrives at `at` (world, m; y ≈ catch height); loft 0 = the flattest, fastest
+ *  throw the arm allows (a bullet) .. 1 = a high touch lob. One-shot: set for the step(s) it is pressed; the world
+ *  plays the throwing motion and releases once, and ignores more until the motion is over. */
+export interface PassCmd { at: Vec3; loft: number }
+
 export interface Commands {
   /** Desired ground velocity direction (world x, z), magnitude 0..1 of the gait's speed. */
   move: { x: number; z: number };
@@ -35,13 +40,14 @@ export interface Commands {
   carry: 0 | 1 | 2;
   /** Optional world point the arms should reach toward (bots, or a lock-on). */
   aim: Vec3 | null;
+  pass: PassCmd | null;
 }
 
 export function neutralCommands(): Commands {
   return {
     move: { x: 0, z: 0 }, face: null, gait: 'jog', contactMode: false,
     armL: 0, armR: 0, gripL: false, gripR: false, wrap: false, shoot: false, sink: 0, thrustHips: false, shoulder: 0,
-    driveLegs: 0, chopFeet: false, lean: { fwd: 0, side: 0 }, headTuck: false, plantCut: 0, dive: false, jump: false, carry: 0, aim: null,
+    driveLegs: 0, chopFeet: false, lean: { fwd: 0, side: 0 }, headTuck: false, plantCut: 0, dive: false, jump: false, carry: 0, aim: null, pass: null,
   };
 }
 
