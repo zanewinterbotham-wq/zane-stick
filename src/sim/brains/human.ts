@@ -3,7 +3,7 @@
 import { neutralCommands, type Commands } from '../control/types';
 import { clamp } from '../math';
 import { catchPoint, dropPoint, incoming, OVERHEAD } from './returner';
-import type { Brain, Perception } from './types';
+import { leadShoulder, type AthleteView, type Brain, type Perception } from './types';
 
 /** Device-independent input snapshot (what the shell's InputFrame boils down to). */
 export interface HumanInput {
@@ -38,6 +38,8 @@ export class HumanBrain implements Brain {
   steerAssist = 0.3;
   /** Automatic contact mode (read by the HUD). */
   contact = false;
+  /** The nearest opponent who can be tackled (last think). */
+  private nearest: AthleteView | undefined;
 
   think(p: Perception): Commands {
     const c = neutralCommands();
@@ -56,14 +58,14 @@ export class HumanBrain implements Brain {
     c.contactMode = this.contact;
     c.gait = i.sprint > 0.5 ? 'sprint' : m > 0.6 ? 'jog' : 'walk';
     if (c.gait === 'walk' && m > 0) c.move = { x: mx / (m || 1), z: mz / (m || 1) }; // walk at walking speed
-    // thrust takes priority: it straightens the hips, so sink and torso lean give way while it is held (one press
-    // runs a whole thrust either way)
+    // one press runs a whole thrust; the torso input keeps the pads' angle it fires out along
     c.thrustHips = h.has('thrust');
+    c.shoulder = this.contact ? leadShoulder(p.athletes[p.self], this.nearest) : 0;
     c.dive = h.has('dive'); // one press runs a whole dive; holding changes nothing
     c.jump = h.has('jump'); // the same for a jump
     const sink = TORSO_SINK * Math.max(0, i.torso);
-    c.sink = c.thrustHips ? 0 : this.contact ? Math.max(sink, READY_SINK) : sink;
-    c.lean = { fwd: c.thrustHips ? 0 : i.torso, side: 0 };
+    c.sink = this.contact ? Math.max(sink, READY_SINK) : sink;
+    c.lean = { fwd: i.torso, side: 0 };
     // Gang Beasts arms: holding a button raises that arm toward the aim and grabs whatever the hand touches
     c.armL = i.armL; c.armR = i.armR;
     c.gripL = i.armL > 0.5; c.gripR = i.armR > 0.5;
@@ -120,10 +122,11 @@ export class HumanBrain implements Brain {
     const me = p.athletes[p.self];
     const hx = Math.sin(me.heading), hz = Math.cos(me.heading);
     let best = Infinity, bestCos = -1;
+    this.nearest = undefined;
     p.athletes.forEach((a) => {
       if (a.team === me.team || a.down) return;
       const dx = a.com[0] - me.com[0], dz = a.com[2] - me.com[2], d = Math.hypot(dx, dz);
-      if (d < best) { best = d; bestCos = d > 1e-6 ? (dx * hx + dz * hz) / d : 1; }
+      if (d < best) { best = d; bestCos = d > 1e-6 ? (dx * hx + dz * hz) / d : 1; this.nearest = a; }
     });
     return this.contact ? best < CONTACT_OFF && bestCos > AHEAD_OFF : best < CONTACT_ON && bestCos > AHEAD_ON;
   }

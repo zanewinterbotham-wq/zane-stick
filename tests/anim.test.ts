@@ -297,27 +297,30 @@ describe('procedural animator', () => {
     expect(runs[1].out).toEqual(runs[0].out);
   });
 
-  it('one press runs a whole hip thrust: it rises out of a sink and a lean (priority over both), punches the arms forward, then ends; holding changes nothing', () => {
+  it('one press runs a whole hip thrust: upright it rises onto the balls of the feet, from lowered pads it keeps their angle and the hips low; the arms cock back so the pads lead; holding changes nothing', () => {
     const sunk = (c: Commands) => { c.contactMode = true; c.sink = 1; c.lean.fwd = 1; };
-    const press = (hold: number) => {
+    const press = (hold: number, low: boolean) => {
       const r = kinematicRig(), i = (n: string) => r.muscles.index(n), out: number[] = [];
-      run(r, 1, (_t, c) => sunk(c));
+      run(r, 1, (_t, c) => { if (low) sunk(c); });
       const at = { h0: r.frame.root.height, p0: r.frame.root.pitch, k0: r.frame.q[i('kneeL.flex')], thrust: 0, h: 0, p: 0, k: 0, sh: 0 };
-      run(r, 2, (t, c) => { sunk(c); c.thrustHips = t < 1 + hold; }, (t) => {
+      run(r, 2, (t, c) => { if (low) sunk(c); c.thrustHips = t < 1 + hold; }, (t) => {
         out.push(...r.frame.q, r.frame.root.height, r.frame.root.vel[2]);
-        // late in the thrust: the lunge is over and the rise stands tall on the balls of the feet
+        // late in the thrust: the lunge is over and the hips have extended
         if (Math.abs(t - 1.75) < DT / 2) Object.assign(at, { thrust: r.frame.root.thrust, h: r.frame.root.height, p: r.frame.root.pitch, k: r.frame.q[i('kneeL.flex')], sh: r.frame.q[i('shoulderL.flex')] });
       }, 1);
       return { ...at, end: r.frame.root.thrust, out, stand: r.plan.standHeight };
     };
-    const tap = press(0.05), held = press(2);
+    const up = press(0.05, false), tap = press(0.05, true), held = press(2, true);
+    console.log('thrust upright', { h: up.h, p: up.p }, 'from lowered pads', { h0: tap.h0, h: tap.h, p0: tap.p0, p: tap.p, k0: tap.k0, k: tap.k, sh: tap.sh, stand: tap.stand });
+    expect(up.h).toBeGreaterThan(up.stand);      // upright: up on the balls of the feet, as before
+    expect(up.p).toBeLessThan(0.2);
     expect(tap.thrust).toBeGreaterThan(0.95);
-    expect(tap.h).toBeGreaterThan(tap.h0 + 0.2);
-    expect(tap.h).toBeGreaterThan(tap.stand);
-    expect(tap.p).toBeLessThan(tap.p0 - 0.5);
-    expect(tap.k).toBeLessThan(tap.k0 - 0.5);
-    expect(tap.sh).toBeGreaterThan(1.3);
-    expect(tap.end).toBeLessThan(0.05);   // over by itself
+    expect(tap.h).toBeGreaterThan(tap.h0 + 0.1); // the hips extend out of the crouch...
+    expect(tap.h).toBeLessThan(tap.stand - 0.1); // ...but stay low behind the pads
+    expect(tap.p).toBeGreaterThan(0.45);         // the trunk keeps the pads' angle (capped, rising a little)
+    expect(tap.k).toBeLessThan(tap.k0 - 0.3);
+    expect(tap.sh).toBeLessThan(0);              // arms cocked back, out of the hit
+    expect(tap.end).toBeLessThan(0.05);          // over by itself
     expect(held.out).toEqual(tap.out);
   });
 

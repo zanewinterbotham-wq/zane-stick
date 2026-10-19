@@ -23,7 +23,7 @@ describe('HumanBrain', () => {
     expect(b.think(perceive(view(0, -2))).contactMode).toBe(false);   // behind
   });
 
-  it('lowering the pads leans and sinks together; thrust overrides both; an arm button raises and grips toward the camera aim', () => {
+  it('lowering the pads leans and sinks together, and a thrust keeps them; an arm button raises and grips toward the camera aim', () => {
     const b = new HumanBrain();
     b.latest = input({ torso: 0.5 });
     let c = b.think(perceive(view(0, 20)));
@@ -33,7 +33,7 @@ describe('HumanBrain', () => {
     expect([c.lean.fwd, c.sink]).toEqual([-0.5, 0]);                    // raised pads: upright, no sink
     b.latest = input({ torso: 1, held: new Set(['thrust']) });
     c = b.think(perceive(view(0, 3)));
-    expect([c.thrustHips, c.sink, c.lean.fwd]).toEqual([true, 0, 0]);
+    expect([c.thrustHips, c.sink, c.lean.fwd]).toEqual([true, 0.6, 1]);       // the thrust fires out along the pads
     b.latest = input({ armL: 1, cameraYaw: Math.PI / 2, aimPitch: 0.3 });
     c = b.think(perceive(view(0, 20)));
     expect([c.armL, c.gripL, c.armR, c.gripR]).toEqual([1, true, 0, false]);

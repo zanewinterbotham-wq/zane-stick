@@ -21,6 +21,8 @@ export interface Commands {
   shoot: boolean;
   sink: number;                    // hip sink depth 0..1
   thrustHips: boolean;
+  /** Shoulder a hip thrust leads with (+1 left, −1 right; 0: the forward foot's). */
+  shoulder: -1 | 0 | 1;
   driveLegs: number;               // 0..1
   chopFeet: boolean;
   lean: { fwd: number; side: number }; // −1..1 (side + = left)
@@ -38,7 +40,7 @@ export interface Commands {
 export function neutralCommands(): Commands {
   return {
     move: { x: 0, z: 0 }, face: null, gait: 'jog', contactMode: false,
-    armL: 0, armR: 0, gripL: false, gripR: false, wrap: false, shoot: false, sink: 0, thrustHips: false,
+    armL: 0, armR: 0, gripL: false, gripR: false, wrap: false, shoot: false, sink: 0, thrustHips: false, shoulder: 0,
     driveLegs: 0, chopFeet: false, lean: { fwd: 0, side: 0 }, headTuck: false, plantCut: 0, dive: false, jump: false, carry: 0, aim: null,
   };
 }
