@@ -243,7 +243,7 @@ All of it ends in per-joint muscle targets plus feed-forward torques, limited by
 - **Contact behaviours**: arm reach, shoot hands and wrap reshape arm targets; grips form only where a
   hand touches something (`World.updateGrips`) and break when the constraint force exceeds grip (or
   jersey) strength; sink lowers the COM target and leans the trunk; thrust hips raises it and pulls the
-  trunk upright; drive legs = sprint gait; dive = load, explode, fly phases with balance released.
+  trunk upright (the balance layer's share; the animation keeps lowered pads' angle, §6.5); drive legs = sprint gait; dive = load, explode, fly phases with balance released.
 - **Gains** are tuned offline by CMA-ES (`bench/tune`) over standing, walking, jogging, running, chop
   steps and pushes from four directions at several presets. They are capped for stability at a 240 Hz
   reference so every preset uses the same gains.
@@ -305,7 +305,14 @@ player thinks about hitting, not balancing; hits and tackles still come out of t
   - hip thrust: one press runs the whole thrust (0.8 s: lunge, drive and rise; holding changes nothing). Off
     contact it lunges forward (the carry stands in for the push off the turf, up to 10 m/s², ~1 m in 0.5 s from
     standing); in contact the legs drive ~1 body weight forward for 0.5 s, then half that to its end, and the
-    arms lift what they hold;
+    arms lift what they hold. It fires out along the pads (owner request 2026-10-18): upright it rises onto the toes;
+    from lowered pads the trunk keeps their angle (capped ~46°, coming up a little, and on contact uncoiling to an
+    upright thrust's lean) and the hips stay low behind them instead of standing up. The pads lead: the arms cock
+    back, the shoulders protract and the trunk turns about its own axis to lead with the near shoulder
+    (`Commands.shoulder`, the brain's choice toward the opponent, else the forward foot's), the neck extends and,
+    from lowered pads, neck and trunk bend the head away from that shoulder. Over 60 thrust hits on a standing or
+    jogging-in opponent (tests/thrust.test.ts) the pads take 0.72 of the contact impulse (was 0.50), the head 0.00
+    (was 0.07);
   - pad level: driving legs push along the foot → trunk line (a low athlete drives forward and up, an upright
     one mostly up), a low drive lifts with the arms, shoot/reach arms are raised by the trunk's lean; the knock
     counts being lifted (upward force from opponents beyond 0.2 body weight unloads the feet) and a low athlete's

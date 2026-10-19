@@ -243,7 +243,8 @@ export class World {
       const f: Vec3 = [0, 1, 2].map((j) => m * SUP.launchKv * (r.vel[j] - s.comVel[j])) as Vec3, n = Math.hypot(...f), lim = m * (r.jump === 'launch' ? lerp(SUP.jump[0], SUP.jump[1], clamp(Math.hypot(s.comVel[0], s.comVel[2]) - 2.5, 0, 1)) : SUP.launch);
       a.carryForce = f.map((x) => x * c * (n > lim ? lim / n : 1)) as Vec3;
     } else if (c > 0) {
-      // a hip-thrust lunge is a take-off too: the carry stands in for the explosive push off the turf
+      // a hip-thrust lunge is a take-off too: the carry stands in for the explosive push off the turf (along the turf,
+      // where the pads point once projected on it: never down into it, and the rise is the legs' own)
       const kv = r.thrust > 0 ? SUP.launchKv : SUP.kv;
       let fx = m * kv * (r.vel[0] - s.comVel[0]), fz = m * kv * (r.vel[2] - s.comVel[2]);
       const n = Math.hypot(fx, fz), lim = m * (r.thrust > 0 ? SUP.lunge : S.carryAccel), sp = Math.hypot(s.comVel[0], s.comVel[2]);
@@ -291,7 +292,9 @@ export class World {
       // solves the legs), and a lean into a turn, which takes the whole body: turning the pelvis through only part of
       // it left the legs solved for hips at the wrong heights, one foot hanging off the turf and the other striking it
       const fp = f + (1 - f) * off * clamp((Math.hypot(s.comVel[0], s.comVel[2]) - 3) / 3, 0, 1), fr = f + (1 - f) * off;
-      const e = qlog(qmul(orient(r.heading, fp * r.pitch, fr * r.roll), qconj([q[0], q[1], q[2], q[3]])));
+      // the thorax also takes a strike's side bend and, about its own long axis (the spine's rotation), its twist
+      const o = f === 1 ? qmul(orient(r.heading, fp * r.pitch, fr * r.roll + r.bank), qaxis([0, 1, 0], r.twist)) : orient(r.heading, fp * r.pitch, fr * r.roll);
+      const e = qlog(qmul(o, qconj([q[0], q[1], q[2], q[3]])));
       this.scene.applyWrench(a.index, i, [0, 0, 0], [kUp * e[0] - cUp * wb[0], SUP.yaw * (kUp * e[1] - cUp * wb[1]), kUp * e[2] - cUp * wb[2]]);
     }
   }
@@ -352,7 +355,7 @@ export class World {
     // knock, nor is the trunk still on its way into or out of one.
     const ti = a.segIndex.get('thorax') ?? a.segIndex.get('trunk')!, q = s.segQuat.subarray(4 * ti, 4 * ti + 4);
     const up = qrot([q[0], q[1], q[2], q[3]], [0, 1, 0]);
-    const upD: Vec3 = r ? qrot(orient(r.heading, r.pitch, r.roll), [0, 1, 0]) : [0, 1, 0];
+    const upD: Vec3 = r ? qrot(orient(r.heading, r.pitch, r.roll + r.bank), [0, 1, 0]) : [0, 1, 0];
     const tilt = Math.min(Math.acos(clamp(up[1], -1, 1)), Math.acos(clamp(up[0] * upD[0] + up[1] * upD[1] + up[2] * upD[2], -1, 1)));
     const knockTilt = clamp((tilt - S.tiltStart * T) / Math.max(1e-6, (S.tiltEnd - S.tiltStart) * T), 0, 1);
     // both feet off the turf: a sprint stride's flight is allowed, longer means the athlete was lifted or launched

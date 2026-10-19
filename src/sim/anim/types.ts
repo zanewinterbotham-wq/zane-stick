@@ -19,6 +19,10 @@ export interface RootTarget {
   jump: 'none' | 'load' | 'launch' | 'flight';
   /** Hip-thrust level 0..1: the legs drive the body up, so the posture support leaves the weight to them. */
   thrust: number;
+  /** Thorax yaw relative to the heading (rad, + left): a near-shoulder strike turns the trunk, the pelvis keeps heading. */
+  twist: number;
+  /** Thorax roll relative to the trunk's (rad, + left): the strike's head-away side bend. */
+  bank: number;
 }
 
 /** How much of its weight support the posture support may give (0..1): none through a dive, a jump or a hip thrust,
@@ -51,7 +55,7 @@ export interface Animator {
 
 export const newFrame = (n: number): AnimFrame => ({
   q: new Float64Array(n), qd: new Float64Array(n), gain: new Float64Array(n).fill(1),
-  root: { vel: [0, 0, 0], height: 1, heading: 0, pitch: 0, roll: 0, dive: 'none', jump: 'none', thrust: 0 },
+  root: { vel: [0, 0, 0], height: 1, heading: 0, pitch: 0, roll: 0, dive: 'none', jump: 'none', thrust: 0, twist: 0, bank: 0 },
   planted: [true, true], phase: 0, clip: 'idle',
 });
 

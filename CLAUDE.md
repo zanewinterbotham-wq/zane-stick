@@ -47,8 +47,8 @@ Engine comparison: `docs/physics-benchmark.md`.
 - Layers: Brain → `Commands` → MotorController → activations → Muscles → PhysicsEngine.
 
 ## Commands
-- `npm run dev` — Vite dev server (`?scenario=stand|push|walk|jog|sprint|cut|hit` for headless-style views,
-  `&hp=2.5` sets the hit scenario's hit power,
+- `npm run dev` — Vite dev server (`?scenario=stand|push|walk|jog|sprint|cut|hit|thrust` for headless-style views,
+  `&hp=2.5` sets the hit scenario's hit power, `&torso=0..1` the thrust scenario's pad level,
   `?bench=1` runs the in-game benchmark)
 - Multiplayer locally: `npm run dev:rooms` (room server, 127.0.0.1:8787) plus `npm run dev`, then two windows:
   Multiplayer → Host a game in one, the code (or `?join=CODE`) in the other (docs/multiplayer.md)

@@ -12,7 +12,7 @@ import type { Rng } from '../rng';
 import type { BotDifficulty } from './carrier';
 import { catchPoint, incoming } from './returner';
 import { blockerInWay, shed, shedSide } from './shed';
-import type { AthleteView, Brain, Perception } from './types';
+import { leadShoulder, type AthleteView, type Brain, type Perception } from './types';
 
 /** Speed the intercept is planned at (m/s) and its longest lead (s); aim this far to the carrier's goal side
  *  so a cut-back stays in front (m). */
@@ -161,7 +161,7 @@ export class TacklerBrain implements Brain {
     c.sink = 0.35; c.lean.fwd = 0.35; c.driveLegs = d < WRAP ? 1 : 0;
     c.armL = c.armR = 1; c.gripL = c.gripR = true; c.wrap = d < WRAP;
     c.aim = [t.pelvis[0], t.pelvis[1] + 0.3, t.pelvis[2]];
-    if (d < THRUST) { c.thrustHips = true; c.sink = 0; c.lean.fwd = 0; }
+    if (d < THRUST) { c.thrustHips = true; c.shoulder = leadShoulder(me, t); c.sink = 0; c.lean.fwd = 0; }
     // slipping away just out of reach: lay out for him
     const later = Math.hypot(dx + rvx * 0.3, dz + rvz * 0.3);
     if (!this.dived && sp > DIVE_RUN && (closing < DIVE_CLOSE || later > DIVE_MISS) && this.onLine(me, dx + rvx * DIVE_T, dz + rvz * DIVE_T, sp)) {

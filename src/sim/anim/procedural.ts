@@ -68,6 +68,17 @@ const DIVE = { load: [0.3, 0.08], push: [0.25, 0.12], vStand: 3.4, vy: [1.6, 0.4
 const LUNGE = { time: 0.5, v: 5, accel: 12 } as const;
 /** One press's whole hip thrust (s): the lunge and drive, then the rise up onto the balls of the feet. */
 const THRUST_T = 0.8;
+/** A thrust fires out along the pads (owner request 2026-10-18; docs/realism-sources.md S4, hip thrust). From lowered
+ *  pads the trunk keeps the pitch it had at the press, up to `pitchMax` (rad, ~46°, a sprint start's first-step trunk:
+ *  steeper drove the head at the turf), coming up by `rise` (rad) over the thrust, and on contact all the way to an
+ *  upright thrust's lean (`uncoil` of the way, rad: the hips roll through the hit); fully low from a pitch of `low`, not
+ *  at all below `upright` (rad: there it is the upright thrust, forward and up onto the toes). The pelvis keeps `keep`
+ *  of its drop at the press, at most `dropMax` (m): the hips extend behind the pads instead of standing up. The neck
+ *  extends by `neck` more (rad: eyes up). Near-shoulder strike: the trunk turns `turn` (rad, within the thoracic
+ *  spine's ±30°) about its own axis so the leading shoulder's pad is ahead, the neck turns the eyes back to the front,
+ *  and from lowered pads the trunk (`bank`, rad, thoracic and lumbar side bend) and neck (`neckLat`, rad) bend the head
+ *  away from that shoulder, out of the hit. */
+const THRUST = { pitchMax: 0.8, rise: 0.3, uncoil: 1, upright: 0.2, low: 0.7, keep: 0.5, dropMax: 0.15, neck: 0.4, turn: 0.5, bank: 0.6, neckLat: 0.6 } as const;
 /** Jump [S4]. Standing: counter-movement (s), push (s) and pelvis dip (m) (a maximal counter-movement jump dips
  *  ~0.3–0.4 m in ~0.4 s and pushes for ~0.25 s). From a run (faster than `runFrom`, m/s) it is a one-foot take-off off
  *  the next stride, a hurdler's: push time (s). The take-off's vertical target (m/s) is above what the push reaches, so
@@ -122,11 +133,13 @@ export class ProceduralAnimator implements Animator {
   private vel: Vec3 = [0, 0, 0]; private vPlan: [number, number] = [0, 0]; private aFwd = 0; private aLat = 0;
   private height: number; private pitch = 0; private roll = 0; private bend = 0; private dropF = 0.008; private dropV = 0; private pitchV = 0;
   private lv = { gait: 0, stance: 0, sink: 0, chop: 0, drive: 0, thrust: 0, tuck: 0, leanF: 0, leanS: 0, reachL: 0, reachR: 0,
-    wrap: 0, shoot: 0, carryL: 0, carryR: 0, contact: 0, cut: 0, aimL: 0, aimR: 0, bp: 0, shuffle: 0, pullL: 0, pullR: 0 };
+    wrap: 0, shoot: 0, carryL: 0, carryR: 0, contact: 0, cut: 0, aimL: 0, aimR: 0, bp: 0, shuffle: 0, pullL: 0, pullR: 0, hit: 0 };
   private aimAng = [[0, 0], [0, 0]];
   private cutT = 0; private cutSide = 0; private cutDir: [number, number] = [0, 1]; private cutSpeed = 0; private prevCut = 0;
   private turn = 0;
   private lungeT = 0; private thrustT = 0; private prevThrust = false;
+  /** The thrust's pads pitch (rad) and hip drop (m) at the press, how low it is (0..1), the shoulder it leads with. */
+  private thrustP = 0; private thrustD = 0; private thrustLow = 0; private thrustSide = -1;
 
   // whole-body modes and cross-fades
   private mode: Mode = 'loco'; private modeT = 0; private settleT = 0; private standT = 0; private prevDive = false;
@@ -358,6 +371,8 @@ export class ProceduralAnimator implements Animator {
     out.root.vel[1] = dive === 'launch' ? this.dv.vy : jump === 'launch' ? this.jv.vy : this.mode === 'loco' ? -this.dropV : 0;
     out.root.dive = dive; out.root.jump = jump;
     out.root.thrust = this.mode === 'loco' ? this.lv.thrust : 0;
+    out.root.twist = this.mode === 'loco' ? -THRUST.turn * this.thrustSide * this.lv.thrust : 0;
+    out.root.bank = this.mode === 'loco' ? -THRUST.bank * this.thrustSide * this.thrustLow * this.lv.thrust : 0;
     out.clip = this.mode === 'loco' ? this.clip : this.mode;
   }
 
@@ -437,7 +452,12 @@ export class ProceduralAnimator implements Animator {
     // One press, one whole hip thrust: it lunges forward along the heading, drives and rises, and holding the button
     // changes nothing. Against an opponent the legs stay planted and drive instead of lunging (stepping would leave
     // no leg to push with).
-    if (cmd.thrustHips && !this.prevThrust && this.thrustT <= 0 && !hold) { this.thrustT = THRUST_T; this.lungeT = LUNGE.time; }
+    // The press takes the pads' angle and the hips' depth it fires out from, and the shoulder it leads with (the
+    // brain's near shoulder, else the forward foot's).
+    if (cmd.thrustHips && !this.prevThrust && this.thrustT <= 0 && !hold) {
+      this.thrustT = THRUST_T; this.lungeT = LUNGE.time; this.thrustP = Math.min(this.pitch, THRUST.pitchMax); this.thrustD = this.dropF;
+      this.thrustLow = s01((this.thrustP - THRUST.upright) / (THRUST.low - THRUST.upright)); this.thrustSide = cmd.shoulder || this.leadSide();
+    }
     this.prevThrust = cmd.thrustHips;
     this.thrustT = hold ? 0 : Math.max(0, this.thrustT - dt);
     const thrusting = this.thrustT > 0;
@@ -482,6 +502,7 @@ export class ProceduralAnimator implements Animator {
     lv.chop = follow(lv.chop, cmd.chopFeet && !hold ? 1 : 0, dt, 0.1);
     lv.drive = follow(lv.drive, hold ? 0 : clamp(cmd.driveLegs, 0, 1), dt, 0.12);
     lv.thrust = follow(lv.thrust, thrusting ? 1 : 0, dt, 0.15);
+    lv.hit = follow(lv.hit, thrusting && v.playerContact ? 1 : 0, dt, 0.03);
     lv.tuck = follow(lv.tuck, cmd.headTuck ? 1 : 0, dt, 0.1);
     lv.leanF = follow(lv.leanF, leanT, dt, 0.12);
     lv.leanS = follow(lv.leanS, clamp(cmd.lean.side, -1, 1), dt, 0.12);
@@ -529,8 +550,9 @@ export class ProceduralAnimator implements Animator {
     // a deep forward lean sits the hips back and down on bent knees, keeping the weight over the feet
     let drop = lerp(0.008, lerp(0.03, 0.025, run), gl) + lv.stance * (0.12 + 0.16 * lv.sink) + 0.18 * lv.sink * (1 - lv.stance)
       + 0.05 * bp + 0.07 * shuffle + 0.08 * lv.cut + 0.12 * lv.drive + 0.06 * lv.chop + 0.2 * leanDn;
-    // thrust: hips, knees and ankles extend until the athlete is up on the balls of his feet
-    drop = clamp(lerp(drop, -0.02, lv.thrust), -0.04, 0.4);
+    // thrust: hips, knees and ankles extend until the athlete is up on the balls of his feet; from lowered pads the
+    // extended legs stay inclined behind the hips, so the pelvis stays lower
+    drop = clamp(lerp(drop, lerp(-0.02, Math.min(THRUST.keep * this.thrustD, THRUST.dropMax), this.thrustLow), lv.thrust), -0.04, 0.4);
     // The hips drop no faster than gravity can take them (the muscles let go, nothing pulls the body down) and stop
     // on the legs at up to ~2.5 g, so the pose never folds the legs ahead of the falling body and lifts the feet.
     const eD = drop - this.dropF, vStop = Math.sign(eD) * Math.sqrt(2 * 2.5 * G * Math.abs(eD)), aD = (vStop > this.dropV ? 0.9 : 2.5) * G * dt;
@@ -548,18 +570,21 @@ export class ProceduralAnimator implements Animator {
     // Forward lean: 0.35 rad per unit near upright, steepening so a full lean brings the trunk level
     // with the turf (cubic, so the light leans tackles are built on keep their feel). Leaning back stays small.
     pitchT += 0.35 * lv.leanF + (lv.leanF > 0 ? Math.max(0, LEAN_MAX - pitchT - 0.35) * lv.leanF ** 3 : 0);
-    // the trunk rises out of the sink, still leaning slightly into whatever it drives; a pull sits back into it
-    pitchT = clamp(lerp(pitchT, 0.15, lv.thrust) - 0.25 * Math.max(lv.pullL, lv.pullR), -0.4, LEAN_MAX);
+    // the trunk rises out of the sink, still leaning slightly into whatever it drives, or from lowered pads keeps
+    // their angle, coming up a little through the thrust; a pull sits back into it
+    const thrustPitch = lerp(Math.max(0.15, this.thrustP - THRUST.rise * (1 - this.thrustT / THRUST_T)), 0.15, THRUST.uncoil * lv.hit);
+    pitchT = clamp(lerp(pitchT, thrustPitch, lv.thrust) - 0.25 * Math.max(lv.pullL, lv.pullR), -0.4, LEAN_MAX);
     // leaning in no faster than the trunk can follow (~1 s to a full lean), so the support never reads the lag
     // behind a commanded lean as being knocked over
     const prevPitch = this.pitch;
-    this.pitch = Math.min(follow(this.pitch, pitchT, dt, 0.08), this.pitch + LEAN_RATE * dt);
+    this.pitch = Math.min(follow(this.pitch, pitchT, dt, lerp(0.08, 0.03, lv.hit)), this.pitch + LEAN_RATE * dt);
     this.pitchV = (this.pitch - prevPitch) / dt;
     // The world's support turns the pelvis through only part of a posture lean (as the balance controller does):
     // the spine flexes through the rest, and the legs are solved for that pelvis.
     // ... only near standstill: running, the pelvis pitches with the trunk (a spine-flexed lean at speed put the feet
     // in the wrong place on a cut and tripped the runner), so the share fades out from 3 to 6 m/s
-    this.bend = follow(this.bend, PELVIS_REST * Math.max(0, pitchT - runP) * clamp((6 - vf) / 3, 0, 1), dt, 0.08);
+    // (a low thrust's lean is the pads' angle, not a sprint start's: the spine keeps its share through the lunge)
+    this.bend = follow(this.bend, PELVIS_REST * Math.max(0, pitchT - runP * (1 - lv.thrust * this.thrustLow)) * clamp((6 - vf) / 3, 0, 1), dt, 0.08);
     // lean into a turn or cut as a runner does: tan(roll) = sideways acceleration / g
     const rollT = Math.atan(this.aLat / G) + 0.3 * lv.leanS;
     this.roll = follow(this.roll, clamp(rollT, -0.4, 0.4), dt, 0.08);
@@ -650,9 +675,15 @@ export class ProceduralAnimator implements Animator {
 
     // ---- trunk, head, arms
     const ready = Math.max(lv.stance, shuffle, 0.7 * bp, 0.6 * lv.contact * (1 - run));
-    this.add('thoracic.flex', (0.15 * lv.wrap + 0.1 * lv.stance) * (1 - lv.thrust) + 0.4 * this.bend);
-    this.add('lumbar.flex', 0.1 * lv.sink - 0.2 * lv.thrust + 0.6 * this.bend);
-    this.head(-0.9 * this.pitch + 0.35 * lv.tuck);
+    // an upright thrust straightens the back; from lowered pads the back keeps their angle
+    const tUp = lv.thrust * (1 - this.thrustLow);
+    this.add('thoracic.flex', (0.15 * lv.wrap + 0.1 * lv.stance) * (1 - tUp) + 0.4 * this.bend);
+    this.add('lumbar.flex', 0.1 * lv.sink - 0.2 * tUp + 0.6 * this.bend);
+    this.head(-0.9 * this.pitch + 0.35 * lv.tuck - THRUST.neck * lv.thrust);
+    // near-shoulder strike: +rotL turns the trunk left (right shoulder forward), +latL bends the head left
+    const ts = this.thrustSide * lv.thrust;
+    this.add('thoracic.rotL', -THRUST.turn * ts); this.add('neckLow.rotL', 0.6 * THRUST.turn * ts); this.add('neckUp.rotL', 0.4 * THRUST.turn * ts);
+    this.add('neckLow.latL', -THRUST.neckLat * ts); this.add('thoracic.latL', -0.6 * THRUST.bank * this.thrustLow * ts); this.add('lumbar.latL', -0.4 * THRUST.bank * this.thrustLow * ts);
     const A = lerp(lerp(0.25, 0.85, clamp(sp / 9, 0, 1)) * gl, 0.15 * gl, ready);
     const c = Math.cos(TAU * p0);
     for (const arm of this.arms) {
@@ -666,15 +697,17 @@ export class ProceduralAnimator implements Animator {
       // to the thorax), so a low athlete punches up and under instead of at the turf
       fl = lerp(fl, 1.35 + Math.max(0, this.pitch), lv.shoot); ab = lerp(ab, -0.05, lv.shoot); rt = lerp(rt, 0.1, lv.shoot); el = lerp(el, 0.1, lv.shoot); wr = lerp(wr, -0.6, lv.shoot);
       fl = lerp(fl, 1.45 + Math.max(0, this.pitch), reach); ab = lerp(ab, 0.15, reach); rt = lerp(rt, 0, reach); el = lerp(el, 0.25, reach);
-      // thrust: the arms punch forward, or lift what they are wrapped around (elbows stay bent)
-      fl = lerp(fl, 1.4, lv.thrust); ab = lerp(ab, 0.2, lv.thrust); el = lerp(el, lerp(0.3, 1.2, lv.wrap), lv.thrust);
+      // thrust: the arms cock back, elbows in and hands by the hips (ready to rip up through), so the pads lead; arms
+      // wrapped around an opponent lift him instead (elbows stay bent). Hands at the chest still met him before the pads.
+      fl = lerp(fl, lerp(-0.8, 1.4, lv.wrap), lv.thrust); ab = lerp(ab, lerp(0.15, 0.2, lv.wrap), lv.thrust); rt = lerp(rt, lerp(0.3, rt, lv.wrap), lv.thrust); el = lerp(el, lerp(1.3, 1.2, lv.wrap), lv.thrust);
       const k = arm.side > 0 ? 0 : 1, aimW = this.aimArm(v, cmd, arm, k, dt);
       fl = lerp(fl, this.aimAng[k][0], aimW); ab = lerp(ab, this.aimAng[k][1], aimW); el = lerp(el, 0.2, aimW);
       // pull: shoulder extension and a hard elbow bend, the hand drawn back to the ribs
       const pull = k === 0 ? lv.pullL : lv.pullR;
       fl = lerp(fl, 0.3, pull); ab = lerp(ab, 0.2, pull); rt = lerp(rt, 0.3, pull); el = lerp(el, 2.0, pull);
       this.setArm(arm, fl, ab, rt, el, wr);
-      this.add(`sc${arm.side > 0 ? 'L' : 'R'}.protr`, 0.15 * Math.max(lv.wrap, lv.shoot, reach));
+      // a thrust rolls the shoulders forward (scapular protraction to its end), so the pads are what meets the opponent
+      this.add(`sc${arm.side > 0 ? 'L' : 'R'}.protr`, Math.max(0.15 * Math.max(lv.wrap, lv.shoot, reach), 0.3 * lv.thrust));
       // a pulling arm is held loosely: the row itself is the tracking controller's pull, sized to what the fist holds,
       // and a stiff arm still swinging to its reach pose would tear the fresh grip open
       const g = lerp(lerp(0.5, 1, clamp(Math.max(lv.contact, carry, reach, lv.wrap, lv.shoot, lv.thrust, aimW), 0, 1)), 0.3, pull);
@@ -688,6 +721,12 @@ export class ProceduralAnimator implements Animator {
     out.phase = this.phase - Math.floor(this.phase);
     this.clip = lv.cut > 0.5 ? 'cut' : lv.stance > 0.5 ? 'stance' : lv.chop > 0.5 ? 'chop' : lv.drive > 0.5 ? 'drive'
       : gl < 0.5 ? 'idle' : bp > 0.5 ? 'backpedal' : shuffle > 0.5 ? 'shuffle' : bad >= 0 ? 'hobble' : sp < 2.2 ? 'walk' : 'run';
+  }
+
+  /** Side (1 left, −1 right) of the foot farther forward, planted or about to land; the right on a tie. */
+  private leadSide() {
+    const [l, r] = this.legs.map((L) => (L.stance ? L.F[1] : L.tdF[1]));
+    return l > r + 0.02 ? 1 : -1;
   }
 
   private head(pitch: number) { this.add('neckLow.flex', 0.6 * pitch); this.add('neckUp.flex', 0.4 * pitch); }

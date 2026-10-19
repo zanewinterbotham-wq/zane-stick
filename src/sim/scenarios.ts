@@ -5,7 +5,7 @@ import { ScriptBrain } from './brains/script';
 import { HandController } from './control/hand';
 import { TrackingController } from './control/tracking';
 import type { Commands, Gait } from './control/types';
-import type { Perception } from './brains/types';
+import { leadShoulder, type Perception } from './brains/types';
 import type { MuscleSet } from './muscles';
 import type { PhysicsSettings, WorldSetup, World } from './world';
 
@@ -71,6 +71,24 @@ export function supportRunScenario(physics: PhysicsSettings, gait: Gait | null, 
       }],
     },
     duration: opts.duration ?? 10,
+  };
+}
+
+/** A hip thrust from a set stance into a standing opponent 1.5 m ahead (the dev view's thrust hit): the torso input
+ *  (0 upright .. 1 pads fully down) as the human brain maps it, one press at 1.2 s leading with the near shoulder. */
+export function thrustHitScenario(physics: PhysicsSettings, torso: number): Scenario {
+  return {
+    setup: {
+      physics, seed: 1, assist: 0, support: { ...DEFAULT_SUPPORT },
+      athletes: [
+        { params: DEFAULT_ATHLETE, pos: [0, 0, 0], yaw: 0, team: 0, controller: tracked, brain: new ScriptBrain((t, p, c) => {
+          c.contactMode = true; c.sink = Math.max(0.6 * torso, 0.25); c.lean.fwd = torso;
+          c.thrustHips = t >= 1.2 && t < 1.3; c.shoulder = leadShoulder(p.athletes[p.self], p.athletes[1 - p.self]);
+        }) },
+        { params: DEFAULT_ATHLETE, pos: [0, 0, 1.5], yaw: Math.PI, team: 1, controller: tracked, brain: new ScriptBrain(() => {}) },
+      ],
+    },
+    duration: 3,
   };
 }
 
