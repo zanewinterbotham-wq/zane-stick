@@ -1,6 +1,6 @@
 // Human brain: turns the latest input snapshot into Commands. Lives in the sim so humans and bots share
 // one interface; the browser shell writes `latest` once per render frame (no DOM access here).
-import { neutralCommands, type Commands } from '../control/types';
+import { neutralCommands, type Commands, type PassCmd } from '../control/types';
 import { clamp } from '../math';
 import { catchPoint, dropPoint, incoming, OVERHEAD } from './returner';
 import { leadShoulder, type AthleteView, type Brain, type Perception } from './types';
@@ -15,6 +15,8 @@ export interface HumanInput {
   aimPitch: number;                 // elevation of the camera's aim above the horizontal (rad)
   /** Side shuffle (Roblox-style shift lock): face the camera's way, so A / D shuffle and S backpedals. */
   shiftLock?: boolean;
+  /** A throw (docs/passing.md): the shell sets it on the frame its throw scheme fires; the brain passes each one on once. */
+  pass?: PassCmd | null;
 }
 
 /** Contact mode switches on when a tackle target is this close and roughly ahead, and off past the wider
@@ -40,6 +42,8 @@ export class HumanBrain implements Brain {
   contact = false;
   /** The nearest opponent who can be tackled (last think). */
   private nearest: AthleteView | undefined;
+  /** The last pass handed on: the shell's input stays `latest` over several steps, the throw is one. */
+  private passed: PassCmd | null = null;
 
   think(p: Perception): Commands {
     const c = neutralCommands();
@@ -77,6 +81,7 @@ export class HumanBrain implements Brain {
       c.driveLegs = i.sprint;
       if (c.driveLegs > 0.5) c.gait = 'sprint';
     }
+    if (i.pass && i.pass !== this.passed) { c.pass = i.pass; this.passed = i.pass; }
     this.reachLoose(p, c);
     // a ball coming down on him (a kick, a pop-up) or flying at him: the raised hands go to where it will be, both
     // to one point when both buttons are held (the diamond: the hands meet behind the ball)

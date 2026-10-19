@@ -8,6 +8,9 @@
 //   beyond one;
 // - dead in a team's own end zone: a touchback when the opponents put the ball there (a kick, their fumble) and it
 //   has not left it since, else a safety.
+// - a forward pass (docs/passing.md; a mode with a line of scrimmage): one, from behind the line; it is incomplete
+//   (dead, the rep over) when it touches the turf, a wall or a post before anyone holds it, an interception when the
+//   other team catches it (he runs it back), a completion when the passing team does; then the rules above.
 // A ball knocked loose stays live: any athlete recovers it by touching it with his trunk (diving on it) or with a
 // raised hand (picking it up, or catching it), then attacks his own way. A ball in the air is caught by chance
 // (catchTry); one that is muffed bounces off him physically and stays loose.
@@ -21,6 +24,7 @@ import { makeController } from '../drills/controllers';
 import { clamp, qrot, type Quat, type Vec3 } from '../math';
 import type { PhysicsEngine } from '../physics/engine';
 import { Rng } from '../rng';
+import type { PassRecord } from '../throw';
 import { World, type AthleteSetup, type WorldSetup } from '../world';
 import { attackDir, barrierProps, deadBall, inOwnEndZone, outside, scores } from './rules';
 import type { ModeDef, ModeOptions, PlayConfig, PlaySetup, Rules } from './types';
@@ -33,7 +37,10 @@ export interface Seats { human?: number; fixed?: readonly (Brain | null | undefi
 /** Stands still: a placeholder brain until the bots get theirs. */
 const STILL: Brain = { think: () => neutralCommands() };
 
-export type RepEnd = 'down' | 'touchdown' | 'safety' | 'touchback' | 'out' | 'time' | 'fieldgoal' | (string & {}) | null;
+export type RepEnd = 'down' | 'touchdown' | 'safety' | 'touchback' | 'out' | 'time' | 'fieldgoal' | 'incomplete' | (string & {}) | null;
+/** A play's forward pass: not thrown, in the air, caught by the passing team, by the other, or dead on the turf. */
+export type PassState = 'none' | 'air' | 'complete' | 'intercepted' | 'incomplete';
+export const PASS_STATES: readonly PassState[] = ['none', 'air', 'complete', 'intercepted', 'incomplete'];
 
 /** Segments that recover a loose ball: the trunk ('trunk' is the minimum body's fused one). */
 const TORSO = /^(pelvis|lumbar|thorax|trunk)$/;
@@ -97,6 +104,10 @@ export class Play {
   private readonly ballRef = { athlete: -1, seg: this.ball };
   /** The last catch attempt (HUD, tests). */
   lastCatch: CatchTry | null = null;
+  /** This play's forward pass (docs/passing.md): its state, the passer (−1: none yet) and the throw. */
+  pass: PassState = 'none';
+  passer = -1;
+  lastPass: PassRecord | null = null;
   /** Athletes whose catch of this pass failed: no new try until the ball leaves their reach or bounces. */
   private muffed = new Set<number>();
   /** When the loose ball last touched the turf or a barrier (world s). */
@@ -135,6 +146,8 @@ export class Play {
     const play = new Play(world, cfg, ps, r, brains, new Rng(rng.next() * 1e9), options, me, fixed);
     play.rep = rep;
     play.impetus = team;
+    world.passAllowed = (i) => play.passOk(i);
+    world.onPass = (rec) => play.passed(rec);
     for (let i = 0; i < brains.length; i++) if (!fixed[i]) brains[i] = play.roleBrain(i, botRngs[i]);
     play.preroll(holder);
     return play;
@@ -212,7 +225,10 @@ export class Play {
     }
     if (w.ballCarrier < 0) {
       const b = this.ballPos();
-      if (r.outOfBounds && b[1] < BALL_ON_TURF && outside(r, b[0], b[2])) { this.touchback = false; return this.dead(this.impetus, b[2], 'out'); }
+      if (r.outOfBounds && b[1] < BALL_ON_TURF && outside(r, b[0], b[2])) {
+        if (this.pass === 'air') return this.incomplete();
+        this.touchback = false; return this.dead(this.impetus, b[2], 'out');
+      }
       this.loose();
     }
     this.mode.step?.(this);
@@ -246,6 +262,23 @@ export class Play {
     w.ballCarrier = -1; this.fumbler = h; this.clear = false; this.impetus = team; this.kicked = kick; this.muffed.clear();
     this.reassign();
   }
+
+  /** A pass from athlete i now: the mode has a line of scrimmage, none has been thrown, and the ball is behind it. */
+  passOk(i: number): boolean {
+    const los = this.mode.los;
+    return los !== undefined && !this.ended && this.passer < 0 && (los - this.ballPos()[2]) * attackDir(this.team(i)) >= 0;
+  }
+
+  /** The ball left the passer's hand (World.onPass): it is in the air, his team's, and he may not take it back until
+   *  it has been clear of him. */
+  private passed(rec: PassRecord) {
+    this.passer = rec.athlete; this.lastPass = rec; this.pass = 'air';
+    this.fumbler = rec.athlete; this.clear = false; this.kicked = false; this.muffed.clear(); this.impetus = this.team(rec.athlete);
+    this.reassign();
+  }
+
+  /** A pass on the turf (or a wall, a post, out of bounds) before anyone held it: dead, the rep over. */
+  private incomplete() { this.pass = 'incomplete'; this.end('incomplete'); }
 
   /** Loose ball: the first athlete to get it recovers it, with a trunk touching it (diving on it) or a raised hand
    *  (not on a broken arm) that touches it or is within CATCH_REACH of it (picking it up, or catching it in the air:
@@ -281,6 +314,7 @@ export class Play {
     });
     for (const c of w.scene.contacts()) for (const [p, o] of [[c.a, c.b], [c.b, c.a]] as const) {
       if (p.athlete >= 0 || p.seg !== this.ball) continue;
+      if (o.athlete < 0 && this.pass === 'air') return this.incomplete();
       if (o.athlete < 0) { this.turfAt = w.time; this.muffed.clear(); continue; } // a bounce: everyone may try again
       // the trunk, or a raised arm the ball strikes (trapped against the forearms, as a catch often is)
       const name = w.athletes[o.athlete].plan.segments[o.seg].name, arm = /^(?:hand|forearm|upperArm)([LR])$/.exec(name), h = arm?.[1] === 'L' ? 0 : 1;
@@ -299,7 +333,9 @@ export class Play {
     }
     if (by < 0) return;
     this.tuck(by);
-    if (!this.kicked) this.recoveredBy = by;
+    // a caught pass is a completion or an interception, not a recovery
+    if (this.pass === 'air') this.pass = this.team(by) === this.team(this.passer) ? 'complete' : 'intercepted';
+    else if (!this.kicked) this.recoveredBy = by;
     this.reassign();
   }
 

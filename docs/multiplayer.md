@@ -70,10 +70,11 @@ Implementation notes (src/net/, server/rooms/):
   countdown}. Guests build the same Play from it: the same slots are players' (a stand-in brain the guest never
   runs), so bodies and toughness match. A guest who joins mid-game gets the current one and watches.
 - `input` (guest → host, unreliable, binary): seq, HumanInput (move x/y, torso, sprint, armL, armR, cameraYaw,
-  aimPitch, shiftLock, the held action names as a bitmask in a fixed action order).
+  aimPitch, shiftLock, the held action names as a bitmask in a fixed action order, and a throw: its point and loft,
+  repeated in the next few inputs so a lost packet does not lose it).
 - `snap` (host → all, unreliable, binary): rep, tick, sim time, qpos as float32 for the whole scene, then meta per
   athlete (downBy, injury bits, knock, grip flags), ball carrier, play state (ended, verdict, `Play.note` such as
-  'BLOCKED'), every injury so far.
+  'BLOCKED', the pass state and the last throw), every injury so far.
 - `ev` (host → all, reliable, JSON): big hits (feel.ts: impulse and closing speed, so guests get the banner, shake
   and rumble from the host's numbers, not from replica contact forces) and a player leaving mid-rep.
 - `kick` (host → one guest): he is removed (the host ignores him from then on).

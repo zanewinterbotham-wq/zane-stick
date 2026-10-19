@@ -16,6 +16,7 @@ import { FUSE_RANGE_TRANSFER } from '../anatomy/data';
 import { GAIT_SPEED } from '../control/hand';
 import { neutralCommands, type BodyView, type Commands } from '../control/types';
 import { HOBBLE } from '../injury';
+import { THROW } from '../throw';
 import { clamp, lerp, qconj, qrot, wrapAngle, type Quat, type Vec3 } from '../math';
 import type { MuscleSet } from '../muscles';
 import { legIKInto } from './ik';
@@ -113,6 +114,25 @@ const ROLL_RATE = 8;
 /** Tracking gain a sprinter's swing leg keeps while its foot touches the turf late in the swing. */
 const SWING_SOFT = 0.1;
 interface Arm { side: 1 | -1; flex: number; abd: number; rot: number; elbow: number; wrist: number; seg: number }
+/** Arm angles [flexion, abduction, internal rotation, elbow flexion, wrist flexion] (rad, the same for either side). */
+type ArmQ = [number, number, number, number, number];
+/** Looking (Commands.look): the thorax's and the neck's largest turn (rad, their rotation ranges [S3]: thoracic 30°,
+ *  neck 35° + 45°) and how fast the turn follows (s). */
+const LOOK = { thorax: 0.52, neck: 1.4, tau: 0.08 };
+/** The throwing motion (docs/passing.md), over THROW's times: the throwing arm cocks (upper arm out level with the
+ *  shoulder, externally rotated, elbow at a right angle: the ball by the ear), whips through to the release (arm up and
+ *  forward over the shoulder, elbow nearly straight, the wrist flicking) and follows through down across the body; the
+ *  off arm points at the target, then pulls in. The hips and shoulders turn side-on to the target as the arm cocks
+ *  (the heading `turn` rad off it, the thorax `twist` further) and square up through the release, the shoulders a
+ *  little past. Shapes of an overhand pass (Rash & Shapiro 1995, J Appl Biomech 11:443; assumption: angles chosen to
+ *  look like it within the joints' ranges [S3]). */
+const PASS = {
+  cock: [0, 1.6, -1.5, 1.6, -0.5] as ArmQ, release: [1.6, 0.6, 0, 0.3, 0.3] as ArmQ, follow: [0.9, 0.3, 0.9, 0.6, 0.3] as ArmQ,
+  offCock: [1.3, 0.15, 0, 0.4, 0] as ArmQ, offRelease: [0.5, 0.2, 0.3, 1.6, 0] as ArmQ,
+  turn: [-0.7, 0.1, 0.25], twist: [-0.45, 0.35, 0.45],
+  /** The pose runs this far (s) ahead of THROW's times: the arm's tracking lag, so the hand is through at the release. */
+  lead: 0.09,
+};
 
 export class ProceduralAnimator implements Animator {
   private n: number;
@@ -135,6 +155,10 @@ export class ProceduralAnimator implements Animator {
   private lv = { gait: 0, stance: 0, sink: 0, chop: 0, drive: 0, thrust: 0, tuck: 0, leanF: 0, leanS: 0, reachL: 0, reachR: 0,
     wrap: 0, shoot: 0, carryL: 0, carryR: 0, contact: 0, cut: 0, aimL: 0, aimR: 0, bp: 0, shuffle: 0, pullL: 0, pullR: 0, hit: 0 };
   private aimAng = [[0, 0], [0, 0]];
+  /** Eyes on cmd.look: the thorax's and the neck's turn toward it (rad, + left), filtered. */
+  private look = { thorax: 0, neck: 0 };
+  /** The throwing motion's last pose (throwing arm, off arm, heading offset, thorax twist, hand) and its blend level. */
+  private pass = { arm: [0, 0, 0, 0, 0] as ArmQ, off: [0, 0, 0, 0, 0] as ArmQ, turn: 0, twist: 0, hand: 1, w: 0 };
   private cutT = 0; private cutSide = 0; private cutDir: [number, number] = [0, 1]; private cutSpeed = 0; private prevCut = 0;
   private turn = 0;
   private lungeT = 0; private thrustT = 0; private prevThrust = false;
@@ -379,7 +403,7 @@ export class ProceduralAnimator implements Animator {
     out.root.vel[1] = dive === 'launch' ? this.dv.vy : jump === 'launch' ? this.jv.vy : this.mode === 'loco' ? -this.dropV : 0;
     out.root.dive = dive; out.root.jump = jump;
     out.root.thrust = this.mode === 'loco' ? this.lv.thrust : 0;
-    out.root.twist = this.mode === 'loco' ? -THRUST.turn * this.thrustSide * this.lv.thrust : 0;
+    out.root.twist = this.mode === 'loco' ? -THRUST.turn * this.thrustSide * this.lv.thrust + this.pass.twist * this.pass.w + this.look.thorax : 0;
     out.root.bank = this.mode === 'loco' ? -THRUST.bank * this.thrustSide * this.thrustLow * this.lv.thrust : 0;
     out.clip = this.mode === 'loco' ? this.clip : this.mode;
   }
@@ -426,6 +450,12 @@ export class ProceduralAnimator implements Animator {
     if (cmd.face && Math.hypot(cmd.face.x, cmd.face.z) > 1e-6) hT = Math.atan2(cmd.face.x, cmd.face.z);
     else if (cutting) hT = Math.atan2(this.cutDir[0], this.cutDir[1]);
     else if (mag > 0.1) hT = Math.atan2(dir[0], dir[1]);
+    // throwing, the body turns to the target (side-on, then square) whatever the legs do
+    const th = v.throwing;
+    if (th) {
+      const pv = v.state.segPos, k = 3 * this.pelvisSeg;
+      hT = Math.atan2(th.at[0] - pv[k], th.at[2] - pv[k + 2]) + this.passPose(th.t, th.hand);
+    }
     const dpsi = hold ? 0 : clamp(wrapAngle(hT - this.heading), -TURN_RATE * dt, TURN_RATE * dt);
     const h0 = this.heading;
     this.heading = wrapAngle(this.heading + dpsi);
@@ -526,6 +556,8 @@ export class ProceduralAnimator implements Animator {
     lv.carryR = follow(lv.carryR, cmd.carry === 2 ? 1 : 0, dt, 0.15);
     lv.contact = follow(lv.contact, contact, dt, 0.15);
     lv.cut = follow(lv.cut, cutting ? 1 : 0, dt, 0.08);
+    const P = this.pass;
+    P.w = follow(P.w, th ? 1 : 0, dt, th ? 0.03 : 0.15);
     this.turn = clamp(Math.abs(this.omega) * Math.max(0, vf) / 12, 0, 1);
     const run = s01((sp - 2.0) / 0.8);
     lv.bp = follow(lv.bp, s01((-vf - 0.3) / 0.7) * (1 - run * 0.5), dt, 0.12);
@@ -692,6 +724,15 @@ export class ProceduralAnimator implements Animator {
     const ts = this.thrustSide * lv.thrust;
     this.add('thoracic.rotL', -THRUST.turn * ts); this.add('neckLow.rotL', 0.6 * THRUST.turn * ts); this.add('neckUp.rotL', 0.4 * THRUST.turn * ts);
     this.add('neckLow.latL', -THRUST.neckLat * ts); this.add('thoracic.latL', -0.6 * THRUST.bank * this.thrustLow * ts); this.add('lumbar.latL', -0.4 * THRUST.bank * this.thrustLow * ts);
+    // the throw's shoulder turn, the head held toward the target against it and the hips' turn (as far as the neck goes)
+    const look = -(P.twist + P.turn) * P.w;
+    this.add('thoracic.rotL', P.twist * P.w); this.add('neckLow.rotL', 0.6 * look); this.add('neckUp.rotL', 0.4 * look);
+    // eyes on a point (a ball in the air): the trunk turns up to its rotation range, the neck the rest of the way
+    const L = this.look, hp = v.state.segPos, hk = 3 * this.pelvisSeg;
+    const bear = cmd.look ? wrapAngle(Math.atan2(cmd.look[0] - hp[hk], cmd.look[2] - hp[hk + 2]) - this.heading) : 0;
+    const tor = clamp(bear, -LOOK.thorax, LOOK.thorax);
+    L.thorax = follow(L.thorax, tor, dt, LOOK.tau); L.neck = follow(L.neck, clamp(bear - tor, -LOOK.neck, LOOK.neck), dt, LOOK.tau);
+    this.add('thoracic.rotL', L.thorax); this.add('neckLow.rotL', 0.45 * L.neck); this.add('neckUp.rotL', 0.55 * L.neck);
     const A = lerp(lerp(0.25, 0.85, clamp(sp / 9, 0, 1)) * gl, 0.15 * gl, ready);
     const c = Math.cos(TAU * p0);
     for (const arm of this.arms) {
@@ -713,12 +754,16 @@ export class ProceduralAnimator implements Animator {
       // pull: shoulder extension and a hard elbow bend, the hand drawn back to the ribs
       const pull = k === 0 ? lv.pullL : lv.pullR;
       fl = lerp(fl, 0.3, pull); ab = lerp(ab, 0.2, pull); rt = lerp(rt, 0.3, pull); el = lerp(el, 2.0, pull);
+      if (P.w > 1e-3) {
+        const t = k === P.hand ? P.arm : P.off;
+        fl = lerp(fl, t[0], P.w); ab = lerp(ab, t[1], P.w); rt = lerp(rt, t[2], P.w); el = lerp(el, t[3], P.w); wr = lerp(wr, t[4], P.w);
+      }
       this.setArm(arm, fl, ab, rt, el, wr);
       // a thrust rolls the shoulders forward (scapular protraction to its end), so the pads are what meets the opponent
       this.add(`sc${arm.side > 0 ? 'L' : 'R'}.protr`, Math.max(0.15 * Math.max(lv.wrap, lv.shoot, reach), 0.3 * lv.thrust));
       // a pulling arm is held loosely: the row itself is the tracking controller's pull, sized to what the fist holds,
       // and a stiff arm still swinging to its reach pose would tear the fresh grip open
-      const g = lerp(lerp(0.5, 1, clamp(Math.max(lv.contact, carry, reach, lv.wrap, lv.shoot, lv.thrust, aimW), 0, 1)), 0.3, pull);
+      const g = Math.max(P.w, lerp(lerp(0.5, 1, clamp(Math.max(lv.contact, carry, reach, lv.wrap, lv.shoot, lv.thrust, aimW), 0, 1)), 0.3, pull));
       for (const i of this.armDofs[k]) out.gain[i] = g;
     }
     for (const i of this.neckDofs) out.gain[i] = 0.8;
@@ -729,6 +774,21 @@ export class ProceduralAnimator implements Animator {
     out.phase = this.phase - Math.floor(this.phase);
     this.clip = lv.cut > 0.5 ? 'cut' : lv.stance > 0.5 ? 'stance' : lv.chop > 0.5 ? 'chop' : lv.drive > 0.5 ? 'drive'
       : gl < 0.5 ? 'idle' : bp > 0.5 ? 'backpedal' : shuffle > 0.5 ? 'shuffle' : bad >= 0 ? 'hobble' : sp < 2.2 ? 'walk' : 'run';
+  }
+
+  /** The throwing motion at t s into it (PASS), thrown with `hand` (0 left, 1 right): sets the arms' and thorax's
+   *  pose and returns the heading's offset from the target (rad). */
+  private passPose(t: number, hand: 0 | 1): number {
+    const P = this.pass, T = THROW, sg = hand === 1 ? 1 : -1;
+    t += PASS.lead;
+    // 0: cocked, 1: released, 2: followed through
+    const x = t < T.cock ? 0 : t < T.release ? minJerk((t - T.cock) / (T.release - T.cock)) : 1 + s01((t - T.release) / (T.end - T.release));
+    const seg = <V extends readonly number[]>(a: V, b: V, c: V) => a.map((v, i) => (x < 1 ? lerp(v, b[i], x) : lerp(b[i], c[i], x - 1)));
+    P.arm = seg(PASS.cock, PASS.release, PASS.follow) as ArmQ;
+    P.off = seg(PASS.offCock, PASS.offRelease, PASS.offRelease) as ArmQ;
+    const ramp = (a: number[]) => (x < 1 ? lerp(a[0], a[1], x) : lerp(a[1], a[2], x - 1));
+    P.twist = sg * ramp(PASS.twist); P.turn = sg * ramp(PASS.turn); P.hand = hand;
+    return P.turn;
   }
 
   /** Side (1 left, −1 right) of the foot farther forward, planted or about to land; the right on a tie. */

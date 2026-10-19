@@ -10,7 +10,7 @@ import { neutralCommands } from '../../sim/control/types';
 import { Play } from '../../sim/modes/play';
 import { modeById } from '../../sim/modes/registry';
 import type { ModeOptions, PlayConfig } from '../../sim/modes/types';
-import { decodeInput, encodeInput } from '../../sim/net/input';
+import { decodeInput, encodeInput, type PassHold } from '../../sim/net/input';
 import { MSG, Replica, encodeSnapshot } from '../../sim/net/snapshot';
 import type { PhysicsEngine } from '../../sim/physics/engine';
 import { BUILD } from './version';
@@ -157,7 +157,9 @@ export class Session {
 
   // ------------------------------------------------------------------ game (guest)
   /** Guest: the local input, every render frame (the host's HumanBrain for him reads the newest). */
-  sendInput(i: HumanInput) { if (!this.isHost) this.room.broadcast(encodeInput(i, ++this.seq), false); }
+  sendInput(i: HumanInput) { if (!this.isHost) this.room.broadcast(encodeInput(i, ++this.seq, this.passHold), false); }
+  /** A guest's last throw, repeated in the next few inputs (a lost packet must not lose it). */
+  private passHold: PassHold = { pass: null, until: -1 };
 
   /** Guest: show the play at the clock's now; false until a snapshot of this rep has arrived. */
   render(now = this.clock()) { return this.replica?.render(now) ?? false; }
