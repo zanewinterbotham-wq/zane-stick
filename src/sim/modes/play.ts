@@ -64,6 +64,8 @@ export class Play {
   impetus: 0 | 1 = 0;
   /** The athlete who last lost the ball: he can recover it only once it has been clear of his body. */
   private fumbler = -1;
+  /** The loose ball was kicked (or a kick blocked): whoever takes it fields the kick, he does not recover a fumble. */
+  private kicked = false;
   private clear = false;
   /** The holder: time on the turf (s), time since he last left it (s), last opponent contact (world s), and whether
    *  a dead ball in his own end zone would be a touchback (he got it there from the opponents and has not left). */
@@ -188,15 +190,16 @@ export class Play {
 
   private fumble(ai: number) {
     this.world.ballCarrier = -1;
-    this.fumbler = ai; this.clear = false; this.fumbles++;
+    this.fumbler = ai; this.clear = false; this.fumbles++; this.kicked = false;
     this.reassign();
   }
 
-  /** A kick mode launches the ball (setup action at the kick): the ball is loose and `team` is its impetus. */
-  ballLoose(team: 0 | 1) {
+  /** A kick mode launches the ball (setup action at the kick): the ball is loose and `team` is its impetus; `kick`
+   *  false for one knocked loose (a blocked punt), which is recovered like a fumble. */
+  ballLoose(team: 0 | 1, kick = true) {
     const w = this.world, h = w.ballCarrier;
     if (h >= 0) { const g = w.gripping(h, this.ballRef); if (g >= 0) w.releaseGrip(h, g as 0 | 1); }
-    w.ballCarrier = -1; this.fumbler = h; this.clear = false; this.impetus = team;
+    w.ballCarrier = -1; this.fumbler = h; this.clear = false; this.impetus = team; this.kicked = kick;
     this.reassign();
   }
 
@@ -233,7 +236,7 @@ export class Play {
     this.clear ||= !fumblerTouch;
     if (by < 0) return;
     this.tuck(by);
-    this.recoveredBy = by;
+    if (!this.kicked) this.recoveredBy = by;
     this.reassign();
   }
 

@@ -40,7 +40,7 @@ export const PUNT_BLOCK: ModeDef = {
           if (w.ballCarrier !== P) return; // stripped before the kick: already a live ball
           const c = w.scene.athletes[P].state.com, from: Vec3 = [c[0], FOOT[1], c[2] + s * FOOT[0]];
           // a rusher on the ball: the punter never gets it away, it comes loose from his hands
-          if (near(play, 0, from, SMOTHER)) { blocked = true; return play.ballLoose(K); }
+          if (near(play, 0, from, SMOTHER)) { blocked = true; return play.ballLoose(K, false); }
           flight = true; kickedAt = play.repTime;
           return kick(play, K, lob(PUNT * YD + Math.abs(from[2] - los), HANG, FOOT[1], [Math.sin(e), s * Math.cos(e)]), [0, 0, 40], from);
         }

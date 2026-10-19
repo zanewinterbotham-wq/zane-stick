@@ -94,6 +94,7 @@ describe('special teams (headless)', () => {
     expect(p.ended).toBe('touchdown');
     expect([p.scorer, p.points]).toEqual([0, 6]);
     expect(p.ballPos()[2]).toBeGreaterThan(GOAL_LINE);
+    if (p.fumbles === 0) expect(p.recoveredBy).toBe(-1); // the returner fielded a kick: no fumble recovered
     p.destroy();
   }, 120_000);
 
