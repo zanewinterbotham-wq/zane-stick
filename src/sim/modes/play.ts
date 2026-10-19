@@ -27,9 +27,10 @@ export type RepEnd = 'down' | 'touchdown' | 'safety' | 'touchback' | 'out' | 'ti
 
 /** Segments that recover a loose ball: the trunk ('trunk' is the minimum body's fused one). */
 const TORSO = /^(pelvis|lumbar|thorax|trunk)$/;
-/** A raised hand this close to the loose ball (m, hand surface to ball tip) picks it up: the fingers the hand model lacks
- *  close the last few cm (the rig stoops to about 0.35 m above the turf, a ball lying on it is ~0.3 m below that). */
-const HAND_NEAR = 0.1;
+/** Catching (owner decision 2026-10-18): a raised hand this close to the loose ball (m, hand surface to ball tip), or
+ *  two raised hands with the ball this close to the line between them, catch it (or pick it up): a game reach, the
+ *  same for every athlete, standing in for fingers the hand model lacks and a catcher's last-instant adjustments. */
+const CATCH_REACH = 0.3;
 /** Off the turf this long counts as up (s): a body lying on the turf flickers out of contact for a few steps. */
 const UP_TIME = 0.5;
 /** A runner going down this soon after an opponent last touched him is down by contact (s): the hit that took his
@@ -200,7 +201,7 @@ export class Play {
   }
 
   /** Loose ball: the first athlete to get it recovers it, with a trunk touching it (diving on it) or a raised hand
-   *  that touches it or is within HAND_NEAR of it (picking it up). */
+   *  that touches it or is within CATCH_REACH of it (picking it up, or catching it in the air). */
   private loose() {
     const w = this.world, bp = this.ballPos();
     let by = -1, fumblerTouch = false;
@@ -209,12 +210,15 @@ export class Play {
       return i !== this.fumbler || this.clear;
     };
     w.athletes.forEach((a, i) => {
+      const hp = [w.handPoint(a, 0), w.handPoint(a, 1)], tip = BALL.length / 2;
+      // both hands up: a ball between them is in the catch too
+      const both = w.raised(a, 0) && w.raised(a, 1) && segDist(bp, hp[0], hp[1]) - tip < CATCH_REACH;
       for (const h of [0, 1] as const) {
-        const hp = w.handPoint(a, h), near = Math.hypot(hp[0] - bp[0], hp[1] - bp[1], hp[2] - bp[2]) - a.handGeoms[h].half - BALL.length / 2 < HAND_NEAR;
+        const near = both || Math.hypot(hp[h][0] - bp[0], hp[h][1] - bp[1], hp[h][2] - bp[2]) - a.handGeoms[h].half - tip < CATCH_REACH;
         // grips form after the physics step, so one formed on the ball this step has not pulled on it yet
         const held = w.gripping(i, this.ballRef) === h;
         if (held) w.releaseGrip(i, h);
-        if ((near || held) && take(i) && by < 0 && w.raised(a, h)) by = i;
+        if (w.raised(a, h) && (near || held) && take(i) && by < 0) by = i; // a hand that is not raised neither catches nor counts as touching
       }
     });
     for (const c of w.scene.contacts()) for (const [p, o] of [[c.a, c.b], [c.b, c.a]] as const) {
@@ -241,4 +245,10 @@ export class Play {
   }
 
   destroy() { this.world.destroy(); }
+}
+
+/** Distance from p to the segment ab (m). */
+function segDist(p: Vec3, a: Vec3, b: Vec3): number {
+  const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], t = Math.max(0, Math.min(1, ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / (ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2] || 1e-9)));
+  return Math.hypot(p[0] - a[0] - ab[0] * t, p[1] - a[1] - ab[1] * t, p[2] - a[2] - ab[2] * t);
 }
