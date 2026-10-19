@@ -78,7 +78,7 @@ test('a voice sound on an athlete moves that athlete\'s mouth, then it relaxes; 
   const errors = watchErrors(page);
   await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', mute: true })));
   await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Skin:/ })).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await page.keyboard.press('Enter');
   await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
   await expect.poll(() => page.evaluate(() => (window as unknown as { __app: App }).__app.renderer?.athletes.length)).toBe(2);
@@ -105,7 +105,7 @@ test('the athletes\' brows follow the game: closing on the carrier makes the tac
   const errors = watchErrors(page);
   await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', mute: true })));
   await page.goto('/');
-  await expect(page.getByRole('button', { name: /^Skin:/ })).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await page.keyboard.press('Enter');
   await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
   await expect.poll(() => page.evaluate(() => (window as unknown as { __app: App }).__app.renderer?.athletes.length)).toBe(2);
