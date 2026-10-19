@@ -11,6 +11,9 @@ import type { ModeDef, PlayerSpec, PlaySetup } from './types';
 const TEE = 35, hang = (d: number) => 2.4 + 0.027 * d, RUN_UP = 4, FRONT = 30, DEEP = 3;
 /** Kick spread: direction (rad) and distance (fraction), 1 sd. */
 const AIM_SD = 0.05, DIST_SD = 0.04;
+/** The coverage lines up across the field, its outside men this wide (m, about the numbers), and nobody on the tee
+ *  (at least this far beside it). Each man runs down in the lane he lines up in. */
+const LANE_W = 13, TEE_CLEAR = 2.5;
 
 /** A kickoff by team K: on the kicking team the kicker (behind the tee) and `cover` − 1 more men, plus the human when
  *  he kicks off (K = 0); on the other side a returner (the human when K = 1) and `block` blockers. */
@@ -20,12 +23,14 @@ export function kickoffPlay(K: 0 | 1, cover: number, block: number, yards: numbe
   const land = tee + s * d * YD, rz = s * Math.min(END_LINE - 1, s * land + DEEP);
   const returner: PlayerSpec = { team: R, pos: [rng.range(-3, 3), rz] };
   const kicker: PlayerSpec = { team: K, pos: [0, tee - s * RUN_UP] };
-  // the coverage line beside the tee (on your kickoff you are its first man), blockers spread across their front
-  const line = row(K, K === 0 ? cover : cover - 1, tee - s, 5, 2.5), blockers = row(R, block, ownYard(R, FRONT), 6, 3);
+  // the coverage line spread across the field (on your kickoff you are its middle man), blockers across their front
+  const n = K === 0 ? cover : cover - 1, xs = Array.from({ length: n }, (_, k) => (n > 1 ? LANE_W * (2 * k / (n - 1) - 1) : 0))
+    .sort((a, b) => Math.abs(a) - Math.abs(b)).map((x) => (Math.abs(x) < TEE_CLEAR ? TEE_CLEAR : x));
+  const line: PlayerSpec[] = xs.map((x) => ({ team: K, pos: [x, tee - s] })), blockers = row(R, block, ownYard(R, FRONT), 6, 3);
   const players = K === 1 ? [returner, ...blockers, kicker, ...line] : [line[0], kicker, ...line.slice(1), returner, ...blockers];
   const from: [number, number, number] = [0, BALL_REST_Y, tee];
   return returnPlay({
-    kind: 'kickoff', kicking: K, players, returner: K === 1 ? 0 : 1 + cover, from,
+    kind: 'kickoff', kicking: K, players, returner: K === 1 ? 0 : 1 + cover, safety: K === 1 ? 1 + block : 1, from,
     vel: lob(Math.abs(land - tee), hang(yards), BALL_REST_Y, [Math.sin(e), s * Math.cos(e)]), spin: [-10, 0, 0],
     status: K === 1 ? `Kick returner  ·  ${yards} yd kick  ·  field it and take it back` : `Kick coverage  ·  ${yards} yd kick  ·  get down the field and make the stop`,
   });

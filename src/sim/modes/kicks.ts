@@ -5,6 +5,7 @@
 // the receivers' end zone and a kickoff that stops there are touchbacks.
 import { BALL } from '../anatomy/equipment';
 import { BlockerBrain } from '../brains/blocker';
+import { CoverBrain, type CoverLane } from '../brains/cover';
 import { IdleBrain } from '../brains/idle';
 import { ReturnerBrain } from '../brains/returner';
 import type { Brain } from '../brains/types';
@@ -127,6 +128,8 @@ export interface ReturnSpec {
   returner: number;
   /** A punt's punter: he holds the ball until the kick. */
   punter?: number;
+  /** The kicker or the punter: the coverage's safety. */
+  safety: number;
   /** Where the ball leaves from: a kickoff's tee spot (it lies there from the start), a punt's foot. */
   from: Vec3;
   vel: Vec3;
@@ -137,11 +140,22 @@ export interface ReturnSpec {
 /** Everyone set this long (s) after the rep starts, then the kick. */
 const KICK_AT = 0.3;
 
+/** The coverage's assignments: every man of the kicking team but the safety keeps the lane he lines up in, the
+ *  outermost on each side (of two or more) contain; the safety trails. */
+export function coverLanes(players: PlayerSpec[], K: 0 | 1, safety: number): (CoverLane | undefined)[] {
+  const men = players.map((p, i) => ({ x: p.pos[0], i })).filter(({ i }) => players[i].team === K && i !== safety).sort((a, b) => a.x - b.x);
+  const lanes: (CoverLane | undefined)[] = players.map((p, i) => (i === safety ? { x: p.pos[0], role: 'safety' } : undefined));
+  men.forEach(({ x, i }, k) => { lanes[i] = { x, role: men.length > 1 && (k === 0 || k === men.length - 1) ? 'contain' : 'lane' }; });
+  return lanes;
+}
+
 /** A kick to a returner: kickoff or punt (the snap is over when the rep starts). While the ball is in the air the
- *  returner goes to meet it, his teammates block the coverage, and the coverage runs under it; after that the
- *  roles are the play's own (the holder runs, his teammates block, the others tackle or go for a loose ball). */
+ *  returner goes to meet it, his teammates set up a wall in front of him and block the coverage, and the coverage
+ *  runs down in its lanes (CoverBrain), staying in them while the returner has the ball until each man is near him;
+ *  a loose ball after that, and every other role, is the play's own (the holder runs, his teammates block, the
+ *  others tackle or go for the ball). */
 export function returnPlay(s: ReturnSpec): PlaySetup {
-  const K = s.kicking, R = K === 0 ? 1 : 0, punt = s.kind === 'punt';
+  const K = s.kicking, R = K === 0 ? 1 : 0, punt = s.kind === 'punt', lanes = coverLanes(s.players, K, s.safety);
   let kicked = false, flight = false, kickedAt = 0, received = false;
   return {
     players: s.players,
@@ -150,8 +164,10 @@ export function returnPlay(s: ReturnSpec): PlaySetup {
     props: goalposts(),
     brain(play, i, rng) {
       if (!kicked) return SET;
+      const bc = play.world.ballCarrier, lane = lanes[i];
+      if (lane && (bc < 0 ? flight : play.team(bc) === R)) return new CoverBrain(rng, play.cfg.defense ?? play.cfg.difficulty, lane);
       // a catch changes possession before this play's step sees the flight is over
-      if (!flight || play.world.ballCarrier >= 0) return null;
+      if (!flight || bc >= 0) return null;
       if (i === s.returner) return new ReturnerBrain(rng, play.cfg.difficulty);
       return play.team(i) === R ? new BlockerBrain(rng, play.cfg.difficulty) : null;
     },

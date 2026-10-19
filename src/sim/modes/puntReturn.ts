@@ -34,7 +34,7 @@ export const PUNT_RETURN: ModeDef = {
     const jammers: PlayerSpec[] = Array.from({ length: +o.block }, (_, k) => ({ team: 0, pos: [k < +o.cover ? 0.9 * gx(k) : (k % 2 ? -1 : 1) * (4 + 4 * Math.floor(k / 2)), los + s * 1.5] }));
     const players = [returner, ...jammers, { team: K, pos: [0, pz] } as PlayerSpec, ...gunners];
     return returnPlay({
-      kind: 'punt', kicking: K, players, returner: 0, punter: 1 + +o.block, from,
+      kind: 'punt', kicking: K, players, returner: 0, punter: 1 + +o.block, safety: 1 + +o.block, from,
       vel: lob(Math.abs(land - from[2]), hang(yards), FOOT[1], [Math.sin(e), s * Math.cos(e)]), spin: [0, 0, SPIRAL],
       status: `Punt returner  ·  ${yards} yd punt from their ${+o.los}`,
     });

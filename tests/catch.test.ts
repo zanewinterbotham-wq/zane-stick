@@ -16,7 +16,7 @@ beforeAll(() => mujocoEngine.init());
 const G = 9.81;
 const script = (fn: (t: number, c: Commands) => void) => new ScriptBrain((t, _p, c) => fn(t, c));
 const still = () => script(() => {});
-const input = (o: Partial<HumanInput> = {}): HumanInput => ({ move: { x: 0, y: 0 }, torso: 0, sprint: 0, sink: 0, armL: 0, armR: 0, held: new Set(), cameraYaw: 0, aimPitch: 0, ...o });
+const input = (o: Partial<HumanInput> = {}): HumanInput => ({ move: { x: 0, y: 0 }, torso: 0, sprint: 0, armL: 0, armR: 0, held: new Set(), cameraYaw: 0, aimPitch: 0, ...o });
 async function drill(human: Brain) { return OpenFieldDrill.create(mujocoEngine, { ...DEFAULT_OPEN_FIELD, physics: STD }, human, 0); }
 function run(d: OpenFieldDrill, seconds: number, each?: () => boolean | void) {
   const end = d.repTime + seconds;

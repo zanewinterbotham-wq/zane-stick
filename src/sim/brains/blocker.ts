@@ -4,11 +4,14 @@
 // mirrors him), then strikes: hands on his chest, a fistful of jersey (holding is no foul here: no penalties), legs
 // driving, steering him away from the carrier while staying between them. Reads the world through a reaction delay;
 // difficulty is only that delay and aim noise. Same Commands as a human; whether the block holds is physics.
+// While a kick is in the air he protects where it comes down: a man still far from there is met from a wall WALL m
+// in front of the returner (a man already on him, a gunner he lines up over, is jammed at once).
 import { GAIT_SPEED } from '../control/hand';
 import { neutralCommands, type Commands } from '../control/types';
 import { clamp, wrapAngle, type Vec3 } from '../math';
 import type { Rng } from '../rng';
 import type { BotDifficulty } from './carrier';
+import { fallTime } from './returner';
 import { predict, turnRate } from './tackler';
 import type { AthleteView, Brain, Perception } from './types';
 
@@ -26,9 +29,13 @@ const BREAK = 3.5, BREAK_V = 2.5, STRIKE = 1.6;
 const AWAY = 0.6, ONLINE = 2.5, DRIVE_V = 4;
 /** Escort: with nobody to block, run this far ahead of the carrier, on his run. */
 const ESCORT = 3;
-const FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08;
+/** Kick return wall: WALL m in front of the landing spot, toward my man, until he is within ENGAGE m of the spot or
+ *  JAM m of me; the kick is played at CATCH_H m; the run stops on the wall spot at BRAKE m/s². */
+const WALL = 12, ENGAGE = 25, JAM = 5, CATCH_H = 1.2, BRAKE = 4;
+/** A way to go more than a right angle off the run is run at this share of its speed until the turn is made. */
+const FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08, REVERSE = 0.2;
 
-export type BlockPhase = 'escort' | 'approach' | 'breakdown' | 'drive';
+export type BlockPhase = 'escort' | 'wall' | 'approach' | 'breakdown' | 'drive';
 
 export class BlockerBrain implements Brain {
   private history: Perception[] = [];
@@ -48,7 +55,8 @@ export class BlockerBrain implements Brain {
     if (me.down || me.hasBall) return c;
     const ci = seen.athletes.findIndex((a) => a.hasBall && a.team === me.team);
     const carrier = ci >= 0 ? predict(seen.athletes[ci], age) : null;
-    const prot: Vec3 | null = carrier ? carrier.com : seen.ball ? seen.ball.pos : null;
+    const b = seen.ball, fall = !carrier && b ? fallTime(b.pos, b.vel, CATCH_H) : -1;
+    const prot: Vec3 | null = carrier ? carrier.com : fall >= 0 ? [b!.pos[0] + b!.vel[0] * fall, CATCH_H, b!.pos[2] + b!.vel[2] * fall] : b ? b.pos : null;
     if (!prot) return c;
     // the carrier's run (unit, ground); none before anyone has the ball
     const cv = carrier ? Math.hypot(carrier.comVel[0], carrier.comVel[2]) : 0;
@@ -57,6 +65,7 @@ export class BlockerBrain implements Brain {
     if (p.time >= this.aimUntil) { this.aimErr = this.rng.gauss() * this.diff.noise * 0.5; this.aimUntil = p.time + 0.5; }
     if (this.target < 0) return this.escort(me, carrier, run, dt, c);
     const t = predict(seen.athletes[this.target], age);
+    if (fall >= 0 && Math.hypot(t.com[0] - prot[0], t.com[2] - prot[2]) > ENGAGE && Math.hypot(t.com[0] - me.com[0], t.com[2] - me.com[2]) > JAM) return this.wall(me, t, prot, dt, c);
     this.block(me, t, prot, dt, c);
     return c;
   }
@@ -128,6 +137,20 @@ export class BlockerBrain implements Brain {
     c.aim = [t.pelvis[0], t.pelvis[1] + 0.45, t.pelvis[2]];
   }
 
+  /** A kick in the air and my man still far off: set up WALL m in front of where it comes down, toward him, and
+   *  wait for him there squared up. */
+  private wall(me: AthleteView, t: AthleteView, prot: Vec3, dt: number, c: Commands) {
+    this.phase = 'wall';
+    const lx = t.com[0] - prot[0], lz = t.com[2] - prot[2], ln = Math.hypot(lx, lz) || 1e-6;
+    const gx = prot[0] + lx / ln * WALL - me.com[0], gz = prot[2] + lz / ln * WALL - me.com[2], g = Math.hypot(gx, gz) || 1e-6;
+    const v = g < 0.3 ? 0 : clamp(Math.sqrt(2 * BRAKE * g), 0, FULL);
+    this.run(me, gx / g * v, gz / g * v, dt, c, g < 3);
+    c.gait = v > 6 ? 'sprint' : 'jog';
+    const dx = t.com[0] - me.com[0], dz = t.com[2] - me.com[2], d = Math.hypot(dx, dz) || 1e-6;
+    if (g < 4) c.face = { x: dx / d, z: dz / d };
+    return c;
+  }
+
   /** Nobody to block: lead the carrier's run a few metres ahead of him (or wait by the ball). */
   private escort(me: AthleteView, carrier: AthleteView | null, run: [number, number], dt: number, c: Commands) {
     this.phase = 'escort';
@@ -142,11 +165,14 @@ export class BlockerBrain implements Brain {
   /** Move toward a ground velocity (m/s, world): the heading turns no faster than footing allows at this speed (in
    *  close, contact steps go any way at once), and the magnitude is filtered so the command does not chatter. */
   private run(me: AthleteView, vx: number, vz: number, dt: number, c: Commands, close = false) {
-    const n = Math.hypot(vx, vz);
+    let n = Math.hypot(vx, vz);
     if (Number.isNaN(this.heading)) this.heading = me.heading;
     if (n > 1e-3) {
       const d = wrapAngle(Math.atan2(vx, vz) - this.heading), w = (close ? 8 : turnRate(Math.hypot(me.comVel[0], me.comVel[2]))) * dt;
       this.heading = wrapAngle(this.heading + clamp(d, -w, w));
+      // the way to go is behind me (overran the spot, the man came back past me): pull up first, so I can turn (in
+      // close the contact steps turn at once)
+      if (!close && Math.abs(d) > Math.PI / 2) n *= REVERSE;
     }
     this.mag += (Math.min(1, n / FULL) - this.mag) * (1 - Math.exp(-dt / MOVE_TAU));
     c.move = { x: Math.sin(this.heading) * this.mag, z: Math.cos(this.heading) * this.mag };
