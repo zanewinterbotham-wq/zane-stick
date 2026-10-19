@@ -21,21 +21,23 @@ export interface Lobby {
   score: [number, number];
   /** Players who asked for the next rep during this one: it starts once every player on a position has. */
   votes: string[];
+  /** The host's build (version.ts): a guest on another one cannot play in this room. */
+  build: string;
 }
 
 /** A rep starting (host → all): everything a guest needs to build the same Play the host steps. */
 export interface StartMsg { mode: string; options: ModeOptions; seed: number; rep: number; assign: (string | null)[]; cfg: PlayConfig; countdown: number }
 /** Presentation events the host knows best (feel.ts big hits; a player leaving). */
-export type NetEvent = { k: 'hit'; closing: number; impulse: number; a: number; b: number } | { k: 'left'; name: string; athlete: number };
-export type ToHost = { t: 'hi'; steer: number } | { t: 'want'; slot: number | null } | { t: 'ready'; on: boolean } | { t: 'restart'; on: boolean };
-export type ToGuest = { t: 'lobby'; lobby: Lobby } | { t: 'start'; start: StartMsg } | { t: 'ev'; ev: NetEvent } | { t: 'kick' };
+export type NetEvent = { k: 'hit'; closing: number; impulse: number; a: number; b: number } | { k: 'left'; name: string; athlete: number } | { k: 'old'; name: string };
+export type ToHost = { t: 'hi'; steer: number; v?: string } | { t: 'want'; slot: number | null } | { t: 'ready'; on: boolean } | { t: 'restart'; on: boolean };
+export type ToGuest = { t: 'lobby'; lobby: Lobby } | { t: 'start'; start: StartMsg } | { t: 'ev'; ev: NetEvent } | { t: 'kick'; why?: 'version' };
 
 /** A guest's message as the host may trust it, or null. */
 export function parseToHost(data: string): ToHost | null {
   let m: unknown;
   try { m = JSON.parse(data); } catch { return null; }
   const o = m as Record<string, unknown>;
-  if (o?.t === 'hi' && typeof o.steer === 'number' && Number.isFinite(o.steer)) return { t: 'hi', steer: Math.min(1, Math.max(0, o.steer)) };
+  if (o?.t === 'hi' && typeof o.steer === 'number' && Number.isFinite(o.steer)) return { t: 'hi', steer: Math.min(1, Math.max(0, o.steer)), ...(typeof o.v === 'string' && { v: o.v.slice(0, 40) }) };
   if (o?.t === 'want' && (o.slot === null || Number.isInteger(o.slot))) return { t: 'want', slot: o.slot as number | null };
   if (o?.t === 'ready' && typeof o.on === 'boolean') return { t: 'ready', on: o.on };
   if (o?.t === 'restart' && typeof o.on === 'boolean') return { t: 'restart', on: o.on };
@@ -44,9 +46,9 @@ export function parseToHost(data: string): ToHost | null {
 
 export const slotsOf = (l: Lobby): SlotInfo[] => listSlots(modeById(l.mode), l.options);
 
-export function newLobby(host: { id: string; name: string }, mode: string, options: ModeOptions): Lobby {
+export function newLobby(host: { id: string; name: string }, mode: string, options: ModeOptions, build = 'dev'): Lobby {
   const def = modeById(mode), o = resolveOptions(def, options);
-  const l: Lobby = { mode: def.id, options: o, assign: listSlots(def, o).map(() => null), players: [], phase: 'lobby', score: [0, 0], votes: [] };
+  const l: Lobby = { mode: def.id, options: o, assign: listSlots(def, o).map(() => null), players: [], phase: 'lobby', score: [0, 0], votes: [], build };
   join(l, host.id, host.name, true);
   return l;
 }

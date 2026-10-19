@@ -36,7 +36,6 @@ import { SimClient } from './worker/client';
 const params = new URLSearchParams(location.search);
 /** A multiplayer guest's input while his menu is open: stand still (the shared play goes on). */
 const IDLE: HumanInput = { move: { x: 0, y: 0 }, torso: 0, sprint: 0, armL: 0, armR: 0, held: new Set(), cameraYaw: 0, aimPitch: 0 };
-/** Multiplayer: the host starts the next rep by itself this long after a play ends (s of play time). */
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 
 // ------------------------------------------------------------------ dev scenarios (?scenario=…)
@@ -286,6 +285,7 @@ class App {
 
   netEvent(e: NetEvent) {
     if (e.k === 'left') { this.hud.flash(`${e.name} left: a bot plays on`); return; }
+    if (e.k === 'old') { this.hud.flash(`${e.name || 'A player'} has another version of the game: they need to reload the page`); return; }
     const d = this.drill;
     if (!d || this.net?.isHost) return;
     this.netBig ??= e;

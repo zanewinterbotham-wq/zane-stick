@@ -13,6 +13,7 @@ import type { ModeOptions, PlayConfig } from '../../sim/modes/types';
 import { decodeInput, encodeInput } from '../../sim/net/input';
 import { MSG, Replica, encodeSnapshot } from '../../sim/net/snapshot';
 import type { PhysicsEngine } from '../../sim/physics/engine';
+import { BUILD } from './version';
 import * as L from './lobby';
 import type { Lobby, NetEvent, StartMsg, ToGuest } from './lobby';
 
@@ -43,17 +44,23 @@ export class Session {
   /** Host: each guest's brain this rep (by id), his steer assist and newest input seq. */
   private remote = new Map<string, { brain: HumanBrain | null; steer: number; seq: number }>();
   private banned = new Set<string>();
+  /** Host: every name seen in the room by id (one may have left before his last message arrived). */
+  private known = new Map<string, string>();
   private snapAt = 0; private scored = false; private rep = 0; private seq = 0; private builds = 0; private pingSent = -Infinity;
 
   /** `clock`: a steady clock in seconds (snapshot arrival times, ping throttling). */
-  constructor(readonly room: NetRoom, readonly engine: PhysicsEngine, selfName: string, setup: { mode: string; options: ModeOptions; steer: number },
+  /** This game's build (version.ts); tests pass another to play an outdated client. */
+  readonly version: string;
+
+  constructor(readonly room: NetRoom, readonly engine: PhysicsEngine, selfName: string, setup: { mode: string; options: ModeOptions; steer: number; build?: string },
     readonly clock: () => number = () => performance.now() / 1000) {
-    this.lobby = L.newLobby({ id: room.selfId, name: selfName }, setup.mode, setup.options);
+    this.version = setup.build ?? BUILD;
+    this.lobby = L.newLobby({ id: room.selfId, name: selfName }, setup.mode, setup.options, this.version);
     if (!room.isHost) { this.lobby.players = []; this.lobby.assign.fill(null); } // until the host's arrives
     room.onMessage((from, data) => (room.isHost ? this.hostGot(from, data) : this.guestGot(data)));
     room.onClose((r) => this.end(r));
     if (room.isHost) { room.onPeers((p) => this.peers(p)); this.peers(room.peers()); }
-    else room.broadcast(JSON.stringify({ t: 'hi', steer: setup.steer }), true);
+    else room.broadcast(JSON.stringify({ t: 'hi', steer: setup.steer, v: this.version } satisfies L.ToHost), true);
   }
 
   get isHost() { return this.room.isHost; }
@@ -167,7 +174,17 @@ export class Session {
     }
     const m = L.parseToHost(data);
     if (!m) return;
-    if (m.t === 'hi') { const r = this.remote.get(from); if (r) { r.steer = m.steer; if (r.brain) r.brain.steerAssist = m.steer; } } // he is known from onPeers first
+    if (m.t === 'hi') {
+      // another build cannot play here (its replica would not match, nor its messages): he is told to reload
+      if (m.v !== this.version) {
+        const name = this.known.get(from) ?? '';
+        this.room.send(from, JSON.stringify({ t: 'kick', why: 'version' } satisfies ToGuest), true);
+        this.gone(from); this.sendLobby();
+        this.onEvent({ k: 'old', name }); this.event({ k: 'old', name });
+        return;
+      }
+      const r = this.remote.get(from); if (r) { r.steer = m.steer; if (r.brain) r.brain.steerAssist = m.steer; } // he is known from onPeers first
+    }
     else if (m.t === 'want') this.edit(() => L.want(this.lobby, from, m.slot));
     else if (m.t === 'restart') this.edit(() => L.vote(this.lobby, from, m.on));
     else this.edit(() => L.setReady(this.lobby, from, m.on));
@@ -178,12 +195,13 @@ export class Session {
     let m: ToGuest;
     try { m = JSON.parse(data); } catch { return; }
     if (m.t === 'lobby') {
+      if (m.lobby.build !== this.version) { this.end('version'); this.room.close(); return; } // the host's game is another version
       this.lobby = m.lobby;
       if (m.lobby.phase === 'lobby') { this.builds++; this.drop(); }
       this.onLobby(this.lobby);
     } else if (m.t === 'start') void this.build(m.start);
     else if (m.t === 'ev') this.onEvent(m.ev);
-    else if (m.t === 'kick') { this.end('kicked'); this.room.close(); }
+    else if (m.t === 'kick') { this.end(m.why === 'version' ? 'version' : 'kicked'); this.room.close(); }
   }
 
   /** Guest: the same Play as the host's (same mode, options, seed, rep, config, and players on the same slots, so
@@ -209,6 +227,7 @@ export class Session {
   private peers(list: ReturnType<NetRoom['peers']>) {
     const names = new Map(this.lobby.players.map((p) => [p.id, p.name])); // before the sync drops who left
     const { joined, left, changed } = L.syncPeers(this.lobby, list.filter((p) => !this.banned.has(p.id)));
+    for (const p of list) this.known.set(p.id, p.name);
     for (const id of joined) {
       this.remote.set(id, { brain: null, steer: 0.3, seq: -1 });
       if (this.start && this.play) this.room.send(id, JSON.stringify({ t: 'start', start: { ...this.start, countdown: 0 } } satisfies ToGuest), true); // joined mid-game: he watches this rep

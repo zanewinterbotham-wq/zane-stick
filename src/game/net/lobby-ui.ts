@@ -26,6 +26,7 @@ export function netMessage(reason: string): string {
     'host-left': 'The host left, so the room has closed.',
     disconnected: 'The connection to the room was lost.',
     kicked: 'The host removed you from the room.',
+    version: 'You and the host have different versions of Zane Stick. Both reload the page (Ctrl+Shift+R, or close and reopen the tab), then join again.',
   } as Record<string, string>)[reason] ?? reason;
 }
 

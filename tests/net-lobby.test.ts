@@ -185,3 +185,27 @@ describe('a host and two guests over a loopback room (headless)', () => {
     expect(ann.closed).toBe('host-left');
   }, 120_000);
 });
+
+describe('versions (headless)', () => {
+  it('a guest on another build is told to reload, the host hears who; a host on another build sends guests away too', async () => {
+    const room = createLoopbackRoom(['Old', 'New']);
+    const host = new Session(room.host, mujocoEngine, 'Host', { mode: 'carry', options: {}, steer: 0.3, build: 'r2' });
+    const events: L.NetEvent[] = [];
+    host.onEvent = (e) => events.push(e);
+    const old = new Session(room.guests[0], mujocoEngine, 'Old', { mode: 'tackle', options: {}, steer: 0, build: 'r1' });
+    const same = new Session(room.guests[1], mujocoEngine, 'New', { mode: 'tackle', options: {}, steer: 0, build: 'r2' });
+    for (let k = 0; k < 50 && !old.closed; k++) await flush();
+    expect(old.closed).toBe('version');
+    expect(events).toContainEqual({ k: 'old', name: 'Old' });
+    expect(host.lobby.players.map((p) => p.name)).toEqual(['Host', 'New']);
+    expect(same.closed).toBe('');
+    host.close(); await flush();
+    // the other way: an older host's lobby
+    const room2 = createLoopbackRoom(['Newer']);
+    const oldHost = new Session(room2.host, mujocoEngine, 'Host', { mode: 'carry', options: {}, steer: 0.3, build: 'r1' });
+    const newer = new Session(room2.guests[0], mujocoEngine, 'Newer', { mode: 'tackle', options: {}, steer: 0, build: 'r2' });
+    for (let k = 0; k < 50 && !newer.closed; k++) await flush();
+    expect(newer.closed).toBe('version');
+    oldHost.close();
+  });
+});
