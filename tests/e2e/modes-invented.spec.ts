@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 test('Invented modes: Sumo Ring options and Start, Keep Away and the Gauntlet start with their rules in the HUD', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.addInitScript(() => { if (!localStorage.getItem('zane-stick-settings-v1')) localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })); });
+  await page.addInitScript(() => { if (!localStorage.getItem('zane-stick-settings-v1')) localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })); });
   await page.goto('/');
   await page.getByRole('button', { name: /^Play/ }).click({ timeout: 60_000 });
 

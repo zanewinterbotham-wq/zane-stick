@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 test('the sprint hold/toggle switch lives in the Controls screen, not the pause menu', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', version: 2 })));
+  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false }, version: 2 })));
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('tab', { name: 'Controls' }).click();

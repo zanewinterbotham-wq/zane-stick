@@ -31,7 +31,7 @@ async function carrierComesToYou(page: import('@playwright/test').Page) {
 
 test('the default skin (the owner pick, Rubber Hose) dresses both athletes; standing and tackling', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
+  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })));
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await expect(page.getByRole('button', { name: /Skin:/ })).toHaveCount(0); // skins are chosen in the Inventory

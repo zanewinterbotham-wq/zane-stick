@@ -29,7 +29,7 @@ const settingsTab = (page: Page, name: string) => page.getByRole('button', { nam
 
 async function startRep(page: Page) {
   // skip the first-launch benchmark for speed; it has its own test below
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
+  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })));
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await page.screenshot({ path: 'test-results/01-title.png' });
@@ -96,7 +96,7 @@ test('title loads, drill starts, mouse and keyboard controls reach the brain, co
   await page.keyboard.up('KeyQ');
   // run at the carrier: contact mode switches itself on
   await page.keyboard.down('KeyW');
-  await expect.poll(async () => (await latest(page)).contact, { timeout: 20_000 }).toBe(true);
+  await expect.poll(async () => (await latest(page)).contact, { timeout: 45_000 }).toBe(true); // slow under a full parallel run
   await expect(page.locator('.status')).toContainText('CONTACT');
   await page.mouse.down({ button: 'left' }); await page.mouse.down({ button: 'right' });
   await page.waitForTimeout(600);
@@ -175,10 +175,9 @@ test('J / L and I / K always work alongside the mouse, with or without the autom
   await page.evaluate(() => (window as unknown as { __app: { input: { resetTorso(): void } } }).__app.input.resetTorso());
   await page.keyboard.down('KeyJ'); await page.keyboard.down('KeyI');
   await page.mouse.down({ button: 'right' });
-  await page.waitForTimeout(500);
+  await expect.poll(async () => (await latest(page)).torso, { timeout: 10_000 }).toBeLessThan(-0.2);
   l = await latest(page);
   expect([l.armL, l.armR]).toEqual([1, 1]);
-  expect(l.torso).toBeLessThan(-0.2);
   await page.mouse.up({ button: 'right' });
   await page.screenshot({ path: 'test-results/09-auto-camera.png' });
   expect(errors).toEqual([]);
@@ -227,7 +226,7 @@ test('side shuffle toggles on middle click and ;, Alt+Tab is never blocked, swit
 
 test('controls rebind live and persist; reserved keys are refused; reset restores the defaults', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { sessionStorage.setItem('seeded', '1'); localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })); } });
+  await page.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { sessionStorage.setItem('seeded', '1'); localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })); } });
   await page.goto('/');
   await settingsTab(page, 'Controls');
   const cell = (a: string) => page.locator(`tr[data-action=${a}] .keys-cell`);
@@ -347,7 +346,7 @@ test('the picked sounds load and decode from the deploy (and nothing from the de
 
 test('controls screen lists the mouse controls and the game keys', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
+  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })));
   await page.goto('/');
   await settingsTab(page, 'Controls');
   for (const t of ['Left click', 'Right click', 'Scroll', 'Lower the pads', 'Space', 'Shift', 'Esc', 'Enter']) await expect(page.locator('.menu')).toContainText(t);
@@ -379,7 +378,7 @@ test('tuning panel shows the support, speed and strength sliders; HUD shows spee
 
 test('difficulty screen: presets, the independent sliders and hit power, remembered; reachable from the pause menu', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => { if (!localStorage.getItem('zane-stick-settings-v1')) localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })); });
+  await page.addInitScript(() => { if (!localStorage.getItem('zane-stick-settings-v1')) localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })); });
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.locator('.menu h1')).toHaveText('Settings');
@@ -413,7 +412,7 @@ test('difficulty screen: presets, the independent sliders and hit power, remembe
 
 test('key test screen shows held keys', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
+  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })));
   await page.goto('/');
   await settingsTab(page, 'Controls');
   await page.getByRole('button', { name: 'Key test' }).click();

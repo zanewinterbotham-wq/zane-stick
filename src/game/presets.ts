@@ -27,17 +27,17 @@ export const PRESETS: Record<PresetName, Preset> = {
   },
   minimum: {
     name: 'minimum', label: 'Low',
-    desc: 'School laptops: merged body segments, 240 Hz physics, no shadows; waiting defenders idle at their spot.',
+    desc: 'School laptops: merged body segments, 240 Hz physics on its own core, no shadows; waiting defenders idle at their spot.',
     physics: { hz: 240, iterations: 20, detail: 'minimum' },
     render: { ...LOW_GFX, faces: 30 },
-    targetFps: 30, activeBots: false,
+    targetFps: 30, activeBots: false, worker: true,
   },
   medium: {
     name: 'medium', label: 'Medium',
-    desc: 'The full body at 240 Hz (the realism tests\' standard), soft shadows, 60 fps.',
+    desc: 'The full body at 240 Hz (the realism tests\' standard) on its own core, soft shadows, 60 fps.',
     physics: { hz: 240, iterations: 30, detail: 'standard' },
     render: { ...HIGH_GFX, scale: 0.85, antialias: false, shadowMap: 1024, pixelCap: 1.5 },
-    targetFps: 60, activeBots: true,
+    targetFps: 60, activeBots: true, worker: true,
   },
   high: {
     name: 'high', label: 'High',

@@ -52,3 +52,10 @@ test('worker mode: the rep runs in the physics Worker and the athlete moves unde
   await expect.poll(() => page.evaluate(() => { const a = (window as unknown as App).__app; return !!a.sim && a.sim.play === a.drill && a.drill.world.time < 1.5; })).toBe(true);
   expect(errors).toEqual([]);
 });
+
+test('Low and Medium run the physics in the Worker by default; High runs it on the page', async ({ page }) => {
+  for (const [preset, worker] of [['medium', true], ['minimum', true], ['high', false]] as const) {
+    await play(page, { preset, mute: true });
+    await expect.poll(() => page.evaluate(() => { const a = (window as unknown as App).__app; return !!a.sim && a.sim.play === a.drill; }), { timeout: 20_000 }).toBe(worker);
+  }
+});

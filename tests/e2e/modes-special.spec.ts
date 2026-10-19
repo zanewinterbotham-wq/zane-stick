@@ -13,7 +13,7 @@ const SPECIAL: [string, string, string[]][] = [
 SPECIAL.forEach(([id, title, options], k) => test(`special teams: ${id} starts with its options and kicks`, async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', mute: true })));
+  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false }, mute: true })));
   await page.goto('/');
   await page.getByRole('button', { name: /^Play/ }).click({ timeout: 60_000 });
   await page.locator(`.mode-card[data-mode=${id}]`).click();

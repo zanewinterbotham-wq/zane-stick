@@ -76,7 +76,7 @@ type App = { audio: { play: (cat: string, loud: number, pos: undefined, athlete:
 
 test('a voice sound on an athlete moves that athlete\'s mouth, then it relaxes; the helmet camera hides your own', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', mute: true })));
+  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false }, mute: true })));
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await page.keyboard.press('Enter');
@@ -103,7 +103,7 @@ test('a voice sound on an athlete moves that athlete\'s mouth, then it relaxes; 
 
 test('the athletes\' brows follow the game: closing on the carrier makes the tackler angry', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', mute: true })));
+  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false }, mute: true })));
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await page.keyboard.press('Enter');

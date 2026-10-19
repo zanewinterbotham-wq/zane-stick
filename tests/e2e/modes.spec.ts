@@ -4,7 +4,7 @@ import { MODES } from '../../src/sim/modes/registry';
 test('Play: mode cards with previews, a setup with options that are remembered, and Start', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.addInitScript(() => { if (!localStorage.getItem('zane-stick-settings-v1')) localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })); });
+  await page.addInitScript(() => { if (!localStorage.getItem('zane-stick-settings-v1')) localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })); });
   await page.goto('/');
   await page.getByRole('button', { name: /^Play/ }).click({ timeout: 60_000 });
   const cards = page.locator('.mode-card');

@@ -9,8 +9,8 @@ High. This is what was built and what it measured. Commands to reproduce are at 
 | Level | Physics | Graphics | Target | What changes against High |
 |---|---|---|---|---|
 | **Potato** | 180 Hz, 20 iterations, merged body, solver tolerance 1e-5, pyramid friction cone, far-bot level of detail (12 m), physics in a Worker | 50 % resolution, pixel density cap 1x, no shadows, low detail, no AA, 25 % injury particles, faces animate within 15 m, 30 fps cap | 30 fps | Softer contacts (2-step contact time constant at 180 Hz), a 4-sided friction pyramid instead of the cone, a looser solver, far bots re-plan every other step; hits and footing are a little different (within the tolerances below) |
-| **Low** (id `minimum`) | 240 Hz, 20 iterations, merged body: today's Minimum, bit for bit | today's Minimum, faces within 30 m | 30 fps | today's Minimum |
-| **Medium** | 240 Hz, 30 iterations, full body (the realism suite's standard), bit-identical to today's code at those settings | 85 % resolution, pixel cap 1.5x, shadows (1024 map), no AA | 60 fps | Half the step rate of High |
+| **Low** (id `minimum`) | 240 Hz, 20 iterations, merged body: today's Minimum, bit for bit, physics in a Worker | today's Minimum, faces within 30 m | 30 fps | today's Minimum |
+| **Medium** | 240 Hz, 30 iterations, full body (the realism suite's standard), bit-identical to today's code at those settings, physics in a Worker | 85 % resolution, pixel cap 1.5x, shadows (1024 map), no AA | 60 fps | Half the step rate of High |
 | **High** | 480 Hz, 40 iterations, full body: today's High, bit for bit | today's High | 60 fps | nothing |
 | **Ultra** | High's physics, bit for bit | full pixel density (cap 3x), 4096 shadow map | 60 fps | sharper image only |
 
@@ -82,6 +82,10 @@ DevTools (6x ≈ a low-end school Chromebook). Before = ee715ef's build measured
 
 Rendering is capped by vsync at 16.7 ms under SwiftShader and DevTools throttling does not slow the GPU process, so
 render cost is not measured here.
+
+The Worker is on by default for Potato, Low and Medium (owner decision 2026-10-19: Chromebooks gain the most from a
+second core); High and Ultra run on the page. It is the same simulation on another thread (one frame or two more input
+delay); the Advanced 'Physics thread' switch overrides it. Multiplayer hosts always run on the page.
 
 ### Physics Worker (bench/perf/worker.ts, the machine's GPU, no throttling)
 

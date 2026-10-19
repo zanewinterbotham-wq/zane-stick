@@ -19,7 +19,7 @@ type Zs = {
 for (const s of [...stadiums, { id: 'field', label: 'Open Field' }]) {
   test(`stadium ${s.id}: chase camera in the drill and a wide shot`, async ({ page }) => {
     const errors = watchErrors(page);
-    await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
+    await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })));
     await page.goto(`/?stadium=${s.id}`);
     await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
     await page.keyboard.press('Enter');
@@ -45,7 +45,7 @@ for (const s of [...stadiums, { id: 'field', label: 'Open Field' }]) {
 
 test('the inventory lists skins and stadiums; equipping a stadium is remembered and shows on the next rep', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => { if (!localStorage.getItem('zane-stick-settings-v1')) localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })); });
+  await page.addInitScript(() => { if (!localStorage.getItem('zane-stick-settings-v1')) localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })); });
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await page.getByRole('button', { name: /^Inventory/ }).click();

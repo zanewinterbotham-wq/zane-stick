@@ -14,7 +14,7 @@ function watchErrors(page: Page) {
 
 test('settings: title menu has Settings and no skin button; every tab opens, a value changes and persists', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { sessionStorage.setItem('seeded', '1'); localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })); } });
+  await page.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { sessionStorage.setItem('seeded', '1'); localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })); } });
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await expect(page.getByRole('button', { name: /Skin:|Difficulty:|Quality:/ })).toHaveCount(0);
@@ -84,7 +84,7 @@ test('settings: title menu has Settings and no skin button; every tab opens, a v
 
 test('settings: the pause menu keeps only Resume, Reset rep, Settings, Inventory and Quit', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum' })));
+  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })));
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await page.keyboard.press('Enter');

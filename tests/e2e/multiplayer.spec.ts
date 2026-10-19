@@ -19,7 +19,7 @@ function watchErrors(page: Page) {
 
 async function open(browser: Browser, name: string, path = ''): Promise<{ page: Page; errors: string[] }> {
   const page = await (await browser.newContext()).newPage(), errors = watchErrors(page);
-  await page.addInitScript((n) => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', netName: n })), name);
+  await page.addInitScript((n) => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false }, netName: n })), name);
   await page.goto(DEV + path);
   return { page, errors };
 }
