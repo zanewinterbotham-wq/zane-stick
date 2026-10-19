@@ -352,16 +352,23 @@ rule applies to every athlete (bots and the human), and toughness / hit power ch
 - **Break:** each breakable dof's range-of-motion limit torque (`PhysicsScene.limitTorques`, the load the
   joint's passive structures carry), averaged over 10 ms, beyond its tolerance ([S6]; knee and elbow at the
   hyper-extension end, ankle inversion/eversion, shoulder, sternoclavicular "collarbone"), within 1 s of touching
-  another athlete (traumatic injuries only). The joint's muscles give no torque from then on (damping kept), and
-  the end of its range that broke gives way by 0.6–1.0 rad (`PhysicsScene.setJointRange`, a runtime change that
-  lasts the rep: each rep is a new world), so the limb dangles past where it used to stop. A broken arm lets go
-  of the ball (fumble); a broken leg keeps it and goes down.
+  another athlete (traumatic injuries only). Tolerances × the athlete's bone strength (`AthleteSetup.boneStrength`;
+  settings "Player bone strength" / "AI bone strength", 0.25–4, default 1). The end of its range that broke gives
+  way by 0.6–1.0 rad (`PhysicsScene.setJointRange`, a runtime change that lasts the rep: each rep is a new world),
+  so the limb dangles past where it used to stop.
+- **Playing on hurt** (owner item 2026-10-18): one break does not end his rep. He goes down from the hit as physics
+  decides, gets up and plays on, bots the same. A broken leg (knee, ankle) keeps 35 % of its muscle output and he
+  hobbles (`injury.ts` HOBBLE: 0.4 × top speed, the bad leg's stance 0.6 × the gait's, the good leg's 1.35 ×;
+  measured: 3.9 m/s from a 10.2 m/s sprint, the bad leg bearing 35–40 % of the good one's load). A broken arm (elbow,
+  shoulder, collarbone) goes limp from the collarbone to the wrist: no muscle force, light damping, so it hangs and
+  swings with the run; it neither reaches nor grips, and a ball carried in it moves to the other arm
+  (`World.tuckBall`), or comes loose if both arms are broken. Brains plan at a hobble when lame.
 - **Knockout:** the head's velocity change over 15 ms (the impact duration of [S6]), gravity removed, beyond
   10 m/s. Not gated on contact (a head driven into the turf counts).
-- **Out of play** (either): the brain is no longer asked (Commands are neutral except a ball tucked in a sound
-  arm), the support goes off for the rest of the rep (`SupportState.out`), the animator stays in its down pose
-  (no get-up) and the tracking controller holds that loose pose instead of balancing; muscle tone fades over
-  0.3 s to 0.2 (knocked out) or 0.5 (hurt). He is down by physics, so a carrier's rep ends.
+- **Out of play** (a knockout, or both legs broken): the brain is no longer asked (Commands are neutral except a
+  ball tucked in a sound arm), the support goes off for the rest of the rep (`SupportState.out`), the animator
+  stays in its down pose (no get-up) and the tracking controller holds that loose pose instead of balancing; muscle
+  tone fades over 0.3 s to 0.2 (knocked out) or 0.5 (legs broken). He is down by physics, so a carrier's rep ends.
 - **Events:** `World.injuries` (athlete, break or KO, joint, segment, point, load, time) drive sound
   (`cues.ts`: bone crack and scream; knockout thud and ringing; a moan every 2.5–5 s while he lies there) and
   effects (`render/effects.ts`): stylised blood bursts, turf splats, a bone at the broken joint, comic stars,
