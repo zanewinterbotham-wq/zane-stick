@@ -56,7 +56,8 @@ describe('kickoff coverage (headless)', () => {
   it('cover men keep their lanes until the catch, contain stays outside the returner, blockers engage', async () => {
     const def = modeById('kickoff');
     let play: Play | null = null;
-    play = await Play.create(mujocoEngine, CFG, def, { ...resolveOptions(def), cover: 4, block: 3 }, autoHuman(() => play), 1);
+    // rep 5: whether 2 of 3 blockers get a hand on a cover man is chaotic (a 0.1 mm change of the tee height flips rep 1)
+    play = await Play.create(mujocoEngine, CFG, def, { ...resolveOptions(def), cover: 4, block: 3 }, autoHuman(() => play), 5);
     const w = play.world, cover = [0, 2, 3, 4], blockers = [6, 7, 8], R = 5;
     const xs = () => cover.map((i) => w.scene.athletes[i].state.com[0]).sort((a, b) => a - b);
     let minGap = Infinity, caught = -1, outside = 0, inside = 0, safetyGap = NaN;

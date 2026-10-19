@@ -63,6 +63,7 @@ class MujocoScene implements PhysicsScene {
 <geom name="ground" type="plane" size="200 200 0.1" zaxis="0 1 0" friction="${FRICTION.ground} 0.005 0.0001" condim="3"/>`;
     const excludes: string[] = [];
     const equalities: string[] = [];
+    const pairs: string[] = [];
     desc.athletes.forEach((a, ai) => {
       const q = qaxis([0, 1, 0], a.yaw);
       const P = a.plan;
@@ -92,8 +93,11 @@ class MujocoScene implements PhysicsScene {
       const soft = p.soft ? CONTACT.pad : CONTACT.body;
       const geom = `<geom name="prop${pi}" type="${p.shape}" size="${size}"${p.shape === 'capsule' ? ' zaxis="0 1 0"' : ''} friction="${p.friction ?? 0.7} 0.005 0.0001" solref="${Math.max(soft.timeconst, 2 * dt)} 1" solimp="0.95 0.99 0.001" margin="0.005"${p.mass > 0 ? ` mass="${p.mass}"` : ''}/>`;
       xml += p.mass > 0 ? `<body name="prop${pi}" pos="${f(p.pos)}"${quat}><freejoint/>${geom}</body>` : geom.replace('/>', ` pos="${f(p.pos)}"${quat}/>`);
+      // an explicit pair: only this prop's turf contact changes (hands, bodies and posts keep the blended defaults)
+      const t = p.turf, fr = p.friction ?? 0.7;
+      if (t) pairs.push(`<pair geom1="ground" geom2="prop${pi}" condim="6" friction="${fr} ${fr} ${t.torsional} ${t.rolling} ${t.rolling}" solref="${2 * dt} ${t.dampRatio}" solimp="0.99 0.99 0.001" margin="0.005"/>`);
     });
-    xml += `</worldbody><contact>${excludes.join('')}</contact><equality>${equalities.join('')}</equality></mujoco>`;
+    xml += `</worldbody><contact>${pairs.join('')}${excludes.join('')}</contact><equality>${equalities.join('')}</equality></mujoco>`;
 
     this.m = mj.MjModel.from_xml_string(xml);
     this.d = new mj.MjData(this.m);

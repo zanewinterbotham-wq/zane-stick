@@ -23,3 +23,7 @@ export const TURF = { mu: 1.2, torsional: 0.05, rolling: 0.0001 };
 
 /** Regulation ball [S5]. */
 export const BALL = { mass: 0.41, length: 0.28, diameter: 0.17 };
+/** Ball on turf [S5]: its contact is as stiff as the step allows (no sinking); the damping ratio sets the bounce
+ *  (kick landings rebound at 0.15–0.45 of their vertical speed), torsional and rolling friction (m) stop a kick
+ *  that came down within ~2 s. */
+export const BALL_TURF = { dampRatio: 0.85, torsional: 0.02, rolling: 0.03 };
