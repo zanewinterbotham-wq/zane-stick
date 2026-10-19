@@ -3,7 +3,7 @@
 // you can. kickoffPlay builds either side of the kick (kickoffReturn.ts is the other).
 import type { Rng } from '../rng';
 import { BALL_REST_Y, lob, ownYard, returnPlay, row } from './kicks';
-import { attackDir, END_LINE, YD } from './rules';
+import { attackDir, END_LINE, side, YD } from './rules';
 import type { ModeDef, PlayerSpec, PlaySetup } from './types';
 
 /** NFL kickoff: from the kicking team's 35, hang time (s) for a kick of d yd (4 s for a 60 yd kick), the run-up behind
@@ -21,12 +21,14 @@ export function kickoffPlay(K: 0 | 1, cover: number, block: number, yards: numbe
   const R = K === 0 ? 1 : 0, s = attackDir(K), tee = ownYard(K, TEE);
   const d = yards * (1 + DIST_SD * rng.gauss()), e = AIM_SD * rng.gauss();
   const land = tee + s * d * YD, rz = s * Math.min(END_LINE - 1, s * land + DEEP);
-  const returner: PlayerSpec = { team: R, pos: [rng.range(-3, 3), rz] };
-  const kicker: PlayerSpec = { team: K, pos: [0, tee - s * RUN_UP] };
+  const returner: PlayerSpec = { team: R, label: 'Returner', pos: [rng.range(-3, 3), rz] };
+  const kicker: PlayerSpec = { team: K, label: 'Kicker', pos: [0, tee - s * RUN_UP] };
   // the coverage line spread across the field (on your kickoff you are its middle man), blockers across their front
   const n = K === 0 ? cover : cover - 1, xs = Array.from({ length: n }, (_, k) => (n > 1 ? LANE_W * (2 * k / (n - 1) - 1) : 0))
-    .sort((a, b) => Math.abs(a) - Math.abs(b)).map((x) => (Math.abs(x) < TEE_CLEAR ? TEE_CLEAR : x));
-  const line: PlayerSpec[] = xs.map((x) => ({ team: K, pos: [x, tee - s] })), blockers = row(R, block, ownYard(R, FRONT), 6, 3);
+    .sort((a, b) => Math.abs(a) - Math.abs(b)).map((x) => (Math.abs(x) < TEE_CLEAR ? Math.sign(x || 1) * TEE_CLEAR : x)); // (each to his own side of the tee)
+  // cover men by side, counted from the tee out (Cover L1 is the man nearest the tee on the left)
+  const lane = (x: number) => xs.filter((y) => side(K, y) === side(K, x) && Math.abs(y) <= Math.abs(x)).length;
+  const line: PlayerSpec[] = xs.map((x) => ({ team: K, label: `Cover ${side(K, x)}${lane(x)}`, pos: [x, tee - s] })), blockers = row(R, block, ownYard(R, FRONT), 6, 3, 'Blocker');
   const players = K === 1 ? [returner, ...blockers, kicker, ...line] : [line[0], kicker, ...line.slice(1), returner, ...blockers];
   const from: [number, number, number] = [0, BALL_REST_Y, tee];
   return returnPlay({
@@ -42,8 +44,8 @@ export const KICKOFF: ModeDef = {
   id: 'kickoff', title: 'Kickoff Coverage', preview: 'modes/kickoff.jpg',
   pitch: 'You are on the kickoff team. Sprint down the field, beat the blockers and bring the returner down.',
   options: [
-    { id: 'cover', label: 'Your team (the kicker too)', kind: 'range', min: 1, max: 4, step: 1, default: 1 },
-    { id: 'block', label: 'Their blockers', kind: 'range', min: 0, max: 4, step: 1, default: 1 },
+    { id: 'cover', label: 'Your team (the kicker too)', kind: 'range', min: 1, max: 8, step: 1, default: 1 },
+    { id: 'block', label: 'Their blockers', kind: 'range', min: 0, max: 7, step: 1, default: 1 },
     kickDistance,
   ],
   athletes: (o) => 2 + +o.cover + +o.block,

@@ -73,6 +73,16 @@ export interface PhysicsScene {
   /** A kick (no kicking leg model) or a ball put in a hand: give a dynamic prop its velocity once, at that moment
    *  (linear in the world frame, angular in the prop's own frame). Everything after it is physics. */
   launchProp(prop: number, vel: Vec3, spin: Vec3): void;
+  /** Generalised coordinates (MuJoCo qpos, nq) and velocities (qvel, nv) of the whole scene, for multiplayer
+   *  snapshots; `freeQ` lists the qpos address of every free joint (athlete roots, dynamic props): x y z, then the
+   *  orientation quaternion w x y z. */
+  readonly nq: number; readonly nv: number; readonly freeQ: readonly number[];
+  readQ(out: Float32Array | Float64Array): void;
+  /** A replica only (a multiplayer guest, which never steps): set every coordinate and velocity (zero when absent),
+   *  run the forward pass (kinematics, contacts) and refresh the athlete states. */
+  writeQ(q: ArrayLike<number>, qd?: ArrayLike<number>): void;
+  /** The velocity (qvel layout: free joints' angular part in the body frame) that moves q0 to q1 in dt s. */
+  diffQ(q0: ArrayLike<number>, q1: ArrayLike<number>, dt: number, out: Float64Array): void;
   /** Counts for the overlay and tests. `instabilities` = times the solver diverged and auto-reset (must stay 0). */
   stats(): { contacts: number; bodies: number; instabilities: number };
   destroy(): void;

@@ -32,7 +32,7 @@ function autoHuman(get: () => Play | null): Brain {
 
 describe('coverage assignments (pure)', () => {
   it('the outermost cover men contain, the rest keep lanes, the kicker is the safety', () => {
-    const P = (team: 0 | 1, x: number) => ({ team, pos: [x, 0] as [number, number] });
+    const P = (team: 0 | 1, x: number) => ({ team, label: '', pos: [x, 0] as [number, number] });
     const lanes = coverLanes([P(0, 4), P(0, 0), P(0, -13), P(0, 13), P(0, -4), P(1, 0)], 0, 1);
     expect(lanes.map((l) => l?.role)).toEqual(['lane', 'safety', 'contain', 'contain', 'lane', undefined]);
     expect(lanes[2]!.x).toBe(-13);

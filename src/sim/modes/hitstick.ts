@@ -23,7 +23,7 @@ export const HIT_STICK: ModeDef = {
   athletes: () => 2,
   setup(o, rng) {
     return {
-      players: [{ team: 0, pos: [0, 0] }, { team: 1, pos: [rng.range(-4, 4), +o.distance] }], ball: { holder: 1 },
+      players: [{ team: 0, label: 'Hitter', pos: [0, 0] }, { team: 1, label: 'Runner', pos: [rng.range(-4, 4), +o.distance] }], ball: { holder: 1 },
       rules: { ...NFL, outOfBounds: false, timeLimit: 15 },
       brain: (play, i, r) => i !== 1 ? null
         : o.runner === 'jukes' ? new CarrierBrain(r, play.cfg.difficulty, o.pace as Gait)

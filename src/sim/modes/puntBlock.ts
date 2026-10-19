@@ -15,8 +15,8 @@ export const PUNT_BLOCK: ModeDef = {
   id: 'puntBlock', title: 'Punt Block', preview: 'modes/puntBlock.jpg',
   pitch: 'Fourth down, they are punting. Beat your man off the snap, get a hand on the ball and scoop it up.',
   options: [
-    { id: 'rush', label: 'Your teammates', kind: 'range', min: 0, max: 4, step: 1, default: 1 },
-    { id: 'protect', label: 'Their protectors', kind: 'range', min: 0, max: 4, step: 1, default: 1 },
+    { id: 'rush', label: 'Your teammates', kind: 'range', min: 0, max: 8, step: 1, default: 1 },
+    { id: 'protect', label: 'Their protectors', kind: 'range', min: 0, max: 8, step: 1, default: 1 },
     // an NFL operation takes 2.0-2.2 s, but at 2.1 s an unblocked bot rusher is still ~3.5 m short of the kick point
     { id: 'kickTime', label: 'Snap to kick', kind: 'range', min: 1.6, max: 3, step: 0.1, default: 2.4, unit: 's' },
   ],
@@ -25,8 +25,8 @@ export const PUNT_BLOCK: ModeDef = {
     const K = 1, s = attackDir(K), los = ownYard(K, LOS), pz = ownYard(K, LOS - DEPTH), P = 1 + +o.rush, kickAt = Math.round(+o.kickTime * 10) / 10;
     const e = 0.07 * rng.gauss();
     // you and your rushers on the line, their protectors across from you, the punter deep
-    const rushers = row(0, 1 + +o.rush, los + s, 2.5, rng.range(-0.5, 0.5)), protectors = row(K, +o.protect, los - s * 0.6, 2);
-    const players: PlayerSpec[] = [...rushers, { team: K, pos: [0, pz] }, ...protectors];
+    const rushers = row(0, 1 + +o.rush, los + s, 2.5, rng.range(-0.5, 0.5), 'Rusher', 'Rush'), protectors = row(K, +o.protect, los - s * 0.6, 2, 0, 'Protector', 'Punt team');
+    const players: PlayerSpec[] = [...rushers, { team: K, label: 'Punter', group: 'Punt team', pos: [0, pz] }, ...protectors];
     let kicked = false, flight = false, kickedAt = 0, blocked = false;
     return {
       players, ball: { holder: P }, rules: KICK_RULES, props: goalposts(),

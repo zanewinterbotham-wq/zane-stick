@@ -435,8 +435,9 @@ export class World {
     this.updateImpact(this.lastHitForce);
   }
 
-  /** Read contacts: foot loads and centres of pressure, player contact, hand touches, down detection. */
-  private sense() {
+  /** Read contacts: foot loads and centres of pressure, player contact, hand touches, down detection (after each
+   *  step; a multiplayer replica calls it after writing a snapshot into the scene). */
+  sense() {
     for (const a of this.athletes) {
       a.feet.forEach((f) => { f.force = 0; f.cop = [0, 0, 0]; f.touching = false; });
       a.downBy = null; a.handTouch = [null, null];

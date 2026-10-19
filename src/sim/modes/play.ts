@@ -15,6 +15,7 @@ import { BlockerBrain } from '../brains/blocker';
 import { CarrierBrain } from '../brains/carrier';
 import { TacklerBrain } from '../brains/tackler';
 import type { Brain } from '../brains/types';
+import { neutralCommands } from '../control/types';
 import { makeController } from '../drills/controllers';
 import type { Vec3 } from '../math';
 import type { PhysicsEngine } from '../physics/engine';
@@ -22,6 +23,14 @@ import { Rng } from '../rng';
 import { World, type AthleteSetup, type WorldSetup } from '../world';
 import { attackDir, barrierProps, deadBall, inOwnEndZone, outside, scores } from './rules';
 import type { ModeDef, ModeOptions, PlayConfig, PlaySetup, Rules } from './types';
+
+/** Who plays which athlete (multiplayer, docs/multiplayer.md): `human` is the local player's athlete (−1: none, a
+ *  spectating host), driven by Play.create's `humanBrain`; `fixed[i]` gives athlete i another fixed brain (a remote
+ *  player's HumanBrain). Fixed brains are never replaced; every other athlete is a bot. Default: the human is 0. */
+export interface Seats { human?: number; fixed?: readonly (Brain | null | undefined)[] }
+
+/** Stands still: a placeholder brain until the bots get theirs. */
+const STILL: Brain = { think: () => neutralCommands() };
 
 export type RepEnd = 'down' | 'touchdown' | 'safety' | 'touchback' | 'out' | 'time' | 'fieldgoal' | (string & {}) | null;
 
@@ -51,9 +60,8 @@ export class Play {
   scorer: -1 | 0 | 1 = -1;
   points = 0;
   verdict = '';
-  /** The ball's prop index and the human's athlete index. */
+  /** The ball's prop index. */
   readonly ball = 0;
-  readonly human = 0;
   /** Athlete 1, the first bot: the open-field drill's opponent (tests and automation address him by this). */
   readonly carrier = 1;
   /** Fumbles this play, and who recovered the last one (−1: none yet). */
@@ -73,14 +81,17 @@ export class Play {
   private readonly ballRef = { athlete: -1, seg: this.ball };
 
   /** `brains`: what each athlete thinks with; the world's brains delegate here, so the play can swap a bot's. */
-  private constructor(public world: World, readonly cfg: PlayConfig, readonly mode: PlaySetup, readonly rules: Rules, readonly brains: Brain[], readonly rng: Rng, readonly options: ModeOptions) {}
+  /** `human`: the local player's athlete (−1: none); `fixed[i]`: athlete i's brain is a player's, never a bot's. */
+  private constructor(public world: World, readonly cfg: PlayConfig, readonly mode: PlaySetup, readonly rules: Rules, readonly brains: Brain[], readonly rng: Rng, readonly options: ModeOptions,
+    readonly human: number, private readonly fixed: readonly (Brain | null)[]) {}
 
-  static async create(engine: PhysicsEngine, cfg: PlayConfig, def: ModeDef, options: ModeOptions, humanBrain: Brain, rep = 0): Promise<Play> {
+  static async create(engine: PhysicsEngine, cfg: PlayConfig, def: ModeDef, options: ModeOptions, humanBrain: Brain | null, rep = 0, seats: Seats = {}): Promise<Play> {
     const rng = new Rng(cfg.seed * 7919 + rep * 104729);
     const ps = def.setup(options, rng, cfg), r = ps.rules;
     const b0 = ps.ball, holder = 'holder' in b0 ? b0.holder : -1;
     const botRngs = ps.players.map((_, i) => (i === 0 ? rng : new Rng(rng.next() * 1e9)));
-    const brains: Brain[] = ps.players.map(() => humanBrain);
+    const me = seats.human ?? 0, fixed = ps.players.map((_, i) => (i === me ? humanBrain : seats.fixed?.[i] ?? null));
+    const brains: Brain[] = fixed.map((b) => b ?? STILL);
     // whoever holds the ball keeps it tucked in the right arm (a human's input has no carry button)
     const possess = (i: number): Brain => ({ think: (p, dt) => { const c = brains[i].think(p, dt); if (p.athletes[i].hasBall) c.carry = 2; return c; } });
     const ctl: AthleteSetup['controller'] = (p, m) => makeController(p, m, 'tracking', cfg.gains);
@@ -89,8 +100,8 @@ export class Play {
       physics: cfg.physics, seed: cfg.seed + rep, assist: cfg.assist, traction: cfg.traction, hitPower: cfg.hitPower,
       field: { halfWidth: r.halfWidth, goalZ: r.goal[team], dirZ: attackDir(team) },
       athletes: ps.players.map((s, i) => ({
-        params: s.params ?? (i === 0 ? cfg.human : cfg.bot), pos: [s.pos[0], 0, s.pos[1]], yaw: s.yaw ?? (s.team === 0 ? 0 : Math.PI), team: s.team,
-        controller: ctl, brain: possess(i), hasBall: i === holder, ...(i > 0 && { toughness: cfg.toughness }), boneStrength: i === 0 ? cfg.boneStrength : cfg.aiBoneStrength,
+        params: s.params ?? (fixed[i] ? cfg.human : cfg.bot), pos: [s.pos[0], 0, s.pos[1]], yaw: s.yaw ?? (s.team === 0 ? 0 : Math.PI), team: s.team,
+        controller: ctl, brain: possess(i), hasBall: i === holder, ...(!fixed[i] && { toughness: cfg.toughness }), boneStrength: fixed[i] ? cfg.boneStrength : cfg.aiBoneStrength,
       })),
       // a held ball is parked out of reach above its holder until he has tucked his arm (setup only; under the field the
       // turf shot it up through him)
@@ -99,10 +110,10 @@ export class Play {
       support: cfg.support && { ...cfg.support },
     };
     const world = await World.create(engine, setup);
-    const play = new Play(world, cfg, ps, r, brains, new Rng(rng.next() * 1e9), options);
+    const play = new Play(world, cfg, ps, r, brains, new Rng(rng.next() * 1e9), options, me, fixed);
     play.rep = rep;
     play.impetus = team;
-    for (let i = 1; i < brains.length; i++) brains[i] = play.roleBrain(i, botRngs[i]);
+    for (let i = 0; i < brains.length; i++) if (!fixed[i]) brains[i] = play.roleBrain(i, botRngs[i]);
     play.preroll(holder);
     return play;
   }
@@ -110,15 +121,17 @@ export class Play {
   /** Pre-roll: let everyone settle and the ball holder tuck his arm, then put the ball in his hand and grip it. */
   private preroll(holder: number) {
     const w = this.world, bots = this.brains.slice();
-    // hold the bots still while the holder tucks (the human brain has no input yet during the pre-roll)
-    for (let i = 1; i < bots.length; i++) this.brains[i] = { think: (p, dt) => ({ ...bots[i].think({ ...p, time: -1 }, dt), move: { x: 0, z: 0 }, dive: false }) };
+    // hold the bots still while the holder tucks (the human brains have no input yet during the pre-roll)
+    for (let i = 0; i < bots.length; i++) if (!this.fixed[i]) this.brains[i] = { think: (p, dt) => ({ ...bots[i].think({ ...p, time: -1 }, dt), move: { x: 0, z: 0 }, dive: false }) };
     for (let i = 0; i < Math.round(0.5 / w.dt); i++) w.step();
-    for (let i = 1; i < bots.length; i++) this.brains[i] = bots[i];
+    for (let i = 0; i < bots.length; i++) this.brains[i] = bots[i];
     if (holder >= 0) this.tuck(holder);
     this.repStart = w.time;
   }
 
   team(i: number): 0 | 1 { return this.world.athletes[i].setup.team; }
+  /** Athlete i thinks with a bot brain (the play may swap it), not a player's. */
+  isBot(i: number) { return !this.fixed[i]; }
   get repTime() { return this.world.time - this.repStart; }
   ballPos(): Vec3 { return this.world.scene.propPose(this.ball).pos; }
 
@@ -132,8 +145,8 @@ export class Play {
     return new TacklerBrain(rng, this.cfg.defense ?? d);
   }
 
-  /** Every bot thinks again for its new role (possession changed). */
-  private reassign() { for (let i = 1; i < this.brains.length; i++) this.brains[i] = this.roleBrain(i); }
+  /** Every bot thinks again for its new role (possession changed, or a kick came down). */
+  reassign() { for (let i = 0; i < this.brains.length; i++) if (!this.fixed[i]) this.brains[i] = this.roleBrain(i); }
 
   /** Put the ball in athlete ai's right hand and grip it (rep start, and a recovery). */
   private tuck(ai: number) {

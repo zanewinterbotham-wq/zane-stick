@@ -12,7 +12,8 @@ import { PUNT_BLOCK } from './puntBlock';
 import { PUNT_RETURN } from './puntReturn';
 import { SCRAMBLE } from './scramble';
 import { SUMO } from './sumo';
-import type { ModeDef, ModeOptions, OptionDesc, OptionValue } from './types';
+import { Rng } from '../rng';
+import type { ModeDef, ModeOptions, OptionDesc, OptionValue, PlayConfig } from './types';
 
 export const MODES: ModeDef[] = [OPEN_FIELD_TACKLE, OPEN_FIELD_CARRY, OKLAHOMA, KICKOFF_RETURN, KICKOFF, PUNT_RETURN, PUNT_BLOCK, FIELD_GOAL_BLOCK, GAUNTLET, SUMO, KEEP_AWAY, SCRAMBLE, GOAL_LINE_STAND, HIT_STICK];
 
@@ -32,4 +33,13 @@ function valid(d: OptionDesc, v: unknown): OptionValue {
 /** A mode's options: every descriptor's value from `stored` where valid, else its default. */
 export function resolveOptions(m: ModeDef, stored: Record<string, unknown> = {}): ModeOptions {
   return Object.fromEntries(m.options.map((d) => [d.id, valid(d, stored[d.id])]));
+}
+
+/** One position of a mode, for the lobby's position menu (multiplayer): the athlete index it plays. */
+export interface SlotInfo { index: number; team: 0 | 1; label: string; group?: string }
+
+/** A mode's positions with these options, without building a world. Start spots vary per rep; indices and labels
+ *  depend only on the options. (No setup reads the config: shortcut, pass a real one if a setup ever does.) */
+export function listSlots(m: ModeDef, o: ModeOptions = resolveOptions(m)): SlotInfo[] {
+  return m.setup(o, new Rng(1), {} as PlayConfig).players.map((p, index) => ({ index, team: p.team, label: p.label, ...(p.group && { group: p.group }) }));
 }

@@ -28,7 +28,8 @@ export const OKLAHOMA: ModeDef = {
   setup(o, rng) {
     const role = o.role as OklahomaRole, O: 0 | 1 = role === 'defender' ? 1 : 0, D: 0 | 1 = O === 0 ? 1 : 0, s = attackDir(O);
     const hw = (+o.width * YD) / 2, withBlocker = !!o.blocker || role === 'blocker'; // the human blocker can't be removed
-    const at = { blocker: { team: O, pos: [0, -s * SET] }, carrier: { team: O, pos: [rng.range(-0.5, 0.5), -s * DEPTH] }, defender: { team: D, pos: [0, s * SET] } } as Record<OklahomaRole, PlayerSpec>;
+    const at = { blocker: { team: O, label: 'Blocker', group: 'Offense', pos: [0, -s * SET] }, carrier: { team: O, label: 'Ball carrier', group: 'Offense', pos: [rng.range(-0.5, 0.5), -s * DEPTH] },
+      defender: { team: D, label: 'Defender', group: 'Defense', pos: [0, s * SET] } } as Record<OklahomaRole, PlayerSpec>;
     const order: OklahomaRole[] = role === 'defender' ? ['defender', 'blocker', 'carrier'] : role === 'blocker' ? ['blocker', 'carrier', 'defender'] : ['carrier', 'blocker', 'defender'];
     if (!withBlocker) order.splice(order.indexOf('blocker'), 1);
     const goal: [number, number] = O === 0 ? [FINISH, -BACK] : [BACK, -FINISH];

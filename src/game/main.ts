@@ -204,6 +204,7 @@ class App {
       human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, bot: DEFAULT_OPEN_FIELD.carrier, traction: s.traction, gains: s.gains,
       support: { ...GAME_SUPPORT, ...s.support },
     }, this.mode, this.modeOpts, this.human, this.rep++);
+    this.cam.target = Math.max(0, this.drill.human); // the player's own athlete (multiplayer: any slot)
     if (!this.renderer || this.rendererPreset !== p.name) {
       this.renderer?.renderer.dispose();
       this.renderer = new GameRenderer(canvas, p.render);
@@ -365,7 +366,7 @@ class App {
   focusMove(dir: 1 | -1) { moveFocus(this.layer.root, dir); this.audio.play('ui_move', 1); }
 
   humanHeading() {
-    const q = this.drill!.world.scene.athletes[0].state.segQuat;
+    const q = this.drill!.world.scene.athletes[this.cam.target].state.segQuat;
     return headingOf(qrot([q[0], q[1], q[2], q[3]], [0, 0, 1]));
   }
 
@@ -399,7 +400,7 @@ class App {
       r.hideHeadOf = this.cam.mode === 'helmet' ? this.cam.target : -1;
       const m = r.camera.matrixWorld.elements; // column 0: the camera's right axis
       this.audio.listen([r.camera.position.x, r.camera.position.y, r.camera.position.z], [m[0], m[1], m[2]]);
-      const v = w.scene.athletes[0].state.comVel;
+      const v = w.scene.athletes[this.cam.target].state.comVel;
       this.speed += (Math.hypot(v[0], v[2]) - this.speed) * Math.min(1, dtReal * 8);
       // FOV kick so a full sprint reads as fast: +12° from jog to top speed
       const fov = 55 + 12 * Math.min(1, Math.max(0, (this.speed - 3) / 7));
@@ -448,7 +449,7 @@ class App {
   }
 
   updateHud() {
-    const d = this.drill!, w = d.world, me = w.athletes[0];
+    const d = this.drill!, w = d.world, me = w.athletes[this.cam.target];
     const sup = w.view(me).support; // present once the world runs the active-ragdoll support
     const mode = this.human.contact ? 'CONTACT (auto)' : 'MOVEMENT', bc = w.ballCarrier, line = d.mode.status?.(d);
     if (d.ended && !this.scored) { this.scored = true; if (d.scorer >= 0) this.score[d.scorer as 0 | 1] += d.points; }

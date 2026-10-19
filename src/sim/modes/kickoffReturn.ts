@@ -7,8 +7,8 @@ export const KICKOFF_RETURN: ModeDef = {
   id: 'kickoffReturn', title: 'Kickoff Return', preview: 'modes/kickoffReturn.jpg',
   pitch: 'The kick is coming deep to you. Field it, follow your blockers through the coverage and take it to the house.',
   options: [
-    { id: 'block', label: 'Your blockers', kind: 'range', min: 0, max: 4, step: 1, default: 1 },
-    { id: 'cover', label: 'Their coverage (the kicker too)', kind: 'range', min: 1, max: 5, step: 1, default: 2 },
+    { id: 'block', label: 'Your blockers', kind: 'range', min: 0, max: 7, step: 1, default: 1 },
+    { id: 'cover', label: 'Their coverage (the kicker too)', kind: 'range', min: 1, max: 9, step: 1, default: 2 },
     kickDistance,
   ],
   athletes: (o) => 1 + +o.block + +o.cover,
