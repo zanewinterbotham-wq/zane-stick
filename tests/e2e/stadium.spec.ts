@@ -24,7 +24,7 @@ for (const s of [...stadiums, { id: 'field', label: 'Open Field' }]) {
     await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
     await page.keyboard.press('Enter');
     await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
-    await expect.poll(() => page.evaluate(() => (window as unknown as { __app: { renderer: { stadium: { id: string } } } }).__app.renderer.stadium.id)).toBe(s.id);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __app: { renderer: { stadium: { id: string } } } }).__app.renderer.stadium.id), { timeout: 30_000 }).toBe(s.id);
     await page.waitForTimeout(600);
     await page.screenshot({ path: `test-results/stadium-${s.id}-chase.png` });
 

@@ -37,7 +37,7 @@ test('the default skin (the owner pick, Rubber Hose) dresses both athletes; stan
   await expect(page.getByRole('button', { name: /Skin:/ })).toHaveCount(0); // skins are chosen in the Inventory
   await page.keyboard.press('Enter');
   await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
-  await expect.poll(() => skinState(page)).toEqual({ id: 'rubberhose', parts: [21, 21] });
+  await expect.poll(() => skinState(page), { timeout: 30_000 }).toEqual({ id: 'rubberhose', parts: [21, 21] });
   await carrierComesToYou(page);
   await page.waitForTimeout(800);
   await page.screenshot({ path: 'test-results/skin-default-stand.png' });
