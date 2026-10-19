@@ -35,6 +35,19 @@ describe('HumanBrain', () => {
     expect(c.aim![1]).toBeGreaterThan(1.5);                            // aimed above level
   });
 
+  it('a raised arm aims where a ball flying at him will pass his chest; one flying away, or no button, leaves the aim', () => {
+    const b = new HumanBrain();
+    const loose = (vz: number): Perception => ({ time: 0, self: 0, athletes: [{ ...view(0, 0), team: 0 }, view(0, 20)], field: { halfWidth: 24, goalZ: 50, dirZ: 1 }, ball: { pos: [1, 2, 5], vel: [0, 0, vz] } });
+    b.latest = input({ move: { x: 0, y: 0 }, armR: 1 });
+    const c = b.think(loose(-10));
+    expect(c.aim![0]).toBeCloseTo(1);                                  // the ball's line, beside him
+    expect(c.aim![2]).toBeCloseTo(0, 1);                               // level with his chest, not where it is now
+    expect(c.aim![1]).toBeLessThan(2);                                 // it drops on the way
+    expect(b.think(loose(10)).aim![2]).toBeGreaterThan(1);             // flying away: the camera's aim
+    b.latest = input({ move: { x: 0, y: 0 } });
+    expect(b.think(loose(-10)).aim).toBe(null);
+  });
+
   it('shift lock faces the camera way and moves camera-relative; off, it faces the move direction', () => {
     const b = new HumanBrain();
     b.latest = input({ move: { x: 1, y: 0 }, cameraYaw: Math.PI / 2, shiftLock: true });

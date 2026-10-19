@@ -4,7 +4,7 @@
 // loose ball; with the ball the play hands him a carrier brain. Same Commands as a human.
 import { GAIT_SPEED } from '../control/hand';
 import { neutralCommands, type Commands } from '../control/types';
-import { clamp, wrapAngle } from '../math';
+import { clamp, wrapAngle, type Vec3 } from '../math';
 import type { Rng } from '../rng';
 import type { BotDifficulty } from './carrier';
 import { TacklerBrain, turnRate } from './tackler';
@@ -19,6 +19,20 @@ const G = 9.81, FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08;
 export function fallTime(pos: readonly number[], vel: readonly number[], h: number): number {
   const disc = vel[1] * vel[1] + 2 * G * (pos[1] - h);
   return disc < 0 ? -1 : (vel[1] + Math.sqrt(disc)) / G;
+}
+
+/** Where a ball in flight passes nearest the point `at` (its straight-line closest approach, at most `tMax` s ahead,
+ *  with the drop over that time): the hands wait there for it. */
+export function catchPoint(b: { pos: Vec3; vel: Vec3 }, at: readonly number[], tMax = 1): Vec3 {
+  const p = b.pos, v = b.vel, v2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2] || 1e-9;
+  const t = clamp(-((p[0] - at[0]) * v[0] + (p[1] - at[1]) * v[1] + (p[2] - at[2]) * v[2]) / v2, 0, tMax);
+  return [p[0] + v[0] * t, p[1] + v[1] * t - G * t * t / 2, p[2] + v[2] * t];
+}
+
+/** A loose ball flying at `at` (closing faster than `close` m/s, within `range` m): worth reaching for. */
+export function incoming(b: { pos: Vec3; vel: Vec3 }, at: readonly number[], range = 8, close = 2): boolean {
+  const r = [b.pos[0] - at[0], b.pos[1] - at[1], b.pos[2] - at[2]], d = Math.hypot(r[0], r[1], r[2]) || 1e-9;
+  return d < range && -(r[0] * b.vel[0] + r[1] * b.vel[1] + r[2] * b.vel[2]) / d > close;
 }
 
 export class ReturnerBrain implements Brain {

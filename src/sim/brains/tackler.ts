@@ -10,6 +10,7 @@ import { HOBBLE } from '../injury';
 import { clamp, wrapAngle, type Vec3 } from '../math';
 import type { Rng } from '../rng';
 import type { BotDifficulty } from './carrier';
+import { catchPoint, incoming } from './returner';
 import { blockerInWay, shed, shedSide } from './shed';
 import type { AthleteView, Brain, Perception } from './types';
 
@@ -32,6 +33,8 @@ const DIVE_D: [number, number] = [0.3, 2.2], DIVE_T = 0.4, DIVE_SIDE = 0.8, DIVE
 /** Loose ball: longest lead on a rolling ball (s), the deceleration the run is planned to stop on it with (m/s²), the
  *  slowest approach (m/s), the distance inside which the hands reach for it, and how far short of it the run stops (m). */
 const BALL_LEAD = 0.5, BALL_BRAKE = 5, BALL_V = 1.2, BALL_REACH = 1.6, BALL_SHORT = 0.25;
+/** A loose ball higher than this (m) is caught in the air, the hands this far below the head (m, the chest). */
+const BALL_HIGH = 1, CHEST_BELOW_HEAD = 0.3;
 /** Closing speed while breaking down and while striking (m/s); the move command's filter time (s). */
 const BREAK_V = 3, STRIKE_V = 6, MOVE_TAU = 0.08;
 const FULL = GAIT_SPEED.sprint;
@@ -181,7 +184,10 @@ export class TacklerBrain implements Brain {
       // hands to the ball, hips down: the world aims each hand at it and closes on it
       const k = clamp((BALL_REACH - d) / 0.6, 0, 1);
       c.armL = c.armR = 1; c.gripL = c.gripR = true; c.aim = [ball.pos[0], ball.pos[1], ball.pos[2]];
-      c.sink = 0.5 * k; c.lean.fwd = k;
+      // still in the air and coming at him: the hands wait where it will pass his chest, and he stays tall
+      const chest = [me.head[0], me.head[1] - CHEST_BELOW_HEAD, me.head[2]];
+      if (ball.pos[1] > BALL_HIGH && incoming(ball, chest)) c.aim = catchPoint(ball, chest);
+      else { c.sink = 0.5 * k; c.lean.fwd = k; }
     }
     const x = dx + (ball.vel[0] - me.comVel[0]) * DIVE_T, z = dz + (ball.vel[2] - me.comVel[2]) * DIVE_T;
     // only at a ball still rolling away: a dive at one lying still pushes it on and costs the get-up
