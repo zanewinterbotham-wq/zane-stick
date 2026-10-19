@@ -3,7 +3,7 @@
 // the ball); the QB 1-on-1 part runs once the mode 'pass' is in the registry.
 import { expect, test, type Page } from '@playwright/test';
 
-type App = { __app: { passer: { scheme: { id: string } }; human: { latest: { pass?: { at: number[]; loft: number } | null } | null } } };
+type App = { __app: { passer: { scheme: { id: string } } } };
 
 async function start(page: Page, mode: RegExp, settings: Record<string, unknown> = {}) {
   const errors: string[] = [];
@@ -57,8 +57,12 @@ test('throw schemes: 1–6 and V switch while playing, each shows its aim aid, t
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('zane-stick-settings-v1')!).throwScheme)).toBe('charge');
   // a throw reaches the human input (Auto QB: one press)
   await page.keyboard.press('Digit6');
+  await page.evaluate(() => { // record the pass the human brain sees in a step (it rides on the input only 120 ms)
+    const h = (window as unknown as { __app: { human: { latest: { pass?: unknown } | null; think: (...a: unknown[]) => unknown } } }).__app.human, think = h.think.bind(h);
+    h.think = (...a) => { if (h.latest?.pass) (window as unknown as { __saw: unknown }).__saw = h.latest.pass; return think(...a); };
+  });
   await page.keyboard.press('KeyF');
-  const pass = await page.waitForFunction(() => (window as unknown as App).__app.human.latest?.pass ?? null, null, { timeout: 2000 }).then((h) => h.jsonValue());
+  const pass = await page.waitForFunction(() => (window as unknown as { __saw?: unknown }).__saw ?? null, null, { timeout: 5000 }).then((h) => h.jsonValue() as Promise<{ at: number[]; loft: number }>);
   expect(pass.at).toHaveLength(3); expect(pass.loft).toBeGreaterThanOrEqual(0);
   await page.reload();
   await page.getByRole('button', { name: /^Quick play/ }).click({ timeout: 60_000 });
