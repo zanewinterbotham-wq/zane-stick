@@ -201,6 +201,25 @@ The model's joint limits are soft (MuJoCo solimp, design §5.3) and carry loads 
 with muscle, so these are calibrated tolerances on the model's limit torque, set above the most measured in
 ordinary play (`tests/injury.test.ts`, design §6.6 rates), not cadaver failure values.
 
+## S7 — Catching (owner decision 2026-10-18, an arcade rule)
+
+The hand model has no fingers, so a ball in the air that comes within `CATCH_REACH` of a raised hand is caught or
+muffed by a seeded roll, decided once as it comes (`src/sim/modes/play.ts`, `CATCH`). **Every number here is a
+game-design assumption** chosen for feel, not a measured catch rate; the same rule applies to every athlete.
+
+| Item | Value used | Source |
+|---|---|---|
+| Catch reach (hand surface to ball tip) | 0.3 m | assumption (stands in for fingers and last-instant adjustments) |
+| Base chance: both hands (the diamond) / one hand / trunk only | 0.95 / 0.55 / 0.30 | assumption (owner: "very high" with both hands, lower with one) |
+| Centred: full within 0.1 m of the hand (or the line between both), half at the reach edge | 1 → 0.5 | assumption |
+| Ball-to-hands speed: soft up to / hardest at | 20 / 35 m/s (factor 1 → 0.6) | assumption (a punt from a 4 s hang lands at ~20 m/s and is routinely caught) |
+| Own ground speed: costs from / most at | 4 / 9 m/s (factor 1 → 0.85) | assumption |
+| In the air (feet off > 0.1 s) or laid out (trunk > 45° off upright, or down) | × 0.85 | assumption |
+| Touching or held by an opponent | × 0.4 | assumption |
+| Not looking (head forward vs the ball, full from cos 0.5, least from cos −0.2; a steeply high ball counts as seen) | down to × 0.3 | assumption |
+| Knock / stun at full | × 0.5 / × 0.6 | assumption |
+| Broken arm's hand, knocked-out athlete | cannot catch | owner rule (design §6.6) |
+
 ---
 
 ## Research record (fact-checked)
