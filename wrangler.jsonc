@@ -1,0 +1,7 @@
+// Cloudflare deploy of the built game (static assets on a Worker; Cloudflare's replacement for new Pages sites).
+// `npm run deploy:cf` builds and uploads dist/. The login is Wrangler's own (npx wrangler login), never in this repo.
+{
+  "name": "zane-stick",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" }
+}

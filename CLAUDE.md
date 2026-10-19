@@ -49,6 +49,9 @@ Engine comparison: `docs/physics-benchmark.md`.
 - `npm run test:realism` — the realism contract (balance, pushes, determinism, preset consistency; slow)
 - `npm run test:e2e` — Playwright against the built site (screenshots in `test-results/`)
 - `npm run build` — production build to `dist/`; pushes to `main` deploy to GitHub Pages
+- `npm run deploy:cf` — build and deploy to Cloudflare (Worker static assets, `wrangler.jsonc`):
+  https://zane-stick.studyapp-mp.workers.dev. Uses the owner's Wrangler login on this PC (never read or copy
+  its config). Every deploy updates BOTH: push `main` (GitHub Pages) and run `deploy:cf`.
 - `npm run bench:engines` — physics engine comparison; `npx tsx bench/presets/run.ts` — per-preset cost
   at 1x/4x/6x CPU throttling (needs a build)
 - `npx tsx bench/tune/run.ts <generations> <workers> <population>` — CMA-ES controller gain tuning;

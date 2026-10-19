@@ -4,6 +4,7 @@
   "description": "Physics-only football hitting and tackling simulator",
   "scripts": {
     "dev": "vite",
+    "deploy:cf": "npm run build && npx --yes wrangler@4.151.0 deploy",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
