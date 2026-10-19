@@ -40,15 +40,16 @@ const LANE_R = 0.8, LANE_REACT = 0.3, LANE_BREAK = 5, DEF_REACH = 3.2, LANE_END 
  *  the ball is placed KEY_AWAY m to the side away from him. */
 const LEVER = 3, LEVER_K = 0.5, KEY_AWAY = 0.4;
 /** Back-shoulder: a receiver deeper than depth (m), running downfield faster than run (m/s), a man within tight m on
- *  his hip (not over the top); the ball is thrown short (lead share of the run during the flight) and side m to the
- *  side away from the man; the man brakes at decel m/s² (~0.7 g) before he can come back; at loft. */
-const BS = { depth: 10, run: 5, tight: 2.5, lead: 0.25, side: 0.8, decel: 7, loft: 0.1 };
+ *  his hip (not over the top). Both brake at decel m/s² (~0.7 g); the receiver needs turn s more to turn to the ball,
+ *  which comes side m to the side away from the man; the man starts braking react s after the receiver. */
+const BS = { depth: 10, run: 5, tight: 2.5, side: 0.8, decel: 7, turn: 0.15, react: 0.3 };
 /** A rusher (an opponent closing on him faster than RUSH_CLOSE m/s, or within RUSH_NEAR m) reaches him in sackTime s.
  *  Below HOT_T the hot route is thrown; below POCKET_T he moves in the pocket; below ESCAPE_T he leaves it (scramble
  *  or roll out); below FORCED_T a rusher is on him: he throws to the best man even if covered, or throws it away. */
 const RUSH_CLOSE = 1.5, RUSH_NEAR = 3, HOT_T = 1.6, POCKET_T = 1.4, ESCAPE_T = 0.8, FORCED_T = 0.35;
-/** Scramble: his run speed (m/s), a lane is open when nobody meets him before LOS + SCRAMBLE_GAIN m by SCRAMBLE_MARGIN s;
- *  headings tried off straight downfield (rad). */
+/** Scramble: his run speed (m/s), a lane is open when nobody meets him before LOS + SCRAMBLE_GAIN m by SCRAMBLE_MARGIN s
+ *  (each seeing it late and braking first if running away, as a back-shoulder man: chaseTime); headings tried off
+ *  straight downfield (rad). */
 const SCRAMBLE_V = 7, SCRAMBLE_GAIN = 3, SCRAMBLE_MARGIN = 0.3, SCRAMBLE_OFFS = [0, -0.2, 0.2, -0.45, 0.45, -0.7, 0.7, -0.95, 0.95];
 /** Pocket: he stays this far (m) behind the LOS when stepping up; rolls out at ROLL_V m/s. */
 const POCKET_LOS = 2, POCKET_V = 2.5, ROLL_V = 6;
@@ -91,7 +92,8 @@ export function laneOpen(p: Perception, from: Vec3, at: Vec3, vel: Vec3, time: n
 function rushTime(me: AthleteView, o: AthleteView): number {
   if (o.down) return Infinity;
   const dx = me.com[0] - o.com[0], dz = me.com[2] - o.com[2], d = Math.hypot(dx, dz) || 1e-6;
-  const close = ((o.comVel[0] - me.comVel[0]) * dx + (o.comVel[2] - me.comVel[2]) * dz) / d;
+  // his own speed at me: dropping away from a rusher does not make him less of one
+  const close = (o.comVel[0] * dx + o.comVel[2] * dz) / d;
   return close > RUSH_CLOSE || d < RUSH_NEAR ? Math.max(0, d - REACH) / Math.max(close, RUSH_CLOSE) : Infinity;
 }
 
@@ -130,19 +132,21 @@ export function bestThrow(p: Perception, call: PlayCall, self: number, target: n
     const at = leadPoint(from, { pos, vel: r.comVel }, loft);
     consider([at[0] + away[0], at[1], at[2] + away[1]], loft, kind);
   }
-  // back-shoulder: a deep receiver with a man on his hip (not over the top); the ball is short and to the side away from
-  // the man, who runs on at speed and must stop and come back for it (BS.decel), while the receiver stops and turns
+  // back-shoulder: a deep receiver with a man on his hip (not over the top). He stops (he knows when) and the ball meets
+  // him there, to the side away from the man, who sees it late (BS.react) and runs on past before he can come back.
   const rs = Math.hypot(r.comVel[0], r.comVel[2]), run = r.comVel[2] * f.dir, depth = rel(f, r.com).depth;
   let man = -1, md = BS.tight;
   for (const j of opponents(p, target)) if (!p.athletes[j].down && flat(p.athletes[j].com, r.com) < md) { md = flat(p.athletes[j].com, r.com); man = j; }
   if (man >= 0 && depth > BS.depth && run > BS.run && (p.athletes[man].com[2] - r.com[2]) * f.dir < 0.5) {
-    const m = p.athletes[man], ux = r.comVel[0] / rs, uz = r.comVel[2] / rs;
-    const T = throwVelocity(from, pos, BS.loft).time, side = Math.sign(r.com[0] - m.com[0]) || Math.sign(r.com[0]) || 1;
-    const at: Vec3 = [pos[0] + r.comVel[0] * T * BS.lead + side * BS.side, CATCH_H, pos[2] + r.comVel[2] * T * BS.lead];
-    const ms = Math.max(0, m.comVel[0] * ux + m.comVel[2] * uz), tStop = ms / BS.decel, run0 = ms * tStop / 2;
-    const stop: Vec3 = [m.com[0] + ux * run0, m.com[1], m.com[2] + uz * run0];
+    const m = p.athletes[man], ux = r.comVel[0] / rs, uz = r.comVel[2] / rs, side = Math.sign(r.com[0] - m.com[0]) || Math.sign(r.com[0]) || 1;
+    const stopR = rs * rs / (2 * BS.decel), at: Vec3 = [pos[0] + ux * stopR + side * BS.side, CATCH_H, pos[2] + uz * stopR];
+    // the softest throw that gets there no sooner than he has stopped and turned
+    let loft = 0;
+    while (loft < 1 && throwVelocity(from, at, loft).time < rs / BS.decel + BS.turn) loft += 0.05;
+    const ms = Math.max(0, m.comVel[0] * ux + m.comVel[2] * uz), runM = ms * BS.react + ms * ms / (2 * BS.decel);
+    const stopM: Vec3 = [m.com[0] + ux * runM, m.com[1], m.com[2] + uz * runM], tM = BS.react + ms / BS.decel;
     const rest = { ...p, athletes: p.athletes.map((a, i) => (i === man ? { ...a, down: true } : a)) };
-    consider(at, BS.loft, 'back-shoulder', (at, T) => Math.min(openness(rest, target, at, T), clamp(tStop + Math.max(0, flat(stop, at) - REACH) / DB_SPEED - T, 0, 1)), man);
+    consider(at, Math.min(1, loft), 'back-shoulder', (at, T) => Math.min(openness(rest, target, at, T), clamp(tM + Math.max(0, flat(stopM, at) - REACH) / DB_SPEED - T, 0, 1)), man);
   }
   return best;
 }
@@ -221,9 +225,19 @@ export function scrambleLane(p: Perception, call: PlayCall, self: number): { x: 
     const end = me.com[0] + u.x * SCRAMBLE_V * t;
     if (Math.abs(end) > p.field.halfWidth - 1) continue;
     const vel: Vec3 = [u.x * SCRAMBLE_V, 0, u.z * SCRAMBLE_V];
-    if (opponents(p, self).every((j) => p.athletes[j].down || Math.max(0, interceptTime(p.athletes[j].com, DB_SPEED, me.com, vel) - REACH / DB_SPEED) > t + SCRAMBLE_MARGIN)) return u;
+    if (opponents(p, self).every((j) => p.athletes[j].down || chaseTime(p.athletes[j], me.com, vel) > t + SCRAMBLE_MARGIN)) return u;
   }
   return null;
+}
+
+/** When opponent o, seeing it BS.react s late, meets a runner leaving `from` at `vel` (s): running away from him (a man
+ *  turned downfield with his receiver) he runs on and brakes to a stop first. */
+function chaseTime(o: AthleteView, from: Vec3, vel: Vec3): number {
+  const sp = Math.hypot(o.comVel[0], o.comVel[2]), away = o.comVel[0] * (from[0] - o.com[0]) + o.comVel[2] * (from[2] - o.com[2]) < 0;
+  const run = away ? sp * BS.react + sp * sp / (2 * BS.decel) : 0, t0 = away ? BS.react + sp / BS.decel : BS.react;
+  const start: Vec3 = sp > 0.1 ? [o.com[0] + o.comVel[0] / sp * run, 0, o.com[2] + o.comVel[2] / sp * run] : o.com;
+  const at: Vec3 = [from[0] + vel[0] * t0, 0, from[2] + vel[2] * t0];
+  return t0 + Math.max(0, interceptTime(start, DB_SPEED, at, vel) - REACH / DB_SPEED);
 }
 
 /** Roll out (unit ground direction): toward the sideline away from the nearest rusher, a little back. */
