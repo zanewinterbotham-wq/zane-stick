@@ -56,3 +56,23 @@ Settings → Controls. Schemes:
 
 The Throw action: a dedicated binding (default F, gamepad RT is sprint so use Y / b3), and while the local player
 holds the ball as QB, Left click also throws (the arms otherwise reach and grab). No new physics in the shell.
+
+## Sim side as built (branch pass-sim)
+
+The interfaces above, exactly, plus:
+- `Commands.look: Vec3 | null` (neutral null): eyes on a point; the thorax and neck turn toward it within their ranges.
+  The bot receiver and corner look at a ball in the air (the catch rule's gaze factor reads the head).
+- `leadPoint(from, target, loft, delay = THROW.release)`: the throwing motion's time before release is in the lead.
+  `throwError(dist, speed, knock, pressured, loft)` is the 1σ miss; `THROW` holds the arm's limits and the motion's
+  times (cock 0.25 s, release 0.4 s, end 0.65 s): a scheme's aim preview can use them.
+- `PassRecord` (`Play.lastPass`, also `World.lastPass`): `{ athlete, time, at, to, loft, speed, error }`, `to` = where the
+  error sent it. `Play.pass: 'none' | 'air' | 'complete' | 'intercepted' | 'incomplete'`, `Play.passer`, and
+  `Play.passOk(i)` (whether a pass from athlete i would be allowed now: an aim aid can grey out).
+- `PlaySetup.los` (z of the line of scrimmage) turns passing on for a mode; the rep ends `'incomplete'`.
+- `BodyView.throwing` (the motion's time, target and hand) drives the animator; the world refuses a pass while one runs.
+- Teams: QB and WR are team 0 and the CB team 1, except with "Your role: Cornerback", where (as in the Oklahoma drill)
+  the human's CB is team 0 and the offense team 1, attacking −Z: athlete 0 is always on team 0. Slot labels `QB`,
+  `WR`, `CB` (groups Offense / Defense).
+- Wire: the input codec (version 2) carries `HumanInput.pass`; pass `encodeInput` a `PassHold` (kept by the sender) and
+  a throw is repeated in the next `PASS_REPEAT` inputs (src/game/net/session.ts does). The snapshot (version 3) carries
+  the pass state, the passer and `lastPass`.
