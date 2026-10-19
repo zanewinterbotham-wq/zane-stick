@@ -3,13 +3,16 @@
 // safety (the kicker) trails behind the coverage, and the return blockers get hands on cover men.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { CoverBrain } from '../src/sim/brains/cover';
-import type { Brain } from '../src/sim/brains/types';
+import { TacklerBrain } from '../src/sim/brains/tackler';
+import type { AthleteView, Brain } from '../src/sim/brains/types';
 import { neutralCommands } from '../src/sim/control/types';
 import { DEFAULT_OPEN_FIELD } from '../src/sim/drills/openField';
 import { coverLanes } from '../src/sim/modes/kicks';
 import { Play } from '../src/sim/modes/play';
 import { modeById, resolveOptions } from '../src/sim/modes/registry';
+import type { Vec3 } from '../src/sim/math';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
+import { Rng } from '../src/sim/rng';
 import { STD } from './helpers/scenario';
 
 beforeAll(() => mujocoEngine.init());
@@ -33,6 +36,19 @@ describe('coverage assignments (pure)', () => {
     const lanes = coverLanes([P(0, 4), P(0, 0), P(0, -13), P(0, 13), P(0, -4), P(1, 0)], 0, 1);
     expect(lanes.map((l) => l?.role)).toEqual(['lane', 'safety', 'contain', 'contain', 'lane', undefined]);
     expect(lanes[2]!.x).toBe(-13);
+  });
+
+  it('a tackler behind a teammate on the carrier pursues at an angle off his line, not in his tracks', () => {
+    const view = (com: Vec3, vel: Vec3, team: 0 | 1, hasBall = false): AthleteView => ({ com, comVel: vel, pelvis: com, head: [com[0], 1.8, com[2]], heading: 0, down: false, hasBall, team });
+    const carrier = view([0, 1, 30], [0, 0, -6], 1, true), me = view([0.5, 1, 0], [0, 0, 0], 0), mate = view([0, 1, 10], [0, 0, 0], 0);
+    const aim = (athletes: AthleteView[]) => {
+      const b = new TacklerBrain(new Rng(1), { reaction: 0, noise: 0 });
+      let x = 0;
+      for (let i = 0; i < 240; i++) x = b.think({ time: i / 240, self: 0, athletes, field: { halfWidth: 24.38, goalZ: -45.72, dirZ: -1 } }, 1 / 240).move.x;
+      return x;
+    };
+    const alone = aim([me, carrier]), behind = aim([me, carrier, mate]);
+    expect(behind - alone).toBeGreaterThan(0.03); // to my side (+x) of the teammate's line
   });
 });
 
@@ -69,6 +85,28 @@ describe('kickoff coverage (headless)', () => {
     expect(outside).toBeGreaterThan(0);
     expect(inside / (outside + inside)).toBeLessThan(0.1);
     expect(engaged.size).toBeGreaterThanOrEqual(2);
+    expect(w.scene.stats().instabilities).toBe(0);
+    play.destroy();
+  }, 120_000);
+
+  it('punt gunners keep contain outside the returner until they are on him', async () => {
+    const def = modeById('puntReturn');
+    let play: Play | null = null;
+    play = await Play.create(mujocoEngine, CFG, def, { ...resolveOptions(def), cover: 2, block: 0 }, autoHuman(() => play), 0);
+    const w = play.world, com = (i: number) => w.scene.athletes[i].state.com, gunners = [2, 3];
+    let outside = 0, inside = 0;
+    while (!play.ended && play.repTime < 12) {
+      play.step();
+      if (w.ballCarrier !== 0) continue;
+      for (const i of gunners) {
+        const b = play.brains[i];
+        if (!(b instanceof CoverBrain) || b.released) continue;
+        if (Math.sign(b.lane.x) * (com(i)[0] - com(0)[0]) > 0) outside++; else inside++;
+      }
+    }
+    console.log(`punt, 2 gunners: contain outside ${outside} / inside ${inside} steps, ${play.ended} "${play.verdict}"`);
+    expect(outside).toBeGreaterThan(0);
+    expect(inside / (outside + inside)).toBeLessThan(0.1);
     expect(w.scene.stats().instabilities).toBe(0);
     play.destroy();
   }, 120_000);
