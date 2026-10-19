@@ -19,13 +19,15 @@ export interface Lobby {
   phase: 'lobby' | 'game';
   /** Points per team this session (reset when the mode or its options change). */
   score: [number, number];
+  /** Players who asked for the next rep during this one: it starts once every player on a position has. */
+  votes: string[];
 }
 
 /** A rep starting (host → all): everything a guest needs to build the same Play the host steps. */
 export interface StartMsg { mode: string; options: ModeOptions; seed: number; rep: number; assign: (string | null)[]; cfg: PlayConfig; countdown: number }
 /** Presentation events the host knows best (feel.ts big hits; a player leaving). */
 export type NetEvent = { k: 'hit'; closing: number; impulse: number; a: number; b: number } | { k: 'left'; name: string; athlete: number };
-export type ToHost = { t: 'hi'; steer: number } | { t: 'want'; slot: number | null } | { t: 'ready'; on: boolean };
+export type ToHost = { t: 'hi'; steer: number } | { t: 'want'; slot: number | null } | { t: 'ready'; on: boolean } | { t: 'restart'; on: boolean };
 export type ToGuest = { t: 'lobby'; lobby: Lobby } | { t: 'start'; start: StartMsg } | { t: 'ev'; ev: NetEvent } | { t: 'kick' };
 
 /** A guest's message as the host may trust it, or null. */
@@ -36,6 +38,7 @@ export function parseToHost(data: string): ToHost | null {
   if (o?.t === 'hi' && typeof o.steer === 'number' && Number.isFinite(o.steer)) return { t: 'hi', steer: Math.min(1, Math.max(0, o.steer)) };
   if (o?.t === 'want' && (o.slot === null || Number.isInteger(o.slot))) return { t: 'want', slot: o.slot as number | null };
   if (o?.t === 'ready' && typeof o.on === 'boolean') return { t: 'ready', on: o.on };
+  if (o?.t === 'restart' && typeof o.on === 'boolean') return { t: 'restart', on: o.on };
   return null;
 }
 
@@ -43,7 +46,7 @@ export const slotsOf = (l: Lobby): SlotInfo[] => listSlots(modeById(l.mode), l.o
 
 export function newLobby(host: { id: string; name: string }, mode: string, options: ModeOptions): Lobby {
   const def = modeById(mode), o = resolveOptions(def, options);
-  const l: Lobby = { mode: def.id, options: o, assign: listSlots(def, o).map(() => null), players: [], phase: 'lobby', score: [0, 0] };
+  const l: Lobby = { mode: def.id, options: o, assign: listSlots(def, o).map(() => null), players: [], phase: 'lobby', score: [0, 0], votes: [] };
   join(l, host.id, host.name, true);
   return l;
 }
@@ -57,6 +60,7 @@ export function join(l: Lobby, id: string, name: string, host = false) {
 
 export function leave(l: Lobby, id: string) {
   l.players = l.players.filter((p) => p.id !== id);
+  l.votes = l.votes.filter((v) => v !== id);
   l.assign = l.assign.map((x) => (x === id ? null : x));
 }
 
@@ -98,6 +102,22 @@ export function autoAssign(l: Lobby, only?: string[]) {
 export function allBots(l: Lobby) { l.assign = l.assign.map(() => null); }
 
 export function setReady(l: Lobby, id: string, on: boolean) { const p = l.players.find((x) => x.id === id); if (p && !p.host) p.ready = on; }
+
+/** A player asks for the next rep (on) or takes it back. */
+export function vote(l: Lobby, id: string, on: boolean) {
+  if (!l.players.some((p) => p.id === id)) return;
+  l.votes = l.votes.filter((v) => v !== id);
+  if (on) l.votes.push(id);
+}
+
+/** Restart votes for this rep's players (`assign`, the start's): who has asked of those who must (everyone on a
+ *  position; a watcher may ask but is not waited for), and whether the next rep is due (all asked, or with nobody on
+ *  a position, anyone). */
+export function restartTally(l: Lobby, assign: readonly (string | null)[]) {
+  const need = [...new Set(assign.filter((id): id is string => !!id && l.players.some((p) => p.id === id)))];
+  const have = need.filter((id) => l.votes.includes(id)).length;
+  return { have, need: need.length, due: need.length ? have === need.length : l.votes.length > 0 };
+}
 
 /** A position's name without its number or side ('Blocker 2' → 'Blocker', 'Gunner L' → 'Gunner', 'Cover R1' → 'Cover'). */
 export const baseLabel = (label: string) => label.replace(/\s+(?:[LR]?\d+|[LR])$/, '');

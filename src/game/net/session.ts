@@ -38,6 +38,8 @@ export class Session {
   onStart: (s: StartMsg, play: Play) => void = () => {};
   onEvent: (e: NetEvent) => void = () => {};
   onClose: (reason: string) => void = () => {};
+  /** Host: every player on a position has asked for the next rep. */
+  onRestart: () => void = () => {};
   /** Host: each guest's brain this rep (by id), his steer assist and newest input seq. */
   private remote = new Map<string, { brain: HumanBrain | null; steer: number; seq: number }>();
   private banned = new Set<string>();
@@ -63,6 +65,11 @@ export class Session {
   // ------------------------------------------------------------------ lobby actions (anyone)
   want(slot: number | null) { this.isHost ? this.edit(() => L.want(this.lobby, this.selfId, slot)) : this.say({ t: 'want', slot }); }
   ready(on: boolean) { if (!this.isHost) this.say({ t: 'ready', on }); }
+  /** Ask for the next rep (or take it back): it starts once every player on a position has asked. */
+  voteRestart(on = !this.voted) { this.isHost ? this.edit(() => L.vote(this.lobby, this.selfId, on)) : this.say({ t: 'restart', on }); }
+  get voted() { return this.lobby.votes.includes(this.selfId); }
+  /** This rep's restart votes (have / need), for the HUD. */
+  get tally() { return L.restartTally(this.lobby, this.start?.assign ?? this.lobby.assign); }
   // host only
   setup(mode: string, options: ModeOptions) { this.edit(() => L.setup(this.lobby, mode, options)); }
   count(id: string, delta: number) { this.edit(() => L.count(this.lobby, id, delta)); }
@@ -75,10 +82,13 @@ export class Session {
     this.banned.add(id);
     this.gone(id);
     this.sendLobby();
+    this.due();
   }
 
   private say(m: L.ToHost) { this.room.broadcast(JSON.stringify(m), true); }
-  private edit(f: () => void) { if (!this.isHost) return; f(); this.sendLobby(); }
+  private edit(f: () => void) { if (!this.isHost) return; f(); this.sendLobby(); this.due(); }
+  /** Host: start the next rep once its votes are in (asked during a running rep only). */
+  private due() { if (this.isHost && this.start && this.play && this.lobby.phase === 'game' && this.tally.due) this.onRestart(); }
   private sendLobby() {
     this.pingSent = this.clock();
     this.room.broadcast(JSON.stringify({ t: 'lobby', lobby: this.lobby } satisfies ToGuest), true);
@@ -91,7 +101,7 @@ export class Session {
   async begin(cfg: PlayConfig, human: HumanBrain, countdown = 0): Promise<Play> {
     const l = this.lobby, assign = l.assign.slice(), rep = this.rep++;
     const start: StartMsg = { mode: l.mode, options: { ...l.options }, seed: cfg.seed, rep, assign, cfg, countdown };
-    l.phase = 'game';
+    l.phase = 'game'; l.votes = [];
     this.sendLobby();
     this.room.broadcast(JSON.stringify({ t: 'start', start } satisfies ToGuest), true); // first, so the guests build while the host does
     for (const r of this.remote.values()) r.brain = null;
@@ -159,6 +169,7 @@ export class Session {
     if (!m) return;
     if (m.t === 'hi') { const r = this.remote.get(from); if (r) { r.steer = m.steer; if (r.brain) r.brain.steerAssist = m.steer; } } // he is known from onPeers first
     else if (m.t === 'want') this.edit(() => L.want(this.lobby, from, m.slot));
+    else if (m.t === 'restart') this.edit(() => L.vote(this.lobby, from, m.on));
     else this.edit(() => L.setReady(this.lobby, from, m.on));
   }
 
@@ -204,6 +215,7 @@ export class Session {
     }
     for (const id of left) this.gone(id, names.get(id) ?? '');
     if (joined.length || left.length || changed || this.clock() - this.pingSent >= PING_EVERY / 1000) this.sendLobby();
+    if (left.length) this.due(); // the one still to ask may have been the one who left
   }
 
   /** Host: a guest left (or was kicked). His athlete is a bot from this moment. */

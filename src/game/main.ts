@@ -37,7 +37,6 @@ const params = new URLSearchParams(location.search);
 /** A multiplayer guest's input while his menu is open: stand still (the shared play goes on). */
 const IDLE: HumanInput = { move: { x: 0, y: 0 }, torso: 0, sprint: 0, armL: 0, armR: 0, held: new Set(), cameraYaw: 0, aimPitch: 0 };
 /** Multiplayer: the host starts the next rep by itself this long after a play ends (s of play time). */
-const AUTO_NEXT = 5;
 const canvas = document.getElementById('view') as HTMLCanvasElement;
 
 // ------------------------------------------------------------------ dev scenarios (?scenario=…)
@@ -123,7 +122,6 @@ class App {
   rosterOn = false;
   netBig: { closing: number; impulse: number } | null = null;
   netBest: { closing: number; impulse: number } | null = null;
-  nextQueued = false;
   hiddenAt = 0;
   private ticker: Worker | null = null;
   /** Worker mode (the level's Physics thread): the Worker running single-player reps (multiplayer never uses it). */
@@ -239,6 +237,7 @@ class App {
     };
     net.onStart = (s, play) => void this.netStart(s, play);
     net.onEvent = (e) => this.netEvent(e);
+    net.onRestart = () => void this.netBegin(false);
     net.onClose = (r) => { if (this.net === net) { this.net = null; this.drill = null; this.multiplayer(netMessage(r)); } };
     if (net.isHost) this.startTicker();
     this.lobby();
@@ -268,7 +267,7 @@ class App {
     const fresh = !this.drill;
     if (!this.net?.isHost) this.freshRep(); // the host's was before he built it
     this.drill = play; this.mode = modeById(s.mode); this.modeOpts = s.options;
-    this.netBig = this.netBest = null; this.nextQueued = false;
+    this.netBig = this.netBest = null;
     this.countdownUntil = s.countdown ? performance.now() + s.countdown * 1000 : 0;
     if (fresh) {
       this.lobbyView = null;
@@ -316,7 +315,8 @@ class App {
     const net = this.net, d = this.drill;
     if (!net || !d) return;
     const host = net.room.peers().find((p) => p.host);
-    this.hud.setNet(net.isHost ? `Room ${net.room.code}  ·  hosting ${net.lobby.players.length}` : `Room ${net.room.code}  ·  ${host ? pingText(host) : '…'}`);
+    const t = net.tally, votes = t.have || net.lobby.votes.length ? `  ·  restart ${t.have}/${t.need}${net.voted ? ' (you asked)' : ''}` : '';
+    this.hud.setNet((net.isHost ? `Room ${net.room.code}  ·  hosting ${net.lobby.players.length}` : `Room ${net.room.code}  ·  ${host ? pingText(host) : '…'}`) + votes);
     this.hud.setRoster(this.rosterOn ? rosterRows(net.lobby, net.start?.assign ?? net.lobby.assign, d.mode.players.map((p) => p.label)) : null);
     const left = this.countdownUntil - performance.now();
     this.hud.setCountdown(left > 0 ? String(Math.ceil(left / 1000)) : left > -700 ? 'GO!' : null);
@@ -354,7 +354,10 @@ class App {
 
   async newRep() {
     if (this.net) { // multiplayer: the host starts every rep, for everyone
-      if (this.net.isHost) await this.netBegin(false); else this.hud.flash('The host starts the next rep');
+      // a vote: the next rep starts once every player on a position has asked for it (press again to take it back)
+      const net = this.net, on = !net.voted;
+      net.voteRestart(on);
+      this.hud.flash(on ? 'Restart asked: the next rep starts when every player has' : 'Restart vote taken back');
       return;
     }
     this.drill?.destroy();
@@ -435,8 +438,8 @@ class App {
       this.layer.show(menu('Menu', [
         { label: 'Resume', hint: 'Esc / Start', action: () => this.resume() },
         { label: 'Positions', hint: 'next rep', action: () => this.lobby(true) },
-        ...(net.isHost ? [{ label: 'Next rep', hint: 'Enter', sfx: 'ui_confirm', action: () => { this.resume(); void this.newRep(); } },
-          { label: 'Back to lobby', sfx: 'ui_back', action: () => { this.drill = null; net.toLobby(); this.lobby(); } }] : []),
+        { label: net.voted ? 'Take back restart vote' : 'Vote to restart', hint: `Enter · ${net.tally.have}/${net.tally.need}`, sfx: 'ui_confirm', action: () => { this.resume(); void this.newRep(); } },
+        ...(net.isHost ? [{ label: 'Back to lobby', sfx: 'ui_back', action: () => { this.drill = null; net.toLobby(); this.lobby(); } }] : []),
         { label: 'Settings', action: () => this.settingsMenu(() => this.pauseMenu()) },
         { label: 'Leave room', sfx: 'ui_back', action: () => this.leaveNet() },
       ], `Room ${net.room.code}  ·  the game keeps running`));
@@ -646,7 +649,6 @@ class App {
     }
     if (steps >= 40) this.acc = 0; // never spiral: drop time rather than fall behind
     this.physMs += (performance.now() - t0 - this.physMs) * 0.1;
-    if (net && d.ended && w.time - d.endTime > AUTO_NEXT && !this.nextQueued) { this.nextQueued = true; void this.newRep(); }
   }
 
   /** Worker mode: show what the physics Worker sent since the last frame, with the sounds, moods and big hits its steps
@@ -808,7 +810,7 @@ class App {
           ...(d.points ? [points] : []),
         ] : [['Contact', 'none']],
         foot: !net ? 'Enter / Start: next rep   ·   head acceleration is a 60 Hz-filtered estimate'
-          : net.isHost ? `Enter / Start: next rep (it starts by itself in ${AUTO_NEXT} s)` : 'The host starts the next rep',
+          : `Enter / Start: vote for the next rep (${net.tally.have}/${net.tally.need}: it starts when every player has)`,
       });
     }
   }

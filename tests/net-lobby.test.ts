@@ -59,6 +59,23 @@ describe('lobby rules', () => {
     expect(l.players.map((p) => p.id)).toEqual(['h', 'a', 'b']);
   });
 
+  it('a restart needs a vote from every player on a position; a watcher may vote but is not waited for', () => {
+    const l = lobby(), assign = ['h', 'a', null]; // Bob watches
+    expect(L.restartTally(l, assign)).toEqual({ have: 0, need: 2, due: false });
+    L.vote(l, 'h', true); L.vote(l, 'b', true);
+    expect(L.restartTally(l, assign)).toEqual({ have: 1, need: 2, due: false });
+    L.vote(l, 'a', true); L.vote(l, 'a', true); // twice is once
+    expect([L.restartTally(l, assign), l.votes.length]).toEqual([{ have: 2, need: 2, due: true }, 3]);
+    L.vote(l, 'h', false); expect(L.restartTally(l, assign).due).toBe(false); // taken back
+    L.leave(l, 'h'); expect(L.restartTally(l, assign)).toEqual({ have: 1, need: 1, due: true }); // the one still to vote left
+    L.vote(l, 'zz', true); expect(l.votes).not.toContain('zz'); // not in the room
+    const empty = L.newLobby({ id: 'h', name: 'Host' }, 'tackle', {});
+    expect(L.restartTally(empty, [null, null]).due).toBe(false); // all bots: anyone's vote restarts
+    L.vote(empty, 'h', true); expect(L.restartTally(empty, [null, null]).due).toBe(true);
+    expect(L.parseToHost(JSON.stringify({ t: 'restart', on: true }))).toEqual({ t: 'restart', on: true });
+    expect(L.parseToHost(JSON.stringify({ t: 'restart', on: 'yes' }))).toBeNull();
+  });
+
   it('ready, start checks and trusting nothing a guest sends', () => {
     const l = lobby();
     expect(L.notReady(l).map((p) => p.id)).toEqual(['a', 'b']);
@@ -146,6 +163,17 @@ describe('a host and two guests over a loopback room (headless)', () => {
     expect(ann.lobby.players.map((p) => p.name)).toEqual(['Host', 'Ann']);
     for (let k = 0; k < 120; k++) host.step(); // and the play goes on
     expect(hw.scene.stats().instabilities).toBe(0);
+    // the next rep waits for every player on a position: the host alone, then Ann, restarts it; the votes reset
+    const restarts: number[] = [];
+    host.onRestart = () => restarts.push(hw.time);
+    host.voteRestart(); await flush();
+    expect([restarts.length, ann.tally]).toEqual([0, { have: 1, need: 2, due: false }]);
+    ann.voteRestart(); await flush();
+    expect(restarts.length).toBe(1);
+    await host.begin(CFG, human, 0);
+    for (let k = 0; k < 200 && ann.start?.rep !== 1; k++) await flush();
+    expect([ann.start?.rep, host.lobby.votes, ann.voted]).toEqual([1, [], false]);
+    host.onRestart = () => {};
 
     // a late joiner watches the rep in progress; back to the lobby, the guests drop their replicas
     const cy = new Session(room.join('Cy'), mujocoEngine, 'Cy', { mode: 'tackle', options: {}, steer: 0 }, now);

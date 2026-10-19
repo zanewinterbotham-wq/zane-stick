@@ -247,7 +247,7 @@ export function lobbyPanel(net: Session, s: Settings, hooks: LobbyHooks): LobbyV
     const lb = l(), waiting = notReady(lb), self = lb.players.find((p) => p.id === me), out: (Node | string)[] = [];
     if (inGame) {
       out.push(btn('Back to game', 'back', () => hooks.back!(), undefined, 'item start'));
-      if (host && hooks.nextRep) out.push(btn('Next rep with these positions', 'next', () => hooks.nextRep!(), undefined, 'item'));
+      if (hooks.nextRep) out.push(btn('Vote for the next rep (with these positions)', 'next', () => hooks.nextRep!(), undefined, 'item'));
     } else if (host) {
       const start = btn('Start', 'start', () => hooks.start(false), undefined, 'item start');
       start.disabled = waiting.length > 0;

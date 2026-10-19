@@ -93,6 +93,18 @@ test('host, join by link and by code, position menu, ready, start, guest input o
   await a.screenshot({ path: 'test-results/mp-05-game-host.png' });
   await b.screenshot({ path: 'test-results/mp-06-game-guest.png' });
 
+  // the next rep only when both players ask: A's Enter alone changes nothing, B's too starts rep 2 on both screens
+  const repOf = (p: Page) => p.evaluate(() => (window as unknown as { __app: { net: { start: { rep: number } | null } } }).__app.net?.start?.rep ?? -1);
+  const rep0 = await repOf(a);
+  await a.keyboard.press('Enter');
+  await expect(b.locator('.netbadge')).toContainText('restart 1/2', { timeout: 10_000 }); // both see who has asked
+  await a.waitForTimeout(1500);
+  expect(await repOf(a)).toBe(rep0);
+  await b.keyboard.press('Enter');
+  await expect.poll(() => repOf(a), { timeout: 15_000 }).toBe(rep0 + 1);
+  await expect.poll(() => repOf(b), { timeout: 15_000 }).toBe(rep0 + 1);
+  await b.waitForFunction(() => ((window as unknown as App).__app.net?.replica?.time ?? 0) > 0.3, null, { timeout: 30_000 });
+
   // C types the code (lowercase, with a dash) mid-game: he watches this rep
   const C = await open(browser, 'Cy'), c = C.page;
   await expect(c.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 90_000 });

@@ -94,11 +94,13 @@ Implementation notes (src/net/, server/rooms/):
   label, else the same position name, else the same team). Start needs every placed player ready (or Start anyway)
   and counts down 3-2-1 on every screen while the guests build.
 - **Playing**: the host steps the play at the fixed rate for everyone (no slow motion, no hit-stop) and sends
-  snapshots 30 times a second of play time; Enter (or 5 s after the play ends) starts the next rep for everyone.
+  snapshots 30 times a second of play time; the next rep starts only when every player on a position has asked for it (Enter / Start or the menu's Vote to
+  restart; again takes it back; a watcher may ask but is not waited for; owner decision 2026-10-19). The HUD corner shows
+  the count (restart 1/2); the votes reset each rep.
   Guests send their input every frame and render `Replica.render(now)`; the camera, HUD, faces, sounds and gore
   read the replica world. The HUD shows your position and team, the score per team, and the room / path / ping
   corner; Tab shows everyone. Spectators follow any athlete (Space / arm buttons cycle). The pause menu keeps the
-  game running: Positions (the lobby over the play, for the next rep), Next rep and Back to lobby (host), Leave
+  game running: Positions (the lobby over the play, for the next rep), Vote to restart, Back to lobby (host), Leave
   room. A guest leaving mid-rep: his athlete is a bot at once (`Play.toBot`). The host leaving ends the room.
 - **Host tab hidden**: browsers stop animation frames and throttle timers in background tabs, so a Worker's timer
   keeps the host's play stepping while hidden; the lobby and the HUD still ask the host to keep the tab in front.
