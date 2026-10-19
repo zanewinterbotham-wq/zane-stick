@@ -47,6 +47,8 @@ const JUKE = 0.5, BEND = 2, PLANT = 0.12, LEAN = 0.45;
 const JUKE_REACH = 5, JUKE_MAX = 1.3;
 /** Juke trigger: time to contact (s) or distance (m); a stutter's length (s) and chance per approach. */
 const JUKE_TTC: [number, number] = [0.55, 0.9], JUKE_D = 4, STUTTER: [number, number] = [0.25, 0.4], STUTTER_P = 0.35;
+/** An opponent with a blocker of mine within HELD m (COM to COM) is engaged: HELD_COST m less of a threat. */
+const HELD = 1.2, HELD_COST = 4;
 
 export type CarrierMove = 'run' | 'bend' | 'cut' | 'cutback' | 'sideline' | 'stutter' | 'past';
 
@@ -85,11 +87,13 @@ export class CarrierBrain implements Brain {
     const goalH = p.field.dirZ > 0 ? 0 : Math.PI;
     if (Number.isNaN(this.heading)) this.heading = goalH;
     if (me.down) return c;
-    // nearest standing opponent as seen
+    // nearest standing opponent as seen; one locked up with a blocker of mine counts HELD_COST m farther, so the run
+    // follows the block (hits the hole beside it) and reads the free man
     let opp: AthleteView | null = null, best = Infinity;
     seen.athletes.forEach((a, i) => {
       if (a.team === me.team || a.down) return;
-      const d = Math.hypot(a.com[0] - me.com[0], a.com[2] - me.com[2]);
+      const held = seen.athletes.some((b, j) => j !== p.self && b.team === me.team && !b.down && Math.hypot(b.com[0] - a.com[0], b.com[2] - a.com[2]) < HELD);
+      const d = Math.hypot(a.com[0] - me.com[0], a.com[2] - me.com[2]) + (held ? HELD_COST : 0);
       if (d < best) { best = d; opp = predict(a, p.time - seen.time); }
     });
     let target = goalH, magT = 1, sprint = this.burst;

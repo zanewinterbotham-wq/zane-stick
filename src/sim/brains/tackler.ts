@@ -16,6 +16,8 @@ import type { AthleteView, Brain, Perception } from './types';
 /** Speed the intercept is planned at (m/s) and its longest lead (s); aim this far to the carrier's goal side
  *  so a cut-back stays in front (m). */
 const PURSUE_V = 9, LEAD_MAX = 2.5, LEVERAGE = 0.7;
+/** With a teammate nearer the carrier, pursue this far (m) to my side of his line, so the two come at different angles. */
+const SPREAD = 2;
 /** Break down (under control, closing at BREAK_V) inside BREAK_TTC s of contact, or BREAK_D m, when closing faster
  *  than BREAK_CLOSE m/s (chasing from behind there is nothing to mirror); at most BREAK_MAX s. */
 const BREAK_TTC: [number, number] = [0.9, 1.1], BREAK_D = 6, BREAK_CLOSE = 3, BREAK_MAX = 1.5;
@@ -131,7 +133,11 @@ export class TacklerBrain implements Brain {
       const lead = this.intercept(dx, dz, t.comVel, PURSUE_V * (me.lame ? HOBBLE.speed : 1)) * clamp(1 - this.diff.noise, 0.5, 1);
       // the aim error is across the line to him, the leverage toward his goal, both fading in close
       const k = Math.min(1, d / 4);
-      let ax = dx + t.comVel[0] * lead - uz * this.aimErr * k, az = dz + t.comVel[2] * lead + ux * this.aimErr * k + p.field.dirZ * LEVERAGE * k;
+      // a teammate nearer him has the straight line: take an angle SPREAD m off it on my side (the cutback lane)
+      let mate = -1, md = d, sp = 0;
+      p.athletes.forEach((a, i) => { const ad = Math.hypot(t.com[0] - a.com[0], t.com[2] - a.com[2]); if (i !== p.self && a.team === me.team && !a.down && ad < md) { md = ad; mate = i; } });
+      if (mate >= 0) sp = (p.athletes[mate].com[0] - me.com[0]) * uz - (p.athletes[mate].com[2] - me.com[2]) * ux > 0 ? -SPREAD : SPREAD;
+      let ax = dx + t.comVel[0] * lead - uz * this.aimErr * k + uz * sp * k, az = dz + t.comVel[2] * lead + ux * this.aimErr * k - ux * sp * k + p.field.dirZ * LEVERAGE * k;
       // he cannot run on through the wall: a lead point far out of bounds sent the chase straight into it
       ax = clamp(me.com[0] + ax, -p.field.halfWidth - OUT_LEAD, p.field.halfWidth + OUT_LEAD) - me.com[0];
       const n = Math.hypot(ax, az) || 1e-6;
