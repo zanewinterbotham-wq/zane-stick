@@ -131,7 +131,7 @@ const PASS = {
   offCock: [1.3, 0.15, 0, 0.4, 0] as ArmQ, offRelease: [0.5, 0.2, 0.3, 1.6, 0] as ArmQ,
   turn: [-0.7, 0.1, 0.25], twist: [-0.45, 0.35, 0.45],
   /** The pose runs this far (s) ahead of THROW's times: the arm's tracking lag, so the hand is through at the release. */
-  lead: 0.1,
+  lead: 0.09,
 };
 
 export class ProceduralAnimator implements Animator {

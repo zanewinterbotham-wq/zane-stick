@@ -64,7 +64,7 @@ The interfaces above, exactly, plus:
   The bot receiver and corner look at a ball in the air (the catch rule's gaze factor reads the head).
 - `leadPoint(from, target, loft, delay = THROW.release)`: the throwing motion's time before release is in the lead.
   `throwError(dist, speed, knock, pressured, loft)` is the 1σ miss; `THROW` holds the arm's limits and the motion's
-  times (cock 0.25 s, release 0.4 s, end 0.65 s): a scheme's aim preview can use them.
+  times (cock 0.28 s, release 0.4 s, end 0.65 s): a scheme's aim preview can use them.
 - `PassRecord` (`Play.lastPass`, also `World.lastPass`): `{ athlete, time, at, to, loft, speed, error }`, `to` = where the
   error sent it. `Play.pass: 'none' | 'air' | 'complete' | 'intercepted' | 'incomplete'`, `Play.passer`, and
   `Play.passOk(i)` (whether a pass from athlete i would be allowed now: an aim aid can grey out).

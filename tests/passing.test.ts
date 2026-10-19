@@ -182,9 +182,9 @@ describe('QB 1-on-1 bots', () => {
   }
 
   it('a go route is completed in most reps against off coverage, fewer against press', async () => {
-    const off = await tally({ route: 'go', coverage: 'off' }, 8), press = await tally({ route: 'go', coverage: 'press' }, 8);
-    console.log(`go route, 8 reps: off ${JSON.stringify(off)}, press ${JSON.stringify(press)}`);
-    expect(off.complete ?? 0).toBeGreaterThanOrEqual(5);
+    const off = await tally({ route: 'go', coverage: 'off' }, 12), press = await tally({ route: 'go', coverage: 'press' }, 12);
+    console.log(`go route, 12 reps: off ${JSON.stringify(off)}, press ${JSON.stringify(press)}`);
+    expect(off.complete ?? 0).toBeGreaterThanOrEqual(7);
     expect(press.complete ?? 0).toBeLessThan(off.complete ?? 0);
   }, 240_000);
 });

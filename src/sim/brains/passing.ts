@@ -43,6 +43,8 @@ const BREAK_V = 4.5, BRAKE = 5;
 const IN_FRONT = 0.55, OVER_SHOULDER = 0.35;
 /** Running to a ball in the air, up to this much faster (m/s) than the flight needs while 5 m or more from the spot. */
 const EARLY = 1.5;
+/** ... and while the ball is more than this far off (s) and the spot ahead of him, at least the pace he is running. */
+const HOLD_PACE = 0.6;
 /** A seen acceleration is filtered over this long (s). */
 const ACC_TAU = 0.15;
 /** Plant and cut (as the carrier and tackler do) when the wanted way is PLANT_ANGLE rad off a run faster than
@@ -111,8 +113,10 @@ function playBall(p: Perception, me: AthleteView, run: Runner, chase: TacklerBra
   // beside its line on the side he is already on, so it comes over his shoulder rather than down onto his helmet
   const side = (me.com[0] - s.at[0]) * fz - (me.com[2] - s.at[2]) * fx > 0 ? OVER_SHOULDER : -OVER_SHOULDER;
   const dx = s.at[0] - ox * IN_FRONT + fz * side - me.com[0], dz = s.at[2] - oz * IN_FRONT - fx * side - me.com[2], t = Math.max(s.t, 0.15);
-  // a little faster than the flight needs while far from it, to be under it early rather than late
-  const d = Math.hypot(dx, dz) || 1e-6, v = Math.min(FULL, d / t + EARLY * clamp(d / 5, 0, 1));
+  // a little faster than the flight needs while far from it, to be under it early rather than late; a ball still well
+  // off ahead of him is no reason to ease up yet (a defender on his heels gains on him if he does)
+  const d = Math.hypot(dx, dz) || 1e-6, ahead = (dx * ox + dz * oz) / d > 0.7 && s.t > HOLD_PACE;
+  const v = Math.min(FULL, Math.max(d / t + EARLY * clamp(d / 5, 0, 1), ahead ? sp : 0));
   run.go(p, me, dx / d * v, dz / d * v, dt, c);
   c.gait = 'sprint';
   const near = Math.hypot(b.pos[0] - chest[0], b.pos[1] - chest[1], b.pos[2] - chest[2]);
@@ -274,7 +278,7 @@ export class CoverageBrain implements Brain {
  *  to ROLL m toward his receiver's side. All assumptions, tuned so a bot quarterback completes about what the coverage
  *  allows. */
 const DROP = 0.6, READ = 0.7, OPEN = 0.35, CB_V = 9, CB_ACC = 6, CB_REACT = 0.3, CB_REACH = 1, FAST = 4, SET = 1, BROKE = 0.5, SETTLE = 2.2, LATE = 2.8;
-const SCRAMBLE = 1.8, ROLL = 4, AWAY = 0.6, TOP = 9.5, SHIELD = 0.8, SPOT = 3;
+const SCRAMBLE = 1.8, ROLL = 4, AWAY = 0.6, TOP = 10.3, SHIELD = 0.8, SPOT = 3;
 
 /** Time (s) to cover s m from v0 m/s (toward it) at acceleration a up to top speed V. */
 export function reachTime(s: number, v0: number, a: number, V: number): number {

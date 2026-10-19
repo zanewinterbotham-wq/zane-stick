@@ -10,7 +10,7 @@ const G = 9.81;
  *  through over; how far ahead of the hand's centre the ball's centre leaves (m: its half length, a hand's and a
  *  margin); and the accuracy model (1σ miss at the target, m, all assumptions): per metre of throw, and the factors
  *  per m/s of the passer's own speed, at full knock, with a defender within `pressR` m, and at full loft. */
-export const THROW = { vmax: 27, spin: 63, cock: 0.25, release: 0.4, end: 0.65, clear: 0.3,
+export const THROW = { vmax: 27, spin: 63, cock: 0.28, release: 0.4, end: 0.65, clear: 0.3,
   perM: 0.012, run: 0.12, knock: 1.5, pressure: 1, pressR: 1.5, loft: 0.5 };
 
 /** Launch velocity from `from` that reaches `at` (world, m) and the flight time (s). Loft 0: the fastest throw the
