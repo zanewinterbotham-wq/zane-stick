@@ -47,6 +47,17 @@ export function createRoom(name: string, server?: string): Promise<NetRoom>;
 export function joinRoom(code: string, name: string, server?: string): Promise<NetRoom>;
 ```
 
+Implementation notes (src/net/, server/rooms/):
+- `rtt` is in seconds (SI), smoothed, 0 until the first probe returns (probes run once a second).
+- `onClose` reasons: `'host-left'`, `'disconnected'` (socket lost), `'closed'` (own `close()`). `createRoom`/`joinRoom`
+  reject with `Error('Room not found' | 'Room closed' | 'Could not reach the room server')`.
+- A guest knows the host when `joinRoom` resolves; the host learns of a guest from `onPeers`. A send to an id not in
+  `peers()` (or guest to guest) is dropped. Relay messages over 64 KB are dropped by the server. Strings starting
+  with `\u0001` are reserved for the transport.
+- `defaultServer()` = `?server=` or the page's origin. `src/net/loopback.ts` `createLoopbackRoom(guestNames)` gives an
+  in-memory host + guests for tests (async delivery, star topology, `join(name)` for late joiners).
+- Routes: `/api/room/new` (WebSocket, create), `/api/room/<CODE>` (WebSocket join; plain GET answers 200/404/410).
+
 ## Game protocol (src/game/net/ or src/sim/net/ for the pure encode/decode)
 
 - `lobby` (host → all, reliable, JSON): players [{id, name}], mode id, mode options, assignment slot → player id or

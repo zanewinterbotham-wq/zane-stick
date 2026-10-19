@@ -53,7 +53,12 @@ Engine comparison: `docs/physics-benchmark.md`.
 - `npm run build` — production build to `dist/`; pushes to `main` deploy to GitHub Pages
 - `npm run deploy:cf` — build and deploy to Cloudflare Pages, project `zane-stick`: https://zane-stick.pages.dev.
   Uses the owner's Wrangler login on this PC (never read or copy its config). Every deploy updates BOTH: push
-  `main` (GitHub Pages) and run `deploy:cf`.
+  `main` (GitHub Pages) and run `deploy:cf`. It also ships `functions/` (the room API, bindings in `wrangler.jsonc`).
+- `npm run deploy:rooms` — deploy the multiplayer room server, Worker `zane-stick-rooms` (Durable Object `RoomDO`,
+  `server/rooms/`, no workers.dev URL); deploy it before the first `deploy:cf` that ships `functions/`.
+- `npm run dev:rooms` — local room server on 127.0.0.1:8787; `npm run dev` / `vite preview` proxy `/api` to it.
+  The game uses its own origin's room API; `?server=<url>` overrides (GitHub Pages has no API: use
+  `?server=https://zane-stick.pages.dev`). `test:e2e` starts it itself (tests/e2e/net.spec.ts).
 - `npm run bench:engines` — physics engine comparison; `npx tsx bench/presets/run.ts` — per-preset cost
   at 1x/4x/6x CPU throttling (needs a build)
 - `npx tsx bench/tune/run.ts <generations> <workers> <population>` — CMA-ES controller gain tuning;
