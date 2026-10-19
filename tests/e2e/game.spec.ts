@@ -64,7 +64,7 @@ test('title loads, drill starts, mouse and keyboard controls reach the brain, co
   expect(box.x).toBeLessThan(40);
   expect(box.height).toBeGreaterThan(box.width * 0.6);
   // arms on the mouse buttons, the pads on the wheel (scroll up = down: the trunk leans and the hips sink together),
-  // thrust on Space overriding both; there is no separate sink key
+  // thrust on Q overriding both; there is no separate sink key
   await expect(list).not.toContainText('Sink');
   await page.mouse.down({ button: 'left' });
   await page.mouse.down({ button: 'right' });
@@ -90,10 +90,10 @@ test('title loads, drill starts, mouse and keyboard controls reach the brain, co
   expect((await latest(page)).torso).toBeLessThan(-0.3);
   await page.evaluate(() => (window as unknown as { __app: { input: { resetTorso(): void } } }).__app.input.resetTorso());
   await page.mouse.up({ button: 'left' }); await page.mouse.up({ button: 'right' });
-  await page.keyboard.down('Space');
+  await page.keyboard.down('KeyQ');
   await page.waitForTimeout(100);
   expect((await latest(page)).thrust).toBe(true);
-  await page.keyboard.up('Space');
+  await page.keyboard.up('KeyQ');
   // run at the carrier: contact mode switches itself on
   await page.keyboard.down('KeyW');
   await expect.poll(async () => (await latest(page)).contact, { timeout: 20_000 }).toBe(true);
@@ -220,29 +220,30 @@ test('controls rebind live and persist; reserved keys are refused; reset restore
   await page.getByRole('button', { name: /^Replace Dive/ }).click();
   await page.keyboard.press('Tab');
   await expect(page.locator('.menu [role=status]')).toContainText('Tab stays with the browser');
-  await page.keyboard.press('KeyQ');
-  await expect(cell('dive')).toHaveText('Q');
+  await page.keyboard.press('KeyR');
+  await expect(cell('dive')).toHaveText('R');
   // a mouse button can be added; it leaves the action that had it
   await page.getByRole('button', { name: /^Add a key to Thrust/ }).click();
   await page.mouse.click(20, 20, { button: 'middle' });
-  await expect(cell('thrust')).toHaveText('Space / Middle click');
+  await expect(cell('thrust')).toHaveText('Q / Middle click');
   await expect(cell('shiftLock')).toHaveText(';');
   await page.screenshot({ path: 'test-results/12-rebind.png', fullPage: true });
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('zane-stick-settings-v1')!).bindings.dive)).toEqual(['KeyQ']);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('zane-stick-settings-v1')!).bindings.dive)).toEqual(['KeyR']);
   // saved: a reload keeps it, and it drives the athlete
   await page.reload();
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await page.keyboard.press('Enter');
   await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
-  await expect(page.locator('.keylist')).toContainText('Space / Middle click');
-  await page.keyboard.down('KeyQ');
+  await expect(page.locator('.keylist')).toContainText('Q / Middle click');
+  await page.keyboard.down('KeyR');
   await expect.poll(async () => (await latest(page)).held).toContain('dive');
-  await page.keyboard.up('KeyQ');
+  await page.keyboard.up('KeyR');
   await page.keyboard.press('Escape');
   await settingsTab(page, 'Controls');
   await page.getByRole('button', { name: 'Reset controls to defaults' }).click();
   await expect(cell('dive')).toHaveText('E');
-  await expect(cell('thrust')).toHaveText('Space');
+  await expect(cell('thrust')).toHaveText('Q');
+  await expect(cell('jump')).toHaveText('Space');
   expect(errors).toEqual([]);
 });
 
