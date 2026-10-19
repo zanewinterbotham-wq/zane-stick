@@ -49,6 +49,9 @@ class MujocoScene implements PhysicsScene {
   private jointDof = new Map<number, [number, number]>();
   private forceBuf: Any;
   private xfrc!: Float64Array; private qfrc!: Float64Array;
+  /** The state before the current step, restored if it diverges; divergence count and bookkeeping. */
+  private good!: { qpos: Float64Array; qvel: Float64Array; eq: Uint8Array; time: number };
+  private instab = 0; private warned = 0; private steps = 0; private lastBad = -9;
 
   constructor(desc: SceneDesc) {
     if (!mj) throw new Error('mujocoEngine.init() must be awaited first');
@@ -129,11 +132,28 @@ class MujocoScene implements PhysicsScene {
     this.forceBuf = new mj.DoubleBuffer(6);
     mj.mj_forward(m, this.d);
     this.views();
+    this.good = { qpos: new Float64Array(m.nq), qvel: new Float64Array(m.nv), eq: new Uint8Array(m.neq), time: 0 };
     this.read();
   }
 
   step() {
-    mj.mj_step(this.m, this.d);
+    this.views();
+    const d = this.d, { qpos, qvel } = this.v, eq = d.eq_active as Uint8Array;
+    this.good.qpos.set(qpos); this.good.qvel.set(qvel); this.good.eq.set(eq); this.good.time = d.time;
+    mj.mj_step(this.m, d);
+    // a diverged solve makes MuJoCo reset everyone to the spawn pose (a mid-rep teleport, injuries kept): undo it,
+    // back to the last good state with the motion damped out (halved; stopped if it diverges again at once)
+    const n = this.warnings();
+    if (n > this.warned) {
+      this.views();
+      const k = this.lastBad === this.steps - 1 ? 0 : 0.5;
+      this.lastBad = this.steps; this.instab += n - this.warned; this.warned = n;
+      this.v.qpos.set(this.good.qpos); this.v.qvel.set(this.good.qvel); (d.eq_active as Uint8Array).set(this.good.eq);
+      for (let i = 0; i < this.v.qvel.length; i++) this.v.qvel[i] *= k;
+      d.qacc_warmstart.fill(0); d.time = this.good.time + this.dt;
+      mj.mj_forward(this.m, d);
+    }
+    this.steps++;
     this.views(); // WASM memory can grow, which detaches old typed-array views
     this.xfrc.fill(0);
     this.qfrc.fill(0);
@@ -299,9 +319,13 @@ class MujocoScene implements PhysicsScene {
     const px = d.xipos[3 * b] - sc[3 * b], py = d.xipos[3 * b + 1] - sc[3 * b + 1], pz = d.xipos[3 * b + 2] - sc[3 * b + 2];
     return [cv[6 * b + 3] + cv[6 * b + 1] * pz - cv[6 * b + 2] * py, cv[6 * b + 4] + cv[6 * b + 2] * px - cv[6 * b] * pz, cv[6 * b + 5] + cv[6 * b] * py - cv[6 * b + 1] * px];
   }
+  /** Divergence warnings MuJoCo has raised (each one reset the data). */
+  private warnings() {
+    const w = this.d.warning, n = (k: Any) => (w.get ? w.get(k.value) : w[k.value])?.number ?? 0, W = mj.mjtWarning;
+    return n(W.mjWARN_BADQACC) + n(W.mjWARN_BADQPOS) + n(W.mjWARN_BADQVEL);
+  }
   stats() {
-    const w = this.d.warning, k = mj.mjtWarning.mjWARN_BADQACC.value;
-    return { contacts: this.d.ncon, bodies: this.m.nbody - 1, instabilities: (w.get ? w.get(k) : w[k])?.number ?? 0 };
+    return { contacts: this.d.ncon, bodies: this.m.nbody - 1, instabilities: this.instab };
   }
   destroy() { this.forceBuf.delete(); this.d.delete(); this.m.delete(); }
 }

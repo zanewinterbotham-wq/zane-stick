@@ -60,3 +60,24 @@ describe('grip constraint', () => {
     sc.destroy();
   });
 });
+
+describe('divergence', () => {
+  it('a diverged step rolls back to the last good state instead of resetting everyone to the spawn pose', () => {
+    const plan = buildBody(DEFAULT_ATHLETE);
+    const sc = mujocoEngine.createScene({ hz: 240, iterations: 50, athletes: [{ plan, pos: [0, 0, 0], yaw: 0 }, { plan: buildBody(DEFAULT_ATHLETE), pos: [3, 0, 0], yaw: 0 }], props: [{ name: 'ball', shape: 'ellipsoid', size: [0.085, 0.085, 0.14], mass: 0.42, pos: [-3, 1, 0] }] });
+    sc.launchProp(0, [0, 12, 4], [0, 0, 0]);
+    // walk athlete 0 away from his spawn point, then blow up the solve with an absurd torque
+    for (let i = 0; i < 240; i++) { sc.applyWrench(0, 0, [0, 0, 300], [0, 0, 0]); sc.step(); }
+    const s = sc.athletes[0].state, before = [...s.com], ball = sc.propPose(0).pos;
+    expect(before[2]).toBeGreaterThan(0.5);
+    const tau = new Float64Array(sc.athletes[0].nDof).fill(1e300);
+    sc.setTorques(0, tau);
+    sc.step();
+    expect(sc.stats().instabilities).toBeGreaterThan(0); // still counted: tests keep requiring 0
+    expect(Math.hypot(s.com[0] - before[0], s.com[2] - before[2])).toBeLessThan(0.1); // where he was, not back at spawn
+    expect(Math.hypot(...sc.propPose(0).pos.map((x, k) => x - ball[k]))).toBeLessThan(0.2); // the ball flies on
+    for (let i = 0; i < 240; i++) sc.step();
+    for (const a of sc.athletes) expect(Number.isFinite(a.state.com[1])).toBe(true);
+    sc.destroy();
+  });
+});

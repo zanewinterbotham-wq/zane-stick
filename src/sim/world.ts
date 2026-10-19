@@ -298,7 +298,9 @@ export class World {
   private applyHitPower(a: Athlete, hp: number) {
     const f = a.hitForce, fh = Math.hypot(f[0], f[2]);
     if (fh < 1e-6 || a.downBy || this.commonSpeed(a, f[0] / fh, f[2] / fh) < HIT.minV) return;
-    const k = 0.5 * (hp - 1), F: Vec3 = [k * f[0], k * HIT.lift * fh, k * f[2]];
+    // on at most a real hit's force: past it the contact force is the solver prying apart bodies that met inside one
+    // step (a head-on closing at 17 m/s), and multiplying that launched the pushed man tens of m/s into the air
+    const k = 0.5 * (hp - 1) * Math.min(1, HIT.maxForce / Math.hypot(f[0], f[1], f[2])), F: Vec3 = [k * f[0], k * HIT.lift * fh, k * f[2]];
     this.scene.applyWrench(a.index, a.segIndex.get('pelvis')!, F, [0, 0, 0]);
     this.scene.applyWrench(a.index, a.segIndex.get('thorax') ?? a.segIndex.get('trunk')!, F, [0, 0, 0]);
   }
@@ -715,8 +717,9 @@ const LOW = { drop: 0.25, base: 1, liftStart: 0.2, liftFull: 0.6 };
  *  force; at 1× tacklers' wraps and the carrier's ball grip let go of loads a hand really holds. */
 const GRIP_ECC = 1.5;
 /** Hit power: combined speed along the push (m/s) above which the athlete pushed counts as driven back (a lean on a
- *  standing opponent does not), and the lift added per unit of horizontal boost. */
-const HIT = { minV: 0.3, lift: 0.5 };
+ *  standing opponent does not), the lift added per unit of horizontal boost, and the largest contact force the boost
+ *  multiplies (N): ~100 kg stopped from 5 m/s over a 25 ms padded impact (Wusk 2022 pulse) averages 20 kN. */
+const HIT = { minV: 0.3, lift: 0.5, maxForce: 20000 };
 /** Muscle tone left to an athlete out of play (× all muscle output): knocked out (unconscious, assumption), or both
  *  legs broken and conscious (curled up on the turf, assumption), and how long the tone takes to go (s, assumption). */
 const INJURY = { koTone: 0.2, hurtTone: 0.5, fade: 0.3 };

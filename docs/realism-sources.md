@@ -173,6 +173,7 @@ reference athlete).
 | Hand friction | 1.0 | assumption (gloves) |
 | Bare segment / helmet contact stiffness | MuJoCo solref 0.0084 s | stiffest the 240 Hz minimum rate allows; helmet–helmet measured 1.3–2.3 × 10⁵ N/m is stiffer still |
 | Shoulder pad contact | solref 0.02 s | pad stiffness ~7 × 10⁴ N/m; padded impacts last 10–12 ms (Gellner 2024) |
+| Hit power: largest contact force multiplied | 20 kN | ~100 kg stopped from 5 m/s over a 25 ms padded pulse (Wusk 2022) averages 20 kN; larger contact forces are solver separation of bodies that met inside one step (estimate) |
 | Hand grip compliance | constraint time constant 0.025 s | assumption (soft tissue; near-rigid grips also destabilise the wrist numerically) |
 | Jersey grab compliance | 0.06 s | assumption (fabric stretch) |
 
