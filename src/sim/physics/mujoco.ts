@@ -3,7 +3,7 @@ import loadMujoco from '@mujoco/mujoco';
 import { CONTACT, TURF } from '../anatomy/equipment';
 import { selfCollisionExcludes } from '../anatomy/collision';
 import type { GeomPlan, SegmentPlan } from '../anatomy/body';
-import { add, qaxis, qrot, sub, type Quat, type Vec3 } from '../math';
+import { add, qaxis, qconj, qlog, qmul, qrot, sub, type Quat, type Vec3 } from '../math';
 import type { AthleteState, ContactReport, LinkRef, PhysicsEngine, PhysicsScene, SceneDesc } from './engine';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,6 +35,9 @@ function geomXml(g: GeomPlan, origin: Vec3, dt: number, name: string, traction =
 class MujocoScene implements PhysicsScene {
   readonly dt: number;
   readonly athletes: PhysicsScene['athletes'] = [];
+  readonly nq: number; readonly nv: number; readonly freeQ: number[] = [];
+  /** Every joint: free (qpos address, qvel address) and the others (hinges: one coordinate each). */
+  private freeV: number[] = []; private hingeQ: number[] = []; private hingeV: number[] = [];
   private m: Any; private d: Any;
   private segBody: Int32Array[] = [];     // athlete → segment → MuJoCo body id
   private dofQ: Int32Array[] = []; private dofV: Int32Array[] = []; private dofJ: Int32Array[] = [];
@@ -128,6 +131,11 @@ class MujocoScene implements PhysicsScene {
       const name = mj.mj_id2name(m, mj.mjtObj.mjOBJ_GEOM.value, g) as string;
       const staticProp = name?.startsWith('prop') && b === 0 ? { athlete: -1, seg: +name.slice(4) } : null;
       this.geomLink.push(bodyLink.get(b) ?? staticProp ?? { athlete: -1, seg: -1 });
+    }
+    this.nq = m.nq; this.nv = m.nv;
+    for (let j = 0; j < m.njnt; j++) {
+      const free = m.jnt_type[j] === mj.mjtJoint.mjJNT_FREE.value;
+      (free ? this.freeQ : this.hingeQ).push(m.jnt_qposadr[j]); (free ? this.freeV : this.hingeV).push(m.jnt_dofadr[j]);
     }
     this.forceBuf = new mj.DoubleBuffer(6);
     mj.mj_forward(m, this.d);
@@ -318,6 +326,24 @@ class MujocoScene implements PhysicsScene {
     const b = this.propBody[pi], d = this.d, cv = d.cvel, sc = d.subtree_com;
     const px = d.xipos[3 * b] - sc[3 * b], py = d.xipos[3 * b + 1] - sc[3 * b + 1], pz = d.xipos[3 * b + 2] - sc[3 * b + 2];
     return [cv[6 * b + 3] + cv[6 * b + 1] * pz - cv[6 * b + 2] * py, cv[6 * b + 4] + cv[6 * b + 2] * px - cv[6 * b] * pz, cv[6 * b + 5] + cv[6 * b] * py - cv[6 * b + 1] * px];
+  }
+  readQ(out: Float32Array | Float64Array) { this.views(); out.set(this.v.qpos); }
+  writeQ(q: ArrayLike<number>, qd?: ArrayLike<number>) {
+    this.views();
+    const { qpos, qvel } = this.v;
+    for (let i = 0; i < this.nq; i++) qpos[i] = q[i];
+    for (let i = 0; i < this.nv; i++) qvel[i] = qd ? qd[i] : 0;
+    mj.mj_forward(this.m, this.d);
+    this.views();
+    this.cache = null; this.limits = null;
+    this.read();
+  }
+  diffQ(q0: ArrayLike<number>, q1: ArrayLike<number>, dt: number, out: Float64Array) {
+    this.hingeQ.forEach((a, k) => (out[this.hingeV[k]] = (q1[a] - q0[a]) / dt));
+    this.freeQ.forEach((a, k) => {
+      const v = this.freeV[k], r = qlog(qmul(qconj([q0[a + 4], q0[a + 5], q0[a + 6], q0[a + 3]]), [q1[a + 4], q1[a + 5], q1[a + 6], q1[a + 3]]));
+      for (let i = 0; i < 3; i++) { out[v + i] = (q1[a + i] - q0[a + i]) / dt; out[v + 3 + i] = r[i] / dt; }
+    });
   }
   /** Divergence warnings MuJoCo has raised (each one reset the data). */
   private warnings() {
