@@ -727,7 +727,11 @@ export class ProceduralAnimator implements Animator {
     }
     this.height = h; this.pitch = p;
     const fl = lerp(lerp(-0.6 * sd, 2.0, wP), 2.0, wF), el = lerp(0.4, 0.15, wP);
-    for (const a of this.arms) this.setArm(a, fl, lerp(0.15, 0.25, wF), 0, el, 0);
+    // reaching out of the launch, the arms go where the hands aim (a ball he lays out for)
+    for (const a of this.arms) {
+      const k = a.side > 0 ? 0 : 1, w = this.aimArm(v, cmd, a, k, dt) * wP;
+      this.setArm(a, lerp(fl, this.aimAng[k][0], w), lerp(lerp(0.15, 0.25, wF), this.aimAng[k][1], w), 0, lerp(el, 0.2, w), 0);
+    }
     this.add('lumbar.flex', lerp(0.15 * (1 - wP), -0.15, wF));
     this.head(-0.3 - 0.4 * wP + 0.3 * (cmd.headTuck ? 1 : 0));
     out.root.height = this.height; out.root.pitch = this.pitch; out.root.roll = this.roll;
