@@ -1,14 +1,18 @@
 // The Gauntlet: you carry the ball from deep in your own territory through a line of tacklers spread down the field.
-// Each one stands waiting (GateBrain) until you come within the wake-up distance, then chases like any tackler. The
+// Each one waits (GateBrain: in a ready stance at his spot, or with active bots sliding with you and coming up into his
+// zone) until you come within the wake-up distance, then chases like any tackler. The
 // run ends as in the NFL: the ball breaks the plane (touchdown), or you are down by contact or out of bounds.
 import { BlockerBrain } from '../brains/blocker';
 import { GateBrain } from '../brains/gate';
+import { IdleBrain } from '../brains/idle';
 import { TacklerBrain } from '../brains/tackler';
 import { GOAL_LINE, NFL, YD } from './rules';
 import type { ModeDef, PlayerSpec } from './types';
 
 /** First tackler this far ahead of the runner, the last this far short of the goal line (yd). */
 const LEAD = 12, RUNWAY = 10;
+/** With active bots a waiting tackler comes up this far (m) toward the runner, mirroring him across the field. */
+const ZONE = 3;
 
 export const GAUNTLET: ModeDef = {
   id: 'gauntlet', title: 'The Gauntlet', preview: 'modes/gauntlet.jpg',
@@ -32,7 +36,7 @@ export const GAUNTLET: ModeDef = {
       brain(play, i, r) {
         const h = play.world.ballCarrier;
         if (h !== 0 || i === 0) return null;
-        if (play.team(i) === 1) return new GateBrain(new TacklerBrain(r, play.cfg.defense ?? play.cfg.difficulty), +o.wake);
+        if (play.team(i) === 1) return new GateBrain(new TacklerBrain(r, play.cfg.defense ?? play.cfg.difficulty), +o.wake, new IdleBrain(r, play.cfg.activeBots ? ZONE : 0));
         return new BlockerBrain(r, play.cfg.difficulty);
       },
       ended(play) {

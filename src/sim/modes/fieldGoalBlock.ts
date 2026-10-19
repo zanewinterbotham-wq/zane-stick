@@ -5,7 +5,7 @@
 // blocked: a loose ball, live for both teams.
 import { BlockerBrain } from '../brains/blocker';
 import type { Rng } from '../rng';
-import { BALL_REST_Y, ballTouches, goalposts, HOLD, KICK_RULES, kick, near, POST, rethink, row, SMOTHER, spotVerdict } from './kicks';
+import { BALL_REST_Y, ballTouches, goalposts, hold, KICK_RULES, kick, near, POST, rethink, row, SMOTHER, spotVerdict } from './kicks';
 import { END_LINE, YD } from './rules';
 import type { ModeDef, ModeOptions, PlayerSpec, PlaySetup } from './types';
 
@@ -29,7 +29,7 @@ export function fieldGoal(o: ModeOptions, rng: Rng, aim?: number): PlaySetup {
     // until the kick is up, the kicker waits and the protection guards the ball; after it the ball is everyone's
     brain(play, i, rng) {
       if (kicked && !flight || play.team(i) !== K) return null;
-      return i === kicker ? HOLD : new BlockerBrain(rng, play.cfg.difficulty);
+      return i === kicker ? hold(rng) : new BlockerBrain(rng, play.cfg.difficulty);
     },
     step(play) {
       const w = play.world, b = play.ballPos();

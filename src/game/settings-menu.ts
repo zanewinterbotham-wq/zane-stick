@@ -220,7 +220,7 @@ function graphicsTab({ host, status }: Ctx) {
   if (!r) xray.querySelectorAll('button').forEach((b) => b.setAttribute('aria-disabled', 'true'));
   xray.addEventListener('click', (e) => { if (!host.renderer) { e.stopPropagation(); status.textContent = 'Anatomy view can be switched on once a rep has started.'; } }, true);
   return [el('div', { class: 'set-list' },
-    setRow('Quality', 'Physics precision, body detail and graphics together. Minimum suits school laptops.',
+    setRow('Quality', 'Physics precision, body detail and graphics together; on High, waiting defenders play the wait instead of idling at their spot. Minimum suits school laptops.',
       seg<PresetName>('Quality', (Object.keys(PRESETS) as PresetName[]).map((k) => ({ value: k, text: PRESETS[k].label })), () => host.preset.name, (v) => { s.preset = v; host.save(); })),
     setRow('Anatomy view', 'Shows the muscles and skeleton instead of the skin.', xray),
     setRow('Effort shading (anatomy view)', 'Colours each muscle by how hard it is working.',

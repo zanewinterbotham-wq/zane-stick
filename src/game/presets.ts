@@ -4,19 +4,20 @@ import type { PhysicsSettings } from '../sim/world';
 import type { RenderQuality } from './render/renderer';
 
 export type PresetName = 'minimum' | 'high';
-export interface Preset { name: PresetName; label: string; physics: PhysicsSettings; render: RenderQuality; targetFps: number }
+/** activeBots: waiting bots play the wait instead of idling at their spot (PlayConfig.activeBots). */
+export interface Preset { name: PresetName; label: string; physics: PhysicsSettings; render: RenderQuality; targetFps: number; activeBots: boolean }
 
 export const PRESETS: Record<PresetName, Preset> = {
   minimum: {
     name: 'minimum', label: 'Minimum',
     physics: { hz: 240, iterations: 20, detail: 'minimum' },
     render: { scale: 0.6, shadows: false, detail: 'low', antialias: false },
-    targetFps: 30,
+    targetFps: 30, activeBots: false,
   },
   high: {
     name: 'high', label: 'High',
     physics: { hz: 480, iterations: 40, detail: 'standard' },
     render: { scale: 1, shadows: true, detail: 'high', antialias: true },
-    targetFps: 60,
+    targetFps: 60, activeBots: true,
   },
 };

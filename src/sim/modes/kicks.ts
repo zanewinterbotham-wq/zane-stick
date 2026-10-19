@@ -5,11 +5,13 @@
 // the receivers' end zone and a kickoff that stops there are touchbacks.
 import { BALL } from '../anatomy/equipment';
 import { BlockerBrain } from '../brains/blocker';
+import { IdleBrain } from '../brains/idle';
 import { ReturnerBrain } from '../brains/returner';
 import type { Brain } from '../brains/types';
 import { neutralCommands } from '../control/types';
 import type { Vec3 } from '../math';
 import type { PropDesc } from '../physics/engine';
+import type { Rng } from '../rng';
 import type { Play } from './play';
 import { attackDir, END_LINE, GOAL_LINE, inOwnEndZone, NFL, YD } from './rules';
 import type { PlayerSpec, PlaySetup, Rules } from './types';
@@ -29,8 +31,10 @@ export const POST = { crossbar: 3.05, halfGap: 2.82, above: 10.67, r: 0.06, base
 /** Plays with kicks end here at the latest (s). */
 export const KICK_RULES: Rules = { ...NFL, timeLimit: 40 };
 
-/** Stands where he lined up: everyone before the kick, the kicker and the punter until the ball is away. */
-export const HOLD: Brain = { think: () => neutralCommands() };
+/** Waits where he lined up (IdleBrain): the kicker and the punter until the ball is away. */
+export const hold = (rng: Rng): Brain => new IdleBrain(rng);
+/** Everyone set, still, for the moment before a kickoff or a return's kick (KICK_AT: too short to idle in). */
+const SET: Brain = { think: () => neutralCommands() };
 
 /** z of a team's own yard line `yd` (0: its own goal line, 50: midfield). */
 export const ownYard = (team: 0 | 1, yd: number) => attackDir(team) * (yd * YD - GOAL_LINE);
@@ -145,7 +149,7 @@ export function returnPlay(s: ReturnSpec): PlaySetup {
     rules: KICK_RULES,
     props: goalposts(),
     brain(play, i, rng) {
-      if (!kicked) return HOLD;
+      if (!kicked) return SET;
       // a catch changes possession before this play's step sees the flight is over
       if (!flight || play.world.ballCarrier >= 0) return null;
       if (i === s.returner) return new ReturnerBrain(rng, play.cfg.difficulty);

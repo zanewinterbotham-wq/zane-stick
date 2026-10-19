@@ -34,6 +34,9 @@ export interface PlayConfig {
   defense?: BotDifficulty;
   /** Bone strength of the human and of every bot (AthleteSetup.boneStrength; 1 = the measured tolerances). */
   boneStrength?: number; aiBoneStrength?: number;
+  /** Waiting bots play the wait (a gauntlet tackler holds his zone and mirrors the runner) instead of idling at their
+   *  spot: the game sets it on high-end presets. */
+  activeBots?: boolean;
 }
 
 /** One menu control. Ranges are in the unit shown (yards, seconds, counts). */
