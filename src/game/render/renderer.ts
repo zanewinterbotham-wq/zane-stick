@@ -121,9 +121,9 @@ export class GameRenderer {
   voice(v: Voice) { this.athletes[v.athlete]?.mouth?.driver.say(v); }
 
   /** Call after every World step: the athletes' moods (eyebrows) follow the hits, injuries and approach (expressions.ts). */
-  stepFaces(w: World) {
+  stepFaces(w: World, dt = w.dt) {
     if (w !== this.world) return;
-    this.faces.step(w).forEach((e, i) => { const b = this.athletes[i]?.brows; if (b) b.driver.target = e; });
+    this.faces.step(w, dt).forEach((e, i) => { const b = this.athletes[i]?.brows; if (b) b.driver.target = e; });
   }
 
   setWorld(w: World) {
@@ -164,7 +164,8 @@ export class GameRenderer {
     this.camera.updateProjectionMatrix();
   }
 
-  render(w: World) {
+  /** `focus`: the athlete the shadow camera stays on (the one the view follows). */
+  render(w: World, focus = 0) {
     if (w !== this.world) return; // a new rep whose skin is still loading
     const t0 = performance.now(), dt = (t0 - this.lastFrame) / 1000;
     this.lastFrame = t0;
@@ -185,7 +186,7 @@ export class GameRenderer {
     this.effects.follow(w);
     this.landing.update(w);
     // keep the shadow camera on the action
-    const c = w.scene.athletes[0].state.com;
+    const c = (w.scene.athletes[focus] ?? w.scene.athletes[0]).state.com;
     this.sun.target.position.set(c[0], 0, c[2]);
     this.sun.position.set(c[0] - 20, 40, c[2] + 15);
     this.renderer.render(this.scene, this.camera);

@@ -24,9 +24,14 @@ const KEEPALIVE = 25; // probes between server pings, so proxies never see a sil
 const CTRL = '\u0001'; // strings starting with this are transport-internal (rtt probes); the game never sees them
 const MAX_QUEUE = 256 * 1024; // bytes: unreliable sends are dropped while this much is already queued
 
-/** Room server origin: ?server=<url> on the page, else the page's own origin. */
-export function defaultServer(): string {
-  return new URLSearchParams(location.search).get('server') ?? location.origin;
+/** Where the room API lives when the page's own host has none (the GitHub Pages copy is static files only). */
+export const PAGES_SERVER = 'https://zane-stick.pages.dev';
+
+/** Room server origin: ?server=<url> on the page, else the page's own origin on the Cloudflare Pages site or a local
+ *  dev server (whose /api proxies to `npm run dev:rooms`), else the Pages site. */
+export function defaultServer(loc: { search: string; origin: string; hostname: string } = location): string {
+  const h = loc.hostname, own = h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h.endsWith('.localhost') || h === 'zane-stick.pages.dev' || h.endsWith('.zane-stick.pages.dev');
+  return new URLSearchParams(loc.search).get('server') ?? (own ? loc.origin : PAGES_SERVER);
 }
 
 function roomUrl(server: string, path: string, name: string): string {

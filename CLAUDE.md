@@ -50,6 +50,8 @@ Engine comparison: `docs/physics-benchmark.md`.
 - `npm run dev` — Vite dev server (`?scenario=stand|push|walk|jog|sprint|cut|hit` for headless-style views,
   `&hp=2.5` sets the hit scenario's hit power,
   `?bench=1` runs the in-game benchmark)
+- Multiplayer locally: `npm run dev:rooms` (room server, 127.0.0.1:8787) plus `npm run dev`, then two windows:
+  Multiplayer → Host a game in one, the code (or `?join=CODE`) in the other (docs/multiplayer.md)
 - `npm test` — Vitest unit + fast physics tests (CI gate for deploys)
 - `npm run test:realism` — the realism contract (balance, pushes, determinism, preset consistency; slow)
 - `npm run test:e2e` — Playwright against the built site (screenshots in `test-results/`)

@@ -12,7 +12,7 @@ import type { Play, RepEnd } from '../modes/play';
 
 /** First byte of every binary game message. */
 export const MSG = { snap: 1, input: 2 } as const;
-const VERSION = 1;
+const VERSION = 2;
 const GAITS: Gait[] = ['walk', 'jog', 'sprint'];
 /** What broke, by index (injury.ts BREAK's names, then a knockout). */
 const WHAT = [...new Set(Object.values(BREAK).map((b) => b.what)), 'ko'];
@@ -21,11 +21,11 @@ const HEADER = 20, PER_ATHLETE = 19, PLAY = 39, PER_INJURY = 28;
 const enc = new TextEncoder(), dec = new TextDecoder();
 
 /** The host's play now: header, qpos as float32, per-athlete meta, play meta, every injury so far (rare, and sent
- *  whole each time so a lost snapshot loses none), then the play's end and verdict strings. */
+ *  whole each time so a lost snapshot loses none), then the play's end, verdict and note strings. */
 export function encodeSnapshot(play: Play): ArrayBuffer {
   const w = play.world, sc = w.scene, n = w.athletes.length, inj = w.injuries.slice(0, 255);
-  const ended = enc.encode((play.ended ?? '').slice(0, 60)), verdict = enc.encode(play.verdict.slice(0, 80));
-  const buf = new ArrayBuffer(HEADER + 4 * sc.nq + PER_ATHLETE * n + PLAY + PER_INJURY * inj.length + 2 + ended.length + verdict.length);
+  const ended = enc.encode((play.ended ?? '').slice(0, 60)), verdict = enc.encode(play.verdict.slice(0, 80)), note = enc.encode(play.note.slice(0, 40));
+  const buf = new ArrayBuffer(HEADER + 4 * sc.nq + PER_ATHLETE * n + PLAY + PER_INJURY * inj.length + 3 + ended.length + verdict.length + note.length);
   const v = new DataView(buf), q = new Float64Array(sc.nq);
   let o = 0;
   const u8 = (x: number) => v.setUint8(o++, x), i8 = (x: number) => v.setInt8(o++, x), f32 = (x: number) => { v.setFloat32(o, x, true); o += 4; };
@@ -50,7 +50,8 @@ export function encodeSnapshot(play: Play): ArrayBuffer {
     u8(e.athlete); u8(e.kind === 'ko' ? 1 : 0); u8(j); u8(WHAT.indexOf(e.what)); f32(e.pos[0]); f32(e.pos[1]); f32(e.pos[2]); f32(e.load); f64(e.time);
   }
   u8(ended.length); new Uint8Array(buf, o, ended.length).set(ended); o += ended.length;
-  u8(verdict.length); new Uint8Array(buf, o, verdict.length).set(verdict);
+  u8(verdict.length); new Uint8Array(buf, o, verdict.length).set(verdict); o += verdict.length;
+  u8(note.length); new Uint8Array(buf, o, note.length).set(note);
   return buf;
 }
 
@@ -63,8 +64,10 @@ export function decodeSnapshot(buf: ArrayBuffer, nq: number, athletes: number): 
   const v = new DataView(buf);
   if (v.getUint8(0) !== MSG.snap || v.getUint8(1) !== VERSION || v.getUint16(16, true) !== nq || v.getUint8(18) !== athletes) return null;
   const injuries = v.getUint8(19), meta = HEADER + 4 * nq, strs = meta + PER_ATHLETE * athletes + PLAY + PER_INJURY * injuries;
-  const verdictAt = strs + 1 + (buf.byteLength > strs ? v.getUint8(strs) : 0);
-  if (buf.byteLength <= verdictAt || buf.byteLength < verdictAt + 1 + v.getUint8(verdictAt)) return null;
+  // three length-prefixed strings: each length byte must be inside the buffer, and the last string must end in it
+  let at = strs;
+  for (let k = 0; k < 3; k++) { if (buf.byteLength <= at) return null; at += 1 + v.getUint8(at); }
+  if (buf.byteLength < at) return null;
   const q = new Float32Array(nq);
   for (let i = 0; i < nq; i++) q[i] = v.getFloat32(HEADER + 4 * i, true);
   return { rep: v.getUint16(2, true), tick: v.getUint32(4, true), time: v.getFloat64(8, true), q, view: v, meta, injuries };
@@ -103,7 +106,7 @@ export function applyMeta(play: Play, s: Snapshot) {
   }
   const str = () => { const n = u8(), t = dec.decode(new Uint8Array(v.buffer, v.byteOffset + o, n)); o += n; return t; };
   const ended = str();
-  play.ended = (ended || null) as RepEnd; play.verdict = str();
+  play.ended = (ended || null) as RepEnd; play.verdict = str(); play.note = str();
 }
 
 /** Guest rendering delay behind the snapshots (s): at least `min`, plus `jitter` × the arrival jitter, at most `max`;

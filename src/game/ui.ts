@@ -102,11 +102,29 @@ export class Hud {
   private speedoMph = el('span');
   private speedo = el('div', { class: 'panel speedo mono', 'aria-label': 'Speed' }, this.speedoMs, ' m/s', el('br'), this.speedoMph);
   private toastTimer = 0;
+  /** Multiplayer: the room and ping corner, the Tab roster, the 3-2-1. */
+  private net = el('div', { class: 'panel netbadge mono', 'aria-label': 'Connection' });
+  private roster = el('div', { class: 'panel roster-hud', 'aria-label': 'Players' });
+  private count = el('div', { class: 'countdown', 'aria-live': 'assertive' });
+  private shown = new Map<HTMLElement, string>();
   constructor() {
-    this.root.append(this.status, this.keys, this.overlay, this.result, this.toast, this.speedo);
+    this.root.append(this.status, this.keys, this.overlay, this.result, this.toast, this.speedo, this.net, this.roster, this.count);
     this.showResult(null);
     this.setOverlay(null);
+    for (const e of [this.net, this.roster, this.count]) e.style.display = 'none';
   }
+  /** Show `sig`'s content in `e` (built only when it changes), or hide it. */
+  private put(e: HTMLElement, sig: string | null, build: () => (Node | string)[]) {
+    if (this.shown.get(e) === (sig ?? '')) return;
+    this.shown.set(e, sig ?? '');
+    e.style.display = sig === null ? 'none' : '';
+    if (sig !== null) e.replaceChildren(...build());
+  }
+  setNet(text: string | null) { this.put(this.net, text, () => [text!]); }
+  setRoster(rows: [string, string, string][] | null) {
+    this.put(this.roster, rows && JSON.stringify(rows), () => [el('h2', { text: 'Players' }), ...rows!.map(([n, p, ping]) => el('div', { class: 'row' }, el('b', { text: n }), el('span', { text: p }), el('span', { class: 'mono', text: ping })))]);
+  }
+  setCountdown(text: string | null) { this.put(this.count, text, () => [text!]); }
   setVisible(on: boolean) { for (const e of [this.status, this.keys, this.speedo]) e.style.display = on ? '' : 'none'; }
   setStatus(lines: string[]) { this.status.textContent = lines.join('\n'); }
   /** The control list: one key + action per row, and an optional note underneath. Rebuilt only on change. */

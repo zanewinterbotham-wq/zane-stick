@@ -73,9 +73,10 @@ export class HitMeter {
   best: BigHit | null = null;
   big: BigHit | null = null;
 
-  /** Call after every World step. `bigNow` is set on the step a collision first qualifies as big. */
-  step(w: World): { sounds: HitSound[]; bigNow: BigHit | null } {
-    this.t += w.dt;
+  /** Call after every World step (a multiplayer guest: every render frame, with its length `dt`). `bigNow` is set on
+   *  the step a collision first qualifies as big. */
+  step(w: World, dt = w.dt): { sounds: HitSound[]; bigNow: BigHit | null } {
+    this.t += dt;
     const sounds: HitSound[] = [];
     let total = 0;
     for (const h of w.hits) {
@@ -93,8 +94,8 @@ export class HitMeter {
       this.cur = { closing: comClosing(w), impulse: 0 };
     }
     if (total > 0) this.lastContact = this.t;
-    this.win.push(total * w.dt);
-    if (this.win.length > Math.max(1, Math.round(WINDOW / w.dt))) this.win.shift();
+    this.win.push(total * dt);
+    if (this.win.length > Math.max(1, Math.round(WINDOW / dt))) this.win.shift();
     const J = this.win.reduce((s, x) => s + x, 0);
     let bigNow: BigHit | null = null;
     if (J > this.cur.impulse) {

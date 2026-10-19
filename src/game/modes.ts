@@ -17,18 +17,13 @@ export interface ModeHooks {
 /** A mode's options as last set, validated against its descriptors. */
 export const savedOptions = (s: Settings, def: ModeDef) => resolveOptions(def, s.modeOptions?.[def.id]);
 
-const preview = (def: ModeDef) => el('img', { src: import.meta.env.BASE_URL + def.preview, alt: `${def.title} preview`, loading: 'lazy', draggable: 'false' });
+export const preview = (def: ModeDef) => el('img', { src: import.meta.env.BASE_URL + def.preview, alt: `${def.title} preview`, loading: 'lazy', draggable: 'false' });
 const escapeTo = (root: HTMLElement, go: () => void) => root.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); go(); } });
 
 /** The grid of modes. `focus`: the mode whose card gets the focus (coming back from its setup). */
 export function modeMenu(s: Settings, hooks: ModeHooks, focus?: string): HTMLElement {
   const grid = el('div', { class: 'inv-grid mode-grid' });
-  for (const def of MODES) {
-    const card = el('button', { type: 'button', class: 'inv-card mode-card', 'data-mode': def.id, 'aria-label': `${def.title}: ${def.pitch}` },
-      el('div', { class: 'pic' }, preview(def)), el('div', { class: 'inv-info' }, el('h3', { text: def.title }), el('p', { text: def.pitch })));
-    card.addEventListener('click', () => hooks.show(modeSetup(def, s, hooks)));
-    grid.append(card);
-  }
+  for (const def of MODES) grid.append(modeCard(def, () => hooks.show(modeSetup(def, s, hooks))));
   const back = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back');
   back.addEventListener('click', hooks.back);
   const root = el('div', { class: 'panel menu inventory', role: 'dialog', 'aria-label': 'Play' },
@@ -36,6 +31,14 @@ export function modeMenu(s: Settings, hooks: ModeHooks, focus?: string): HTMLEle
   escapeTo(root, hooks.back);
   if (focus) queueMicrotask(() => grid.querySelector<HTMLElement>(`[data-mode="${focus}"]`)?.focus());
   return root;
+}
+
+/** A mode's card (preview, name, pitch) that runs `pick` (the Play menu and the multiplayer lobby). */
+export function modeCard(def: ModeDef, pick: () => void): HTMLButtonElement {
+  const card = el('button', { type: 'button', class: 'inv-card mode-card', 'data-mode': def.id, 'aria-label': `${def.title}: ${def.pitch}` },
+    el('div', { class: 'pic' }, preview(def)), el('div', { class: 'inv-info' }, el('h3', { text: def.title }), el('p', { text: def.pitch })));
+  card.addEventListener('click', pick);
+  return card;
 }
 
 /** One mode's setup: its options and Start. */
@@ -65,7 +68,7 @@ export function modeSetup(def: ModeDef, s: Settings, hooks: ModeHooks): HTMLElem
 }
 
 /** The label, control and value cells of one option in the .grid2 table. */
-function control(d: OptionDesc, o: ModeOptions, changed: () => void): HTMLElement[] {
+export function control(d: OptionDesc, o: ModeOptions, changed: () => void): HTMLElement[] {
   const label = el('label', { text: d.label });
   if (d.kind === 'range') {
     const fmt = (v: number) => `${v}${d.unit ? ' ' + d.unit : ''}`;

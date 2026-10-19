@@ -43,8 +43,9 @@ export class SoundCues {
   /** `ball`: the ball's prop index. */
   constructor(private ball: number) {}
 
-  step(w: World): Cue[] {
-    const out: Cue[] = [], dt = w.dt, t = w.time;
+  /** After every World step (a multiplayer guest: every render frame, with its length `dt`). */
+  step(w: World, dt = w.dt): Cue[] {
+    const out: Cue[] = [], t = w.time;
     w.athletes.forEach((a, i) => {
       const s = w.scene.athletes[i].state, seg = (name: string): Vec3 => { const k = a.segIndex.get(name) ?? 0; return [s.segPos[3 * k], s.segPos[3 * k + 1], s.segPos[3 * k + 2]]; };
       const vx = s.comVel[0], vz = s.comVel[2], speed = Math.hypot(vx, vz), down = a.downBy !== null;

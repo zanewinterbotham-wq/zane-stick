@@ -74,6 +74,8 @@ export class Play {
   scorer: -1 | 0 | 1 = -1;
   points = 0;
   verdict = '';
+  /** Mode state the HUD shows that only the simulating side knows ('BLOCKED'); snapshots carry it to guests. */
+  note = '';
   /** The ball's prop index. */
   readonly ball = 0;
   /** Athlete 1, the first bot: the open-field drill's opponent (tests and automation address him by this). */
@@ -103,7 +105,7 @@ export class Play {
   /** `brains`: what each athlete thinks with; the world's brains delegate here, so the play can swap a bot's. */
   /** `human`: the local player's athlete (−1: none); `fixed[i]`: athlete i's brain is a player's, never a bot's. */
   private constructor(public world: World, readonly cfg: PlayConfig, readonly mode: PlaySetup, readonly rules: Rules, readonly brains: Brain[], readonly rng: Rng, readonly options: ModeOptions,
-    readonly human: number, private readonly fixed: readonly (Brain | null)[]) {}
+    readonly human: number, private readonly fixed: (Brain | null)[]) {}
 
   static async create(engine: PhysicsEngine, cfg: PlayConfig, def: ModeDef, options: ModeOptions, humanBrain: Brain | null, rep = 0, seats: Seats = {}): Promise<Play> {
     const rng = new Rng(cfg.seed * 7919 + rep * 104729);
@@ -163,6 +165,14 @@ export class Play {
     if (h === i) return new CarrierBrain(rng, d, this.cfg.carrierGait);
     if (h >= 0 && this.team(h) === this.team(i)) return new BlockerBrain(rng, d);
     return new TacklerBrain(rng, this.cfg.defense ?? d);
+  }
+
+  /** A remote player left mid-play: athlete i is a bot from now on, with the role brain for the moment (his body
+   *  stays the one he was built with). The local human's athlete stays his. */
+  toBot(i: number) {
+    if (i === this.human || !this.fixed[i]) return;
+    this.fixed[i] = null;
+    this.brains[i] = this.roleBrain(i);
   }
 
   /** Every bot thinks again for its new role (possession changed, or a kick came down). */
