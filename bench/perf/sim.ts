@@ -33,30 +33,30 @@ function timeIt(acc: Record<string, number>, label: string, obj: any, k: string)
 }
 
 await mujocoEngine.init();
-for (const phys of vary) for (const name of names) {
-  for (const sc of SCENES) {
-    const def = modeById(sc.mode), make = () => Play.create(mujocoEngine, config(name, phys), def, resolveOptions(def, sc.opts), null, 0);
-    // the same deterministic run `reps` times (the fastest is the cost: other load on the machine only adds), then a
-    // profiled second on the last one
-    let play = await make(), ms = Infinity;
-    for (let r = 0; r < reps; r++) {
-      if (r) { play.destroy(); play = await make(); }
-      const t0 = process.cpuUsage(); // CPU time, not wall time: less of the other load on the machine
-      for (let i = 0, n = Math.round(seconds / play.world.dt); i < n; i++) play.step();
-      const u = process.cpuUsage(t0); ms = Math.min(ms, (u.user + u.system) / 1000);
-    }
-    const w = play.world;
-    const st = w.scene.athletes.flatMap((a) => [...a.state.segPos, ...a.state.qd]);
-    const hash = createHash('sha1').update(new Float64Array(st)).digest('hex').slice(0, 10);
-    const acc: Record<string, number> = {};
-    timeIt(acc, 'mj_step+read', w.scene, 'step');
-    timeIt(acc, 'contacts', w.scene, 'contacts');
-    for (const a of w.athletes) { timeIt(acc, 'controller', a.controller, 'compute'); timeIt(acc, 'muscles', a.muscles, 'compute'); timeIt(acc, 'brain', a.brain, 'think'); }
-    const n2 = Math.round(1 / w.dt), t1 = performance.now();
-    for (let i = 0; i < n2; i++) play.step();
-    const tot = performance.now() - t1;
-    const parts = Object.entries(acc).map(([k, v]) => `${k} ${(100 * v / tot).toFixed(0)}%`).join(', ');
-    console.log(`${vary.length > 1 ? JSON.stringify(phys) + ' ' : ''}${name.padEnd(8)} ${sc.id.padEnd(9)} ${Math.round(1 / w.dt)} Hz: ${(ms / seconds).toFixed(0).padStart(6)} ms/sim-s  hash ${hash}  instab ${w.scene.stats().instabilities}  contacts ${w.scene.stats().contacts}  [${parts}, rest ${(100 - Object.values(acc).reduce((a, b) => a + b, 0) / tot * 100).toFixed(0)}%]`);
-    play.destroy();
-  }
+// every configuration once per round, `reps` rounds (interleaved, so a slow spell of the machine hits them all), the
+// fastest round of each is its cost (other load only adds); then a profiled second on a fresh run
+const runs = vary.flatMap((phys) => names.flatMap((name) => SCENES.map((sc) => ({ phys, name, sc, ms: Infinity }))));
+const make = (r: (typeof runs)[number]) => { const def = modeById(r.sc.mode); return Play.create(mujocoEngine, config(r.name, r.phys), def, resolveOptions(def, r.sc.opts), null, 0); };
+for (let k = 0; k < reps; k++) for (const r of runs) {
+  const play = await make(r);
+  const t0 = process.cpuUsage(); // CPU time, not wall time: less of the other load on the machine
+  for (let i = 0, n = Math.round(seconds / play.world.dt); i < n; i++) play.step();
+  const u = process.cpuUsage(t0); r.ms = Math.min(r.ms, (u.user + u.system) / 1000);
+  play.destroy();
+}
+for (const { phys, name, sc, ms } of runs) {
+  const play = await make({ phys, name, sc, ms }), w = play.world;
+  for (let i = 0, n = Math.round(seconds / w.dt); i < n; i++) play.step();
+  const st = w.scene.athletes.flatMap((a) => [...a.state.segPos, ...a.state.qd]);
+  const hash = createHash('sha1').update(new Float64Array(st)).digest('hex').slice(0, 10);
+  const acc: Record<string, number> = {};
+  timeIt(acc, 'mj_step+read', w.scene, 'step');
+  timeIt(acc, 'contacts', w.scene, 'contacts');
+  for (const a of w.athletes) { timeIt(acc, 'controller', a.controller, 'compute'); timeIt(acc, 'muscles', a.muscles, 'compute'); timeIt(acc, 'brain', a.brain, 'think'); }
+  const n2 = Math.round(1 / w.dt), t1 = performance.now();
+  for (let i = 0; i < n2; i++) play.step();
+  const tot = performance.now() - t1;
+  const parts = Object.entries(acc).map(([k, v]) => `${k} ${(100 * v / tot).toFixed(0)}%`).join(', ');
+  console.log(`${vary.length > 1 ? JSON.stringify(phys) + ' ' : ''}${name.padEnd(8)} ${sc.id.padEnd(9)} ${Math.round(1 / w.dt)} Hz: ${(ms / seconds).toFixed(0).padStart(6)} ms/sim-s  hash ${hash}  instab ${w.scene.stats().instabilities}  contacts ${w.scene.stats().contacts}  [${parts}, rest ${(100 - Object.values(acc).reduce((a, b) => a + b, 0) / tot * 100).toFixed(0)}%]`);
+  play.destroy();
 }
