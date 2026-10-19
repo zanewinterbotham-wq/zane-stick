@@ -26,6 +26,13 @@ SPECIAL.forEach(([id, title, options], k) => test(`special teams: ${id} starts w
   // the ball goes up: a kick (or, on a field goal try, the snap-to-kick time) within a few seconds of play
   await expect.poll(() => page.evaluate(() => (window as unknown as { __app: App }).__app.drill.ballPos()[1]), { timeout: 30_000 }).toBeGreaterThan(2); // above any hand that holds it
   await page.waitForTimeout(800);
+  // a kick in the air has a landing ring on the turf (render/landing.ts), at the radius for its time to land
+  if (id === 'kickoffReturn') {
+    const ring = await page.evaluate(() => { const l = (window as unknown as { __app: { renderer: { landing: { root: { visible: boolean; scale: { x: number } } } } } }).__app.renderer.landing.root; return { visible: l.visible, r: l.scale.x }; });
+    expect(ring.visible).toBe(true);
+    expect(ring.r).toBeGreaterThanOrEqual(0.4);
+    expect(ring.r).toBeLessThanOrEqual(3);
+  }
   await page.screenshot({ path: `test-results/4${k}-${id}.png` });
   expect(errors).toEqual([]);
 }));
