@@ -21,14 +21,16 @@ export const OKLAHOMA: ModeDef = {
     { id: 'role', label: 'Your role', kind: 'choice', default: 'defender', choices: [
       { id: 'defender', label: 'Defender' }, { id: 'blocker', label: 'Blocker' }, { id: 'carrier', label: 'Ball carrier' }] },
     { id: 'width', label: 'Lane width', kind: 'range', min: 3, max: 10, step: 1, default: 5, unit: 'yd' },
+    { id: 'blocker', label: 'Blocker (always there when you are the blocker)', kind: 'toggle', default: true },
     { id: 'outOfBounds', label: 'Leaving the lane ends the rep', kind: 'toggle', default: true },
   ],
-  athletes: () => 3,
+  athletes: (o) => (o.blocker || o.role === 'blocker' ? 3 : 2),
   setup(o, rng) {
     const role = o.role as OklahomaRole, O: 0 | 1 = role === 'defender' ? 1 : 0, D: 0 | 1 = O === 0 ? 1 : 0, s = attackDir(O);
-    const hw = (+o.width * YD) / 2;
+    const hw = (+o.width * YD) / 2, withBlocker = !!o.blocker || role === 'blocker'; // the human blocker can't be removed
     const at = { blocker: { team: O, pos: [0, -s * SET] }, carrier: { team: O, pos: [rng.range(-0.5, 0.5), -s * DEPTH] }, defender: { team: D, pos: [0, s * SET] } } as Record<OklahomaRole, PlayerSpec>;
     const order: OklahomaRole[] = role === 'defender' ? ['defender', 'blocker', 'carrier'] : role === 'blocker' ? ['blocker', 'carrier', 'defender'] : ['carrier', 'blocker', 'defender'];
+    if (!withBlocker) order.splice(order.indexOf('blocker'), 1);
     const goal: [number, number] = O === 0 ? [FINISH, -BACK] : [BACK, -FINISH];
     const cones: PropDesc[] = [];
     for (let a = -CONE_FROM; a <= FINISH + 1e-6; a += CONE_STEP) for (const x of [-hw, hw])
