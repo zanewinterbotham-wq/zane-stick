@@ -6,6 +6,7 @@ import { AthleteMesh, TEAMS } from './athleteMesh';
 import { AnatomyOverlay } from './anatomy';
 import { GORE_LEVELS, InjuryEffects } from './effects';
 import { buildBarrier, buildField } from './field';
+import { LandingMarker } from './landing';
 import { loadStadium, OPEN_FIELD, stadiumById, type Stadium, type StadiumScene } from './stadium';
 import { ExpressionTracker } from '../expressions';
 import type { Voice } from './mouth';
@@ -48,6 +49,8 @@ export class GameRenderer {
     const id = GORE_LEVELS[clamp(Math.round(level), 0, GORE_LEVELS.length - 1)].style;
     if (this.effects.style.id !== id) this.effects.setStyle(id);
   }
+  /** Target ring where a loose ball in the air will land (render/landing.ts). */
+  readonly landing = new LandingMarker();
   /** Render time of the last frame (ms) and the last frame's draw calls. */
   lastMs = 0;
   private lastFrame = performance.now();
@@ -70,7 +73,7 @@ export class GameRenderer {
     const sc = this.sun.shadow.camera as THREE.OrthographicCamera;
     sc.left = -12; sc.right = 12; sc.top = 12; sc.bottom = -12; sc.near = 1; sc.far = 100;
     this.scene.add(this.sun, this.sun.target);
-    this.scene.add(buildField(quality.detail), this.effects.root);
+    this.scene.add(buildField(quality.detail), this.effects.root, this.landing.root);
     this.barrier = buildBarrier();
     this.scene.add(this.barrier);
     this.resize();
@@ -180,6 +183,7 @@ export class GameRenderer {
     });
     if (this.overlay?.root.visible) this.overlay.update(w);
     this.effects.follow(w);
+    this.landing.update(w);
     // keep the shadow camera on the action
     const c = w.scene.athletes[0].state.com;
     this.sun.target.position.set(c[0], 0, c[2]);
