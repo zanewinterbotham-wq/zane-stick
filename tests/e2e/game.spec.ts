@@ -282,6 +282,33 @@ test('helmet camera sits at the eyes every frame and hides the own head', async 
   expect(errors).toEqual([]);
 });
 
+test('the view looks nearly straight up and well down, in the chase and helmet cameras, never into the turf', async ({ page }) => {
+  const errors = watchErrors(page);
+  await startRep(page);
+  // look as far as the limits allow (the look call is what mouse movement does) and read the rendered view
+  const view = (dy: number) => page.evaluate(async (dy) => {
+    const app = (window as unknown as { __app: { cam: { look(x: number, y: number): void; aimPitch: number }; renderer: { camera: { position: { y: number }; matrixWorld: { elements: number[] } } } } }).__app;
+    app.cam.look(0, dy);
+    await new Promise((r) => setTimeout(r, 300));
+    const c = app.renderer.camera;
+    return { y: c.position.y, up: -c.matrixWorld.elements[9], aim: app.cam.aimPitch };
+  }, dy);
+  const up = await view(-10);
+  await page.screenshot({ path: 'test-results/13b-look-up.png' });
+  const down = await view(10);
+  await page.screenshot({ path: 'test-results/13c-look-down.png' });
+  await page.evaluate(() => (window as unknown as { __app: { toggleCamera(): void } }).__app.toggleCamera());
+  const helmetUp = await view(-10);
+  await page.screenshot({ path: 'test-results/13d-helmet-look-up.png' });
+  console.log(`look up: view ${up.up.toFixed(2)}, camera ${up.y.toFixed(2)} m, arm aim ${up.aim.toFixed(2)} rad; down ${down.up.toFixed(2)}; helmet up ${helmetUp.up.toFixed(2)}`);
+  expect(up.up).toBeGreaterThan(0.9);     // within ~25° of straight up
+  expect(up.y).toBeGreaterThan(0.29);
+  expect(up.aim).toBeGreaterThan(1.4);    // the arms reach overhead
+  expect(down.up).toBeLessThan(-0.9);
+  expect(helmetUp.up).toBeGreaterThan(0.9);
+  expect(errors).toEqual([]);
+});
+
 test('the picked sounds load and decode from the deploy (and nothing from the dev library), and play in a rep', async ({ page }) => {
   const errors = watchErrors(page), sfx: { url: string; status: number }[] = [];
   page.on('response', (r) => { if (/\.ogg$/.test(r.url())) sfx.push({ url: r.url(), status: r.status() }); });
