@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { MODES } from '../../src/sim/modes/registry';
 
 test('Play: mode cards with previews, a setup with options that are remembered, and Start', async ({ page }) => {
   const errors: string[] = [];
@@ -7,7 +8,7 @@ test('Play: mode cards with previews, a setup with options that are remembered, 
   await page.goto('/');
   await page.getByRole('button', { name: /^Play/ }).click({ timeout: 60_000 });
   const cards = page.locator('.mode-card');
-  await expect(cards).toHaveCount(3);
+  await expect(cards).toHaveCount(MODES.length);
   for (const id of ['tackle', 'carry', 'oklahoma']) {
     const img = page.locator(`.mode-card[data-mode=${id}] img`);
     await expect(img).toHaveJSProperty('complete', true);

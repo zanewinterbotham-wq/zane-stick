@@ -1,9 +1,14 @@
 // Every game mode, in menu order. To add one, write a ModeDef (types.ts) in its own file here and list it below.
+import { FIELD_GOAL_BLOCK } from './fieldGoalBlock';
+import { KICKOFF } from './kickoff';
+import { KICKOFF_RETURN } from './kickoffReturn';
 import { OKLAHOMA } from './oklahoma';
 import { OPEN_FIELD_CARRY, OPEN_FIELD_TACKLE } from './openField';
+import { PUNT_BLOCK } from './puntBlock';
+import { PUNT_RETURN } from './puntReturn';
 import type { ModeDef, ModeOptions, OptionDesc, OptionValue } from './types';
 
-export const MODES: ModeDef[] = [OPEN_FIELD_TACKLE, OPEN_FIELD_CARRY, OKLAHOMA];
+export const MODES: ModeDef[] = [OPEN_FIELD_TACKLE, OPEN_FIELD_CARRY, OKLAHOMA, KICKOFF_RETURN, KICKOFF, PUNT_RETURN, PUNT_BLOCK, FIELD_GOAL_BLOCK];
 
 /** Above this many athletes a mode may run slowly on a low-end device (docs/physics-benchmark.md). */
 export const SLOW_ATHLETES = 4;

@@ -152,6 +152,8 @@ export class Play {
     // On a recovery this moves the ball from under the trunk to the palm: the possession rule standing in for a
     // scoop the hands (no fingers) cannot do.
     w.scene.placeProp(this.ball, at(half + BALL.diameter / 2 + 0.008), ballQuat);
+    // moving with the hand: a ball put at rest in a hand swinging up to a catch is struck by it and torn out
+    w.scene.launchProp(this.ball, [s.segVel[3 * hi], s.segVel[3 * hi + 1], s.segVel[3 * hi + 2]], [0, 0, 0]);
     w.attachGrip(ai, 1, this.ballRef, at(half));
     w.ballCarrier = ai;
     this.impetus = T;

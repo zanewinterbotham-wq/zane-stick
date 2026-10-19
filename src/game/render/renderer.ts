@@ -120,7 +120,8 @@ export class GameRenderer {
       const geo = p.shape === 'box' ? new THREE.BoxGeometry(2 * p.size[0], 2 * p.size[1], 2 * p.size[2])
         : p.shape === 'capsule' ? new THREE.CapsuleGeometry(p.size[0], 2 * p.size[1], 4, 10)
         : new THREE.SphereGeometry(1, 16, 12).scale(p.size[0], p.size[1], p.size[2]);
-      const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: p.mass > 0 && p.mass < 1 ? 0x7a3b16 : 0xc8462b, roughness: 0.8 }));
+      const color = p.name === 'goalpost' ? 0xf2cf1d : p.mass > 0 && p.mass < 1 ? 0x7a3b16 : 0xc8462b;
+      const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.8 }));
       mesh.castShadow = true;
       mesh.position.set(...p.pos);
       this.scene.add(mesh);

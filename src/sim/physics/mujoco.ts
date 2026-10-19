@@ -286,6 +286,14 @@ class MujocoScene implements PhysicsScene {
     this.views();
     this.read();
   }
+  launchProp(pi: number, vel: Vec3, spin: Vec3) {
+    const b = this.propBody[pi], m = this.m, va = m.jnt_dofadr[m.body_jntadr[b]], qv = this.d.qvel;
+    // a free joint's velocity: linear (world), then angular (body frame)
+    for (let k = 0; k < 3; k++) { qv[va + k] = vel[k]; qv[va + 3 + k] = spin[k]; }
+    mj.mj_forward(m, this.d);
+    this.views();
+    this.read();
+  }
   propVel(pi: number): Vec3 {
     const b = this.propBody[pi], d = this.d, cv = d.cvel, sc = d.subtree_com;
     const px = d.xipos[3 * b] - sc[3 * b], py = d.xipos[3 * b + 1] - sc[3 * b + 1], pz = d.xipos[3 * b + 2] - sc[3 * b + 2];

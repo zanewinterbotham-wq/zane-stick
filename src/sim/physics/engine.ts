@@ -67,6 +67,9 @@ export interface PhysicsScene {
   setJointAngles(athlete: number, q: ArrayLike<number>): void;
   /** Setup only (before a rep starts): place a dynamic prop at rest. Never used during play. */
   placeProp(prop: number, pos: Vec3, quat: Quat): void;
+  /** A kick (no kicking leg model) or a ball put in a hand: give a dynamic prop its velocity once, at that moment
+   *  (linear in the world frame, angular in the prop's own frame). Everything after it is physics. */
+  launchProp(prop: number, vel: Vec3, spin: Vec3): void;
   /** Counts for the overlay and tests. `instabilities` = times the solver diverged and auto-reset (must stay 0). */
   stats(): { contacts: number; bodies: number; instabilities: number };
   destroy(): void;

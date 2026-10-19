@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { MODES } from '../../src/sim/modes/registry';
 
 /** Seconds of play before the picture (default AT_DEFAULT): the moment that shows what the mode is about. */
-const AT: Record<string, number> = { tackle: 1.4, carry: 1.2, oklahoma: 0.5 };
+const AT: Record<string, number> = { tackle: 1.4, carry: 1.2, oklahoma: 0.5, kickoffReturn: 4, kickoff: 1.4, puntReturn: 4.2, puntBlock: 1.8, fieldGoalBlock: 1.5 };
 const AT_DEFAULT = 1;
 const PORT = 4191;
 
