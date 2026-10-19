@@ -138,11 +138,13 @@ describe('open field, headless', () => {
     for (let rep = 0; rep < n; rep++) {
       const d = await OpenFieldDrill.create(mujocoEngine, { ...DEFAULT_OPEN_FIELD, physics: PH, timeLimit: 8 }, tackler(rep), rep);
       const w = d.world, car = w.athletes[d.carrier];
-      let touched = false, prev = { ...car.cmd.move }, past = false;
+      let touched = false, prev = { ...car.cmd.move }, past = false, down = [false, false];
       while (!d.ended) {
         d.step();
         touched ||= car.playerContact;
-        r.dMove += Math.hypot(car.cmd.move.x - prev.x, car.cmd.move.z - prev.z); prev = { ...car.cmd.move }; r.steps++;
+        // steering smoothness: a carrier whose knee brushes the turf in a stumble stops steering while down (by design)
+        if (!down[0] && !down[1]) { r.dMove += Math.hypot(car.cmd.move.x - prev.x, car.cmd.move.z - prev.z); r.steps++; }
+        prev = { ...car.cmd.move }; down = [car.downBy !== null, down[0]];
         const cz = w.scene.athletes[d.carrier].state.com[2], tz = w.scene.athletes[d.human].state.com[2];
         past ||= tz - cz > 3 && !car.playerContact;
       }
