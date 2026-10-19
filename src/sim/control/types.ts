@@ -47,6 +47,11 @@ export interface Commands {
   look: Vec3 | null;
 }
 
+/** Throw the ball held now so it arrives at `at` (world, m; y ≈ catch height); loft 0 = the flattest, fastest
+ *  throw the arm allows (a bullet) .. 1 = a high touch lob. One-shot: set for the step(s) it is pressed; the world
+ *  plays the throwing motion and releases once, and ignores more until the motion is over. */
+export interface PassCmd { at: Vec3; loft: number }
+
 export function neutralCommands(): Commands {
   return {
     move: { x: 0, z: 0 }, face: null, gait: 'jog', contactMode: false,

@@ -23,7 +23,7 @@ export interface InputFrame {
   device: 'keyboard' | 'gamepad';
 }
 
-const DIGITAL = ['sprint', 'thrust', 'jump', 'dive', 'armL', 'armR', 'torsoUp', 'torsoDown', 'shiftLock', 'reset', 'pause', 'overlay', 'tuning', 'moveUp', 'moveDown', 'moveLeft', 'moveRight'];
+const DIGITAL = ['sprint', 'thrust', 'jump', 'dive', 'armL', 'armR', 'torsoUp', 'torsoDown', 'shiftLock', 'reset', 'pause', 'overlay', 'tuning', 'moveUp', 'moveDown', 'moveLeft', 'moveRight', 'throw', 'lob', 'target', 'scheme'];
 
 /** Keys the player may not bind: the OS and browser need them (Alt+Tab, the Windows key, Esc frees the mouse). */
 export const RESERVED = /^(Escape|Alt|Tab|Meta|OS|ContextMenu)/;

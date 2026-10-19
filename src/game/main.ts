@@ -32,11 +32,18 @@ import { TEAM_NAMES, type NetEvent, type StartMsg } from './net/lobby';
 import { lobbyPanel, mpScreen, netMessage, pingText, rosterRows, type LobbyView } from './net/lobby-ui';
 import { COUNTDOWN, Session } from './net/session';
 import { SimClient } from './worker/client';
+import { canThrow, passCtx } from './passing/context';
+import { Passer, type Aid } from './passing/schemes';
+import type { PassCmd } from '../sim/control/types';
+import type { Vec3 } from '../sim/math';
 
 const params = new URLSearchParams(location.search);
 /** A multiplayer guest's input while his menu is open: stand still (the shared play goes on). */
 const IDLE: HumanInput = { move: { x: 0, y: 0 }, torso: 0, sprint: 0, armL: 0, armR: 0, held: new Set(), cameraYaw: 0, aimPitch: 0 };
 const canvas = document.getElementById('view') as HTMLCanvasElement;
+/** A throw stays on the input this long (ms): a frame with no fixed step, a busy Worker or a lost guest packet must not
+ *  drop it, and the World ignores the repeats while it plays the throwing motion (docs/passing.md). */
+const PASS_HOLD = 120;
 
 // ------------------------------------------------------------------ dev scenarios (?scenario=…)
 async function devScenario(name: string) {
@@ -126,6 +133,13 @@ class App {
   /** Worker mode (the level's Physics thread): the Worker running single-player reps (multiplayer never uses it). */
   sim: SimClient | null = null;
   private noWorker = false;
+  /** QB throw schemes (docs/passing.md): the active one, the throw on its way to the sim, whether the local player can
+   *  throw this frame, the aim aids to draw, and Left click's state (it throws in the QB mode). */
+  passer = new Passer();
+  private pass: { cmd: PassCmd; until: number } | null = null;
+  private throwing = false;
+  private aim: { aid: Aid; from: Vec3 } | null = null;
+  private lmb = false;
 
   async boot() {
     this.input.capture = false;
@@ -133,6 +147,7 @@ class App {
     this.cam.follow = this.input.autoCamera = this.settings.autoCamera;
     this.input.sprintToggle = this.settings.sprintToggle;
     this.input.setKeyboard(this.settings.bindings);
+    this.passer.select(this.settings.throwScheme);
     this.audio.muted = this.settings.mute;
     this.audio.onVoice = (v) => this.renderer?.voice(v);
     // Alt+Tab (or any switch away): pause, which frees the mouse; Resume or a click on the field captures it again
@@ -188,7 +203,7 @@ class App {
     this.audio.loop(null);
     this.hud.setVisible(false);
     this.hud.showResult(null);
-    this.hud.setNet(null); this.hud.setRoster(null); this.hud.setCountdown(null);
+    this.hud.setNet(null); this.hud.setRoster(null); this.hud.setCountdown(null); this.hud.setPass(null);
     this.input.capture = false;
     document.exitPointerLock?.();
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
@@ -393,6 +408,7 @@ class App {
     this.cam.yaw = 0;
     this.human.latest = null;
     this.human.steerAssist = this.settings.steerAssist;
+    this.pass = null; this.passer.reset();
   }
 
   /** The World and bodies from this player's settings and preset (a multiplayer host's go to every guest). */
@@ -496,6 +512,9 @@ class App {
       ['Pads down / up: torso and hips (scroll up = down)', `Scroll, ${t('torsoDown')} / ${t('torsoUp')}`],
       ['Side shuffle (toggle)', t('shiftLock')],
       ...(this.settings.autoCamera ? [] : [['Look', 'Mouse'] as [string, string]]),
+      ...(this.throwing ? [ // only while he holds the ball: the QB throw controls
+        ['Throw', this.mode.id === 'pass' ? `${t('throw')} / Left click` : t('throw')], ['Lob (scheme 4)', t('lob')], ['Next receiver', t('target')],
+        ['Throw scheme', `1–6 / ${t('scheme')}`]] as [string, string][] : []),
     ];
   }
 
@@ -562,6 +581,7 @@ class App {
     if (k.pause.includes(e.code)) this.pauseMenu();
     else if (k.reset.includes(e.code)) void this.newRep();
     else if (k.overlay.includes(e.code)) { this.settings.overlay = !this.settings.overlay; this.save(); }
+    else if (/^Digit[1-6]$/.test(e.code) && this.schemeKeys() && !Object.values(k).some((v) => v.includes(e.code))) this.switchScheme(+e.code[5] - 1);
     else if (k.tuning.includes(e.code)) { this.paused = true; this.pausedAt = performance.now(); this.input.capture = false; document.exitPointerLock?.(); this.settingsMenu(() => this.pauseMenu(), 'advanced'); }
   }
 
@@ -607,8 +627,9 @@ class App {
       if (!this.paused || this.net) { // a multiplayer play goes on behind the menu
         const f: InputFrame = this.input.read(0, dtReal);
         if (!this.paused) {
-          if (!this.cam.follow) this.cam.look(f.look.x, f.look.y);
-          this.human.latest = { move: f.move, torso: f.torso, sprint: f.sprint, armL: f.armL, armR: f.armR, held: f.held, cameraYaw: this.cam.yaw, aimPitch: this.cam.aimPitch, shiftLock: f.shiftLock };
+          const pass = this.passFrame(f, now);
+          if (!this.cam.follow && !(this.throwing && this.passer.holdsLook(f))) this.cam.look(f.look.x, f.look.y);
+          this.human.latest = { move: f.move, torso: f.torso, sprint: f.sprint, armL: f.armL, armR: f.armR, held: f.held, cameraYaw: this.cam.yaw, aimPitch: this.cam.aimPitch, shiftLock: f.shiftLock, pass };
           if (f.pressed.has('shiftLock')) this.hud.flash(`Side shuffle ${f.shiftLock ? 'on' : 'off'}`);
           if (this.net && d.human < 0) this.spectateKeys(f);
         } else this.human.latest = null; // in the menu he stands still
@@ -627,6 +648,7 @@ class App {
       // FOV kick so a full sprint reads as fast: +12° from jog to top speed
       const fov = 55 + 12 * Math.min(1, Math.max(0, (this.speed - 3) / 7));
       if (Math.abs(r.camera.fov - fov) > 0.05) { r.camera.fov = fov; r.camera.updateProjectionMatrix(); }
+      r.passAim.set(this.throwing && this.aim ? this.aim.aid : null, this.aim?.from ?? [0, 0, 0]);
       r.render(w, this.cam.target);
       this.updateHud();
     }
@@ -700,6 +722,49 @@ class App {
     this.renderer?.stepFaces(w, dt);
     const loud = sounds[0]?.loud ?? 0;
     if (loud > 0.1) this.cam.addShake(0.04 * loud * loud);
+  }
+
+  /** The QB throw controls this frame: whether they apply (he holds the ball), the scheme keys, Left click (in the QB
+   *  mode it throws instead of raising the left arm), the scheme's pass and aim aids. Returns the pass for the input
+   *  (a throw stays on it PASS_HOLD ms). */
+  passFrame(f: InputFrame, now: number): PassCmd | null {
+    const d = this.drill!, w = d.world, r = this.renderer;
+    if (this.passer.scheme.id !== this.settings.throwScheme) this.passer.select(this.settings.throwScheme); // changed in Settings
+    if (f.pressed.has('scheme') && this.schemeKeys()) this.switchScheme((this.passer.index + 1) % this.passer.schemes.length);
+    const was = this.throwing;
+    this.throwing = canThrow(w, d.human) && !d.ended && !!r;
+    if (this.mode.id === 'pass' && this.throwing && f.device === 'keyboard') {
+      const down = this.input.keys.has('Mouse0'), kb = this.input.bindings.keyboard;
+      if (down) {
+        f.held.add('throw');
+        if (!this.lmb) f.pressed.add('throw');
+        if (!(kb.armL ?? []).some((c) => c !== 'Mouse0' && this.input.keys.has(c))) { f.armL = 0; f.held.delete('armL'); }
+      }
+      this.lmb = down;
+    } else this.lmb = false;
+    if (!this.throwing) {
+      if (was) this.passer.reset();
+      this.aim = null; this.hud.setPass(null);
+    } else {
+      const m = r!.camera.matrixWorld.elements; // column 2: the camera's back axis; column 3: its position
+      const c = passCtx(w, d.human, now / 1000, { yaw: this.cam.yaw, pitch: this.cam.aimPitch, origin: [m[12], m[13], m[14]], dir: [-m[8], -m[9], -m[10]] });
+      const cmd = this.passer.update(f, c);
+      if (cmd) this.pass = { cmd, until: now + PASS_HOLD };
+      const aid = this.passer.aid(c), k = (a: string) => keysText(this.input.bindings.keyboard[a] ?? []);
+      this.aim = { aid, from: c.from };
+      const s = this.passer.scheme, who = c.receivers.length ? '' : '\nNo receiver: aimed where you look';
+      this.hud.setPass(`Throw scheme ${this.passer.index + 1}/${this.passer.schemes.length}: ${s.name}  ·  1–6 / ${k('scheme')}\n${s.hint(k)}${who}`, aid.meter ?? null);
+    }
+    return this.pass && now < this.pass.until ? this.pass.cmd : null;
+  }
+
+  /** The scheme keys (1–6, V) work in the QB mode, or whenever he holds the ball. */
+  schemeKeys() { return !!this.drill && (this.mode.id === 'pass' || canThrow(this.drill.world, this.drill.human)); }
+
+  switchScheme(i: number) {
+    this.passer.select(i);
+    this.settings.throwScheme = this.passer.scheme.id; this.save();
+    this.hud.flash(this.passer.label);
   }
 
   /** A spectator: Space or the right arm button watches the next athlete, the left arm button the one before. */
