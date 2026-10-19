@@ -18,8 +18,8 @@ export class ExpressionTracker {
   private tr: Track[] = [];
 
   /** Call after every World step; returns each athlete's mood target (the brows ease toward it). */
-  step(w: World): Expression[] {
-    const t = w.time, dt = w.dt, n = w.athletes.length, force = new Array<number>(n).fill(0), pair = new Array<number>(n).fill(-1);
+  step(w: World, dt = w.dt): Expression[] {
+    const t = w.time, n = w.athletes.length, force = new Array<number>(n).fill(0), pair = new Array<number>(n).fill(-1);
     for (const h of w.hits) {
       if (h.a < 0 || h.b < 0 || h.a >= n || h.b >= n) continue;
       force[h.a] += h.force; force[h.b] += h.force; pair[h.a] = h.b; pair[h.b] = h.a;

@@ -38,7 +38,7 @@ export function fieldGoal(o: ModeOptions, rng: Rng, aim?: number): PlaySetup {
         if (play.repTime < kickAt) return;
         kicked = true;
         // a rusher on the ball (or holding it): no kick, it is live where it lies
-        if (w.ballCarrier >= 0 || near(play, 0, b, SMOTHER)) { blocked = true; return rethink(play); }
+        if (w.ballCarrier >= 0 || near(play, 0, b, SMOTHER)) { blocked = true; play.note = 'BLOCKED'; return rethink(play); }
         flight = true; kickedAt = play.repTime; prevZ = b[2];
         return kick(play, K, vel, [-10, 0, 0]);
       }
@@ -49,7 +49,7 @@ export function fieldGoal(o: ModeOptions, rng: Rng, aim?: number): PlaySetup {
       prevZ = b[2];
       if (!flight || play.repTime - kickedAt <= 0.1) return;
       const t = ballTouches(play), bc = w.ballCarrier;
-      if (t.teams[0] || (bc >= 0 && play.team(bc) === 0)) { blocked = true; flight = false; if (bc < 0) rethink(play); }
+      if (t.teams[0] || (bc >= 0 && play.team(bc) === 0)) { blocked = true; play.note = 'BLOCKED'; flight = false; if (bc < 0) rethink(play); }
       else if (t.turf || t.teams[1] || bc >= 0) { flight = false; play.end('nogood'); }
     },
     ended(play) {
@@ -57,7 +57,7 @@ export function fieldGoal(o: ModeOptions, rng: Rng, aim?: number): PlaySetup {
       play.verdict = play.ended === 'fieldgoal' ? `Field goal is good${blocked ? ', off the block' : ''}` : play.ended === 'nogood' ? `No good${blocked ? ', blocked' : ''}`
         : blocked ? `Blocked!${spot ? ` ${spot}` : ''}` : spot;
     },
-    status: () => `Block the field goal  ·  ${+o.distance} yd try  ·  ${kickAt.toFixed(1)} s snap to kick${blocked ? '  ·  BLOCKED' : ''}`,
+    status: (play) => `Block the field goal  ·  ${+o.distance} yd try  ·  ${kickAt.toFixed(1)} s snap to kick${play.note ? `  ·  ${play.note}` : ''}`, // the note reaches guests
   };
 }
 
