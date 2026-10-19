@@ -58,18 +58,70 @@ Implementation notes (src/net/, server/rooms/):
   in-memory host + guests for tests (async delivery, star topology, `join(name)` for late joiners).
 - Routes: `/api/room/new` (WebSocket, create), `/api/room/<CODE>` (WebSocket join; plain GET answers 200/404/410).
 
-## Game protocol (src/game/net/ or src/sim/net/ for the pure encode/decode)
+## Game protocol (src/game/net/lobby.ts for the JSON messages, src/sim/net/ for the binary ones)
 
-- `lobby` (host → all, reliable, JSON): players [{id, name}], mode id, mode options, assignment slot → player id or
-  null (bot), each player's ready flag. `want` (guest → host): request a slot / leave it / ready.
+- `lobby` (host → all, reliable, JSON `{t:'lobby', lobby}`): players [{id, name, host, ready, via, rtt}], mode id,
+  mode options, `assign` (per slot: player id or null for a bot), phase ('lobby' | 'game'), score per team. Sent
+  whole on every change (pings at most once a second).
+- `hi` / `want` / `ready` (guest → host, reliable, JSON): his steer assist; take a slot (an open one), free his own
+  (`slot: null` or his own slot); ready flag. The host validates every field (`parseToHost`).
 - `start` (host → all, reliable, JSON): {mode, options, seed, rep, assign: (playerId | null)[] per athlete, cfg: the
-  host's physics + gameplay settings that change the World (hit power, toughness, bone strength, support...)}.
-  Guests rebuild their replica from it.
+  host's whole PlayConfig (his preset's physics, hit power, toughness, bone strength, support, body strength...),
+  countdown}. Guests build the same Play from it: the same slots are players' (a stand-in brain the guest never
+  runs), so bodies and toughness match. A guest who joins mid-game gets the current one and watches.
 - `input` (guest → host, unreliable, binary): seq, HumanInput (move x/y, torso, sprint, armL, armR, cameraYaw,
   aimPitch, shiftLock, the held action names as a bitmask in a fixed action order).
 - `snap` (host → all, unreliable, binary): rep, tick, sim time, qpos as float32 for the whole scene, then meta per
-  athlete (downBy, injury bits, knock, grip flags), ball carrier, play status (ended, repTime, score).
-- `event` (host → all, reliable, JSON): injuries (World.injuries entries), big hits, whistles, rep result.
+  athlete (downBy, injury bits, knock, grip flags), ball carrier, play state (ended, verdict, `Play.note` such as
+  'BLOCKED'), every injury so far.
+- `ev` (host → all, reliable, JSON): big hits (feel.ts: impulse and closing speed, so guests get the banner, shake
+  and rumble from the host's numbers, not from replica contact forces) and a player leaving mid-rep.
+- `kick` (host → one guest): he is removed (the host ignores him from then on).
+
+## What is built (game side, src/game/net/)
+
+- **Title → Multiplayer**: name (saved), Host a game, or Join with the 5-character code (forgiving case, spaces,
+  dashes, a pasted invite link; Enter joins). Errors in words: no such room, closed, host left, connection failed,
+  removed. An invite link `?join=CODE` opens the join screen filled in, and joins at once when a name is saved.
+- **Lobby** (`lobby-ui.ts`): the room code big with Copy code / Copy link; players with the host's crown, position,
+  path (direct / relay) and ping, ready state, and the host's remove button; the mode (the Play menu's cards and
+  options; guests see them read-only, live). **Position menu**: the two teams side by side (headers from the slots'
+  groups, e.g. Kicking team / Return team, and the team names), a card per position with its player's chip or BOT.
+  Click an open position to take it, your own to give it to a bot; the host drags chips between positions (swaps),
+  onto Watching, or picks from each card's dropdown; Auto-assign spreads the unplaced players over open positions
+  alternating teams; Everyone to bots; head-count steppers (+ Add blocker) in each team's column. Newcomers land on
+  an open position of the emptier team. Changing mode or counts keeps players on their team and position (same
+  label, else the same position name, else the same team). Start needs every placed player ready (or Start anyway)
+  and counts down 3-2-1 on every screen while the guests build.
+- **Playing**: the host steps the play at the fixed rate for everyone (no slow motion, no hit-stop) and sends
+  snapshots 30 times a second of play time; Enter (or 5 s after the play ends) starts the next rep for everyone.
+  Guests send their input every frame and render `Replica.render(now)`; the camera, HUD, faces, sounds and gore
+  read the replica world. The HUD shows your position and team, the score per team, and the room / path / ping
+  corner; Tab shows everyone. Spectators follow any athlete (Space / arm buttons cycle). The pause menu keeps the
+  game running: Positions (the lobby over the play, for the next rep), Next rep and Back to lobby (host), Leave
+  room. A guest leaving mid-rep: his athlete is a bot at once (`Play.toBot`). The host leaving ends the room.
+- **Host tab hidden**: browsers stop animation frames and throttle timers in background tabs, so a Worker's timer
+  keeps the host's play stepping while hidden; the lobby and the HUD still ask the host to keep the tab in front.
+- **Room server address**: the page's own origin on the Cloudflare Pages site and on local dev servers; anywhere
+  else (the GitHub Pages copy, which has no /api) `https://zane-stick.pages.dev`; `?server=` overrides.
+
+### Try it locally
+
+1. `npm run dev:rooms` (the room server on 127.0.0.1:8787) and `npm run dev` (Vite proxies /api to it).
+2. Open http://localhost:5173 in two windows (or a normal and a private one, so their settings differ), Multiplayer
+   → Host a game in one, type the code (or open Copy link's address) in the other.
+3. Tests: `tests/net-lobby.test.ts` (lobby rules; a host and two guests over a loopback room play a rep) and
+   `tests/e2e/multiplayer.spec.ts` (three browsers against dev:rooms and Vite on 5181, started by
+   playwright.config.ts).
+
+### Not done yet
+
+- **Client prediction**: a guest sees his own athlete with the same ~100 ms delay (plus the trip to the host) as
+  everyone else. Predicting it would mean stepping a local copy of his own body (and the ball when he holds it)
+  from his input ahead of the snapshots and blending back to the host's pose on each snapshot; contacts with other
+  athletes cannot be predicted, so it pays off only in open field. Not needed for now.
+- Mode status lines are worded for team 0 (the single player's side), so team 1 players see only their position
+  line; the 1-v-1 big-hit sound and grunt use athletes 0 and 1 as in single player.
 
 ## Smoothness
 
