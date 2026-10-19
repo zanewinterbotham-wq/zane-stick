@@ -491,9 +491,12 @@ def scoreboard(m):
     m.box(0, y + 0.18, zb + h - 1.1, w - 0.6, 0.1, 1.8, 'blue')
     text(m, 'DOLPHINS', (0, y + 0.25, zb + h - 1.1), (-1, 0, 0), (0, 0, 1), 11, 1.3, 'white', 0.03)
     m.box(0, y + 0.17, zb + 2.9, w - 1.2, 0.1, 4.6, 'face')
-    for lab, x in (('HOME', 5.0), ('GUEST', -5.0)):
-        text(m, lab, (x, y + 0.24, zb + 4.4), (-1, 0, 0), (0, 0, 1), 3.4, 0.7, 'white', 0.02)
-    for num, x in (('21', 5.0), ('14', -5.0)):
+    # changeable name strips: each team on its own framed insert plate; +X is the left side seen from the field
+    for lab, x, col in (('DOLPHINS', 5.0, 'blue'), ('LAGUNA BEACH', -5.0, 'apron')):
+        m.box(x, y + 0.25, zb + 4.45, 6.4, 0.1, 1.3, 'alu')
+        m.box(x, y + 0.31, zb + 4.45, 6.0, 0.06, 1.0, col)
+        text(m, lab, (x, y + 0.35, zb + 4.45), (-1, 0, 0), (0, 0, 1), 5.6, 0.72, 'white', 0.02)
+    for num, x in (('37', 5.0), ('7', -5.0)):
         text(m, num, (x, y + 0.24, zb + 2.5), (-1, 0, 0), (0, 0, 1), 3.0, 1.9, 'lit', 0.02)
     text(m, '12:00', (0, y + 0.24, zb + 3.6), (-1, 0, 0), (0, 0, 1), 3.2, 1.0, 'lit', 0.02)
 
