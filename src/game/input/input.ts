@@ -4,7 +4,7 @@ import defaults from './bindings.json';
 
 export interface Bindings {
   keyboard: Record<string, string[]>; gamepad: Record<string, string[]>;
-  options: { deadzone: number; sinkRampPerSecond: number; mouseSensitivity: number; padLookRate: number; wheelPerFullTorso: number; torsoRatePerSecond: number };
+  options: { deadzone: number; mouseSensitivity: number; padLookRate: number; wheelPerFullTorso: number; torsoRatePerSecond: number };
 }
 
 /** Analog state of every action for one player this frame (0..1, sticks −1..1). */
@@ -12,18 +12,18 @@ export interface InputFrame {
   move: { x: number; y: number };     // stick/keys: x right, y forward
   /** Camera turn this frame (rad): x = turn right, y = look down. Mouse (pointer locked) or right stick. */
   look: { x: number; y: number };
-  /** Torso angle −1 (up) .. 1 (down: trunk level with the ground), set by the wheel or I/K and eased. */
+  /** Torso angle −1 (up) .. 1 (down: trunk level with the ground, hips sunk), set by the wheel or I/K and eased. */
   torso: number;
   /** Side shuffle (shift lock): face the camera's way and strafe. Toggled by its bind. */
   shiftLock: boolean;
-  sprint: number; sink: number;
+  sprint: number;
   armL: number; armR: number;
   held: Set<string>;                  // digital actions held this frame
   pressed: Set<string>;               // digital actions that went down this frame
   device: 'keyboard' | 'gamepad';
 }
 
-const DIGITAL = ['sprint', 'sink', 'thrust', 'dive', 'armL', 'armR', 'torsoUp', 'torsoDown', 'shiftLock', 'reset', 'pause', 'overlay', 'tuning', 'moveUp', 'moveDown', 'moveLeft', 'moveRight'];
+const DIGITAL = ['sprint', 'thrust', 'dive', 'armL', 'armR', 'torsoUp', 'torsoDown', 'shiftLock', 'reset', 'pause', 'overlay', 'tuning', 'moveUp', 'moveDown', 'moveLeft', 'moveRight'];
 
 /** Keys the player may not bind: the OS and browser need them (Alt+Tab, the Windows key, Esc frees the mouse). */
 export const RESERVED = /^(Escape|Alt|Tab|Meta|OS|ContextMenu)/;
@@ -49,15 +49,14 @@ export class InputManager {
   /** Keys pressed since the last keyboard read: a tap shorter than one frame still counts as a press. */
   private tapped = new Set<string>();
   private prevHeld: Set<string>[] = [new Set(), new Set()];
-  private sinkRamp = [0, 0];
   private torsoTarget = [0, 0];
   private torso = [0, 0];
   private mouse = { x: 0, y: 0, wheel: 0 };
   private auto = false;
   private shiftLock = [false, false];
-  /** Toggle mode (settings): a press switches sprint / sink on and off instead of holding the key. */
-  sprintToggle = false; sinkToggle = false;
-  private sprintOn = [false, false]; private sinkOn = [false, false];
+  /** Toggle mode (settings): a press switches sprint on and off instead of holding the key. */
+  sprintToggle = false;
+  private sprintOn = [false, false];
   /** While false (menus open), bound keys keep their normal browser behaviour (Tab moves focus, etc.). */
   capture = true;
   /** Which source drives each player: player 0 = keyboard and mouse (or the first gamepad once it is used), player 1 = first gamepad. */
@@ -68,9 +67,8 @@ export class InputManager {
   constructor(target: Window = window) {
     this.rebuildKeySet();
     target.addEventListener('keydown', (e) => {
-      // Ctrl is the sink key: also stop Ctrl+D, Ctrl+S, … (Ctrl+W only yields to keyboard lock). Alt, Tab and the
-      // Windows key always pass, so Alt+Tab switches windows.
-      if (this.capture && !RESERVED.test(e.code) && (this.keyCodes.has(e.code) || e.ctrlKey)) e.preventDefault();
+      // Alt, Tab and the Windows key always pass, so Alt+Tab switches windows
+      if (this.capture && !RESERVED.test(e.code) && this.keyCodes.has(e.code)) e.preventDefault();
       if (!e.repeat) this.tapped.add(e.code);
       this.keys.add(e.code);
       this.lastDevice = 'keyboard';
@@ -121,9 +119,11 @@ export class InputManager {
 
   clearLook() { this.mouse.x = this.mouse.y = 0; }
   resetTorso() { this.torso = [0, 0]; this.torsoTarget = [0, 0]; this.mouse.wheel = 0; }
-  /** New rep: every toggle (side shuffle, sprint / sink toggles) and ramp starts off. */
+  /** A big hit: lowered pads come back up to the running position (torso 0, eased); a raised torso stays. */
+  padsUp(player = 0) { this.torsoTarget[player] = Math.min(0, this.torsoTarget[player]); this.mouse.wheel = 0; }
+  /** New rep: every toggle (side shuffle, sprint toggle) starts off. */
   resetToggles() {
-    this.shiftLock = [false, false]; this.sprintOn = [false, false]; this.sinkOn = [false, false]; this.sinkRamp = [0, 0];
+    this.shiftLock = [false, false]; this.sprintOn = [false, false];
     this.resetTorso();
   }
 
@@ -174,21 +174,12 @@ export class InputManager {
     this.mouse.x = this.mouse.y = this.mouse.wheel = 0;
     if (pressed.has('shiftLock')) this.shiftLock[player] = !this.shiftLock[player];
     if (pressed.has('sprint')) this.sprintOn[player] = !this.sprintOn[player];
-    if (pressed.has('sink')) this.sinkOn[player] = !this.sinkOn[player];
     const sprintKey = this.sprintToggle ? this.sprintOn[player] : held.has('sprint');
-    const sinkKey = this.sinkToggle ? this.sinkOn[player] : held.has('sink');
     // torso: an accumulated angle, eased so a wheel notch does not jerk the trunk
     this.torsoTarget[player] = Math.max(-1, Math.min(1, this.torsoTarget[player] + torsoStep));
     this.torso[player] += (this.torsoTarget[player] - this.torso[player]) * Math.min(1, dt / 0.12);
-    // sink: trigger depth on a pad; on a keyboard, the longer it is held the lower it goes
-    let sink: number;
-    if (usePad) sink = val('sink');
-    else {
-      this.sinkRamp[player] = sinkKey ? Math.min(1, this.sinkRamp[player] + o.sinkRampPerSecond * dt) : Math.max(0, this.sinkRamp[player] - 3 * o.sinkRampPerSecond * dt);
-      sink = this.sinkRamp[player];
-    }
     return {
-      move, look, torso: this.torso[player], shiftLock: this.shiftLock[player], sprint: usePad ? val('sprint') : sprintKey ? 1 : 0, sink,
+      move, look, torso: this.torso[player], shiftLock: this.shiftLock[player], sprint: usePad ? val('sprint') : sprintKey ? 1 : 0,
       armL: val('armL'), armR: val('armR'), held, pressed,
       device: usePad ? 'gamepad' : 'keyboard',
     };

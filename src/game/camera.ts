@@ -7,11 +7,13 @@ import type { World } from '../sim/world';
 
 /** Orbit pitch (rad, + = above looking down): default and limits. The default aims level for the arms. */
 export const PITCH0 = 0.22;
-const PITCH_MIN = -0.25, PITCH_MAX = 1.0;
+// up to ~86° above level (the arms then reach straight overhead) and ~65° below
+const PITCH_MIN = PITCH0 - 1.5, PITCH_MAX = 1.35;
 /** Distance behind the pivot, pivot height above the pelvis and shoulder offset to the right (m). */
 const DIST = 3.0, PIVOT_UP = 0.75, SHOULDER = 0.55;
-/** Helmet view: eyes below and ahead of the helmet centre (head frame, m), and how far the look turns off the body. */
-const EYE = [0, -0.02, 0.07], HELMET_YAW = 1.3;
+/** Helmet view: eyes below and ahead of the helmet centre (head frame, m), and how far the look turns off the body
+ *  (neck ~80° plus the eyes). */
+const EYE = [0, -0.02, 0.07], HELMET_YAW = 1.7;
 
 export class ChaseCamera {
   private pivot = new THREE.Vector3(0, 1.6, 0);
@@ -68,7 +70,8 @@ export class ChaseCamera {
       const off = Math.atan2(Math.sin(this.yaw - heading), Math.cos(this.yaw - heading));
       this.yaw = heading + Math.max(-HELMET_YAW, Math.min(HELMET_YAW, off));
       cam.position.copy(this.pos);
-      cam.lookAt(this.pos.clone().add(new THREE.Vector3(Math.sin(this.yaw) * cp, -Math.sin(this.pitch - PITCH0 + 0.08), Math.cos(this.yaw) * cp)));
+      const e = this.pitch - PITCH0 + 0.08, ce = Math.cos(e);
+      cam.lookAt(this.pos.clone().add(new THREE.Vector3(Math.sin(this.yaw) * ce, -Math.sin(e), Math.cos(this.yaw) * ce)));
     } else if (this.mode === 'side') {
       spring(this.pos, this.vel, p.clone().add(new THREE.Vector3(-4.2, 0.4, 0)), 10, dt); // fixed world side view (analysis)
       cam.position.copy(this.pos);
@@ -77,7 +80,9 @@ export class ChaseCamera {
       // rotation is applied directly (mouse look must not lag); only the pivot is smoothed
       spring(this.pivot, this.pivotVel, p.clone().setY(p.y + PIVOT_UP), 60, dt);
       const at = this.pivot.clone().addScaledVector(right, SHOULDER);
-      cam.position.copy(at).addScaledVector(dir, -DIST);
+      // looking up, the camera slides in toward the pivot instead of into the turf
+      const dist = dir.y > 0 ? Math.max(0.3, Math.min(DIST, (at.y - 0.3) / dir.y)) : DIST;
+      cam.position.copy(at).addScaledVector(dir, -dist);
       cam.position.y = Math.max(0.3, cam.position.y);
       cam.lookAt(at.addScaledVector(dir, 4));
     }

@@ -29,3 +29,9 @@ it('version 3: the owner picks become the default skin and stadium once, and Gor
   s.skin = 'clay'; saveSettings(s);
   expect(loadSettings().skin).toBe('clay'); // a choice made after the upgrade sticks
 });
+
+it('version 4: the sink toggle and sink rebinds are dropped; multipliers saved by v3 are not scaled again', () => {
+  store.set('zane-stick-settings-v1', JSON.stringify({ version: 3, strength: 1.2, sinkToggle: true, bindings: { sink: ['KeyX'], dive: ['KeyQ'] } }));
+  const s = loadSettings() as unknown as Record<string, unknown>;
+  expect([s.strength, 'sinkToggle' in s, s.bindings]).toEqual([1.2, false, { dive: ['KeyQ'] }]);
+});

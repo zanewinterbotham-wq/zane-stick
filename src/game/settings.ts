@@ -26,7 +26,6 @@ export interface Settings {
   slowMo: boolean;
   autoCamera: boolean;            // camera follows the athlete (no mouse look needed)
   sprintToggle: boolean;          // sprint key toggles instead of hold
-  sinkToggle: boolean;            // sink key toggles instead of hold
   camera: 'chase' | 'helmet';
   bindings: Record<string, string[]>; // the player's keyboard / mouse rebinds, per action, over bindings.json
   overlay: boolean;
@@ -42,12 +41,12 @@ export interface Settings {
 export const PLAYER_BASE = { strength: 1.5, speed: 1.29 };
 export const GAME_SUPPORT = { ...DEFAULT_SUPPORT, carryAccel: 10.5 };
 /** Stored settings layout; 2 = strength/speed are multipliers on PLAYER_BASE; 3 = gore levels, owner's new default
- *  skin and stadium. */
-const VERSION = 3;
+ *  skin and stadium; 4 = no sink control (lowering the pads sinks the hips). */
+const VERSION = 4;
 
 export const DEFAULT_SETTINGS: Settings = {
   version: VERSION, preset: null, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
-  slowMo: true, autoCamera: false, sprintToggle: false, sinkToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: skins[0]?.id ?? 'classic', goreLevel: 1, stadium: stadiums[0]?.id ?? 'field', // the owner's picks are first in the lists
+  slowMo: true, autoCamera: false, sprintToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: skins[0]?.id ?? 'classic', goreLevel: 1, stadium: stadiums[0]?.id ?? 'field', // the owner's picks are first in the lists
 };
 
 /** Difficulty presets: each axis moves on its own (AI toughness, AI juking, the player's strength and speed). */
@@ -69,7 +68,7 @@ export function loadSettings(): Settings {
     if (raw) {
       const s = JSON.parse(raw);
       // version 1 stored absolute strength/speed; they are multipliers on the owner's baseline now
-      if ((s.version ?? 1) < VERSION) {
+      if ((s.version ?? 1) < 2) {
         if (typeof s.strength === 'number') s.strength /= PLAYER_BASE.strength;
         if (typeof s.speed === 'number') s.speed /= PLAYER_BASE.speed;
         if (s.support?.carryAccel === DEFAULT_SUPPORT.carryAccel) s.support.carryAccel = GAME_SUPPORT.carryAccel;
@@ -80,6 +79,7 @@ export function loadSettings(): Settings {
         if (s.gore === false) s.goreLevel = 0;
         delete s.gore;
       }
+      if ((s.version ?? 1) < 4) { delete s.sinkToggle; delete s.bindings?.sink; } // the sink control is gone
       return { ...DEFAULT_SETTINGS, ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support } };
     }
   } catch { /* storage unavailable: use defaults */ }

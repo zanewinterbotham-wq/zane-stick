@@ -31,18 +31,17 @@ const REBIND: [string, string, string][] = [
   ['moveUp', 'Move forward (relative to the camera)', 'Left stick'], ['moveLeft', 'Move left', 'Left stick'],
   ['moveDown', 'Move back', 'Left stick'], ['moveRight', 'Move right', 'Left stick'],
   ['sprint', 'Sprint (drives the legs in contact)', 'RT'],
-  ['sink', 'Sink the hips (hold longer = lower)', 'LT (depth)'],
-  ['thrust', 'Thrust the hips forward (overrides sink and torso)', 'A'],
+  ['thrust', 'Thrust the hips forward (overrides the lowered pads)', 'A'],
   ['dive', 'Dive forward (one press: launch, fly, land)', 'B'],
   ['armL', 'Left arm: raise toward the aim, grab what it touches', 'LB'],
   ['armR', 'Right arm: raise toward the aim, grab what it touches', 'RB'],
-  ['torsoDown', 'Angle the torso down, to level (also scroll up)', 'D-pad down'],
-  ['torsoUp', 'Angle the torso up (also scroll down)', 'D-pad up'],
+  ['torsoDown', 'Lower the pads: torso down and hips low (also scroll up)', 'D-pad down / LT'],
+  ['torsoUp', 'Raise the pads: torso up and hips high (also scroll down)', 'D-pad up'],
   ['shiftLock', 'Side shuffle on / off: face the camera way, A / D shuffle', 'L3 (stick click)'],
   ['reset', 'Reset rep', 'Start (tap)'], ['tuning', 'Tuning panel', 'menu'], ['overlay', 'Performance overlay', 'menu'],
 ];
 /** Controls that are not rebindable. */
-const FIXED: string[][] = [['Torso angle', 'Scroll (up = lower the shoulders)', '—'], ['Look (aims the arms)', 'Mouse', 'Right stick'], ['Pause', 'Esc', 'Start (hold)']];
+const FIXED: string[][] = [['Pads (torso and hips)', 'Scroll (up = lower the pads)', '—'], ['Look (aims the arms)', 'Mouse', 'Right stick'], ['Pause', 'Esc', 'Start (hold)']];
 
 const DIFF_LABEL = { easy: 'Easy', normal: 'Normal', hard: 'Hard', custom: 'Custom' };
 const x = (v: number) => `${v.toFixed(2)}×`, pct = (v: number) => `${(v * 100).toFixed(0)} %`;
@@ -184,7 +183,7 @@ function controlsTab({ host, status, reopen }: Ctx) {
     }),
     ...FIXED.map((r) => el('tr', {}, ...r.map((c) => el('td', { text: c })), el('td'))));
   render();
-  // hold, or toggle (press on, press again off); every rep starts with both off
+  // hold, or toggle (press on, press again off); every rep starts with it off
   const mode = (label: string, get: () => boolean, set: (on: boolean) => void) =>
     setRow(label, '', seg(label, [{ value: false, text: 'hold' }, { value: true, text: 'toggle (press on / off)' }], get, (v) => { set(v); host.save(); }));
   const reset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset controls to defaults');
@@ -195,9 +194,8 @@ function controlsTab({ host, status, reopen }: Ctx) {
     el('p', { class: 'sub', text: 'Contact mode is automatic: within about 4 m of the ball carrier your athlete settles into a ready stance with the arms up. No control is needed for balance; once you make contact, physics decides who stays up. J / L and I / K always work alongside the mouse, so a touchpad is enough.' }),
     table,
     el('div', { class: 'set-list' },
-      mode('Sprint', () => s.sprintToggle, (on) => (s.sprintToggle = host.input.sprintToggle = on)),
-      mode('Sink hips', () => s.sinkToggle, (on) => (s.sinkToggle = host.input.sinkToggle = on))),
-    el('p', { class: 'sub', text: 'Click the field to capture the mouse; Esc frees it and pauses. Ctrl+W can close the tab unless the browser grants keyboard lock in fullscreen, so C also sinks.' }),
+      mode('Sprint', () => s.sprintToggle, (on) => (s.sprintToggle = host.input.sprintToggle = on))),
+    el('p', { class: 'sub', text: 'Click the field to capture the mouse; Esc frees it and pauses. Lowering the pads also gets the hips low; after a big hit they come back up to running.' }),
     el('div', { class: 'items' }, reset, test),
   ];
 }

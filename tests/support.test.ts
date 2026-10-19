@@ -165,6 +165,14 @@ describe('off-contact stability (nobody near)', () => {
     expect(maxAir).toBeLessThan(0.45);
     expect(instabilities).toBe(0);
   });
+  it('runs with the pads lowered (the human torso control: lean = torso, sink = 0.6 × torso) without falling', async () => {
+    for (const torso of [0.5, 1]) for (const gait of ['jog', 'sprint'] as const) {
+      const r = await solo((t, c) => { c.gait = gait; c.move = { x: Math.sin(0.5 * t), z: Math.cos(0.5 * t) }; c.lean.fwd = torso; c.sink = 0.6 * torso; }, 6);
+      expect(r.fellAt, `${gait} torso ${torso}`).toBe(-1);
+      expect(r.maxKnock).toBeLessThan(0.05);
+      expect(r.instabilities).toBe(0);
+    }
+  });
   it('sprints through slow and fast turns without tripping, on the minimum body too', async () => {
     for (const physics of [STD, { hz: 240, iterations: 20, detail: 'minimum' } as PhysicsSettings]) for (const rate of [0.3, 0.5, 1, 2]) {
       const r = await solo((t, c) => { c.gait = 'sprint'; c.move = { x: Math.sin(rate * t), z: Math.cos(rate * t) }; }, 8, physics);
