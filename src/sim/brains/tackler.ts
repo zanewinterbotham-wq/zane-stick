@@ -212,8 +212,11 @@ export class TacklerBrain implements Brain {
   /** Smallest positive time at which running at `speed` (PURSUE_V, or a hobble) meets the target (s), capped at LEAD_MAX. */
   private intercept(dx: number, dz: number, v: Vec3, speed: number) {
     const a = v[0] * v[0] + v[2] * v[2] - speed * speed, b = 2 * (dx * v[0] + dz * v[2]), cc = dx * dx + dz * dz;
-    if (a >= 0) return LEAD_MAX;
-    return Math.min(LEAD_MAX, (-b - Math.sqrt(b * b - 4 * a * cc)) / (2 * a));
+    if (a < 0) return Math.min(LEAD_MAX, (-b - Math.sqrt(b * b - 4 * a * cc)) / (2 * a));
+    // he is the faster (a hobbling tackler): still met if he is coming at me, else lead him the most
+    const disc = b * b - 4 * a * cc;
+    if (b >= 0 || disc < 0) return LEAD_MAX;
+    return Math.min(LEAD_MAX, a < 1e-9 ? -cc / b : (-b - Math.sqrt(disc)) / (2 * a));
   }
 
   /** Move toward a ground velocity (m/s, world): the heading turns no faster than footing allows at this speed

@@ -220,7 +220,10 @@ export class Play {
     for (const c of w.scene.contacts()) for (const [p, o] of [[c.a, c.b], [c.b, c.a]] as const) {
       if (p.athlete >= 0 || p.seg !== this.ball || o.athlete < 0) continue;
       const a = w.athletes[o.athlete];
-      if (TORSO.test(a.plan.segments[o.seg].name) && take(o.athlete) && by < 0) by = o.athlete;
+      // the trunk, or a raised arm the ball strikes (trapped against the forearms, as a catch often is)
+      const name = a.plan.segments[o.seg].name, arm = /^(?:hand|forearm|upperArm)([LR])$/.exec(name);
+      const caught = TORSO.test(name) || (!!arm && w.raised(a, arm[1] === 'L' ? 0 : 1));
+      if (caught && take(o.athlete) && by < 0) by = o.athlete;
       else if (o.athlete === this.fumbler) fumblerTouch = true;
     }
     this.clear ||= !fumblerTouch;
