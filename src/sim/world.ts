@@ -31,6 +31,8 @@ export interface AthleteSetup {
   /** Bone strength (owner item 2026-10-18): multiplies this athlete's break tolerances (lower breaks more easily);
    *  1 / absent = the measured tolerances (injury.ts BREAK). */
   boneStrength?: number;
+  /** A player (human, local or remote) drives this athlete: the athlete level of detail never applies to him. */
+  player?: boolean;
 }
 export interface FieldInfo { halfWidth: number; goalZ: number; dirZ: 1 | -1 }
 export interface WorldSetup { physics: PhysicsSettings; athletes: AthleteSetup[]; props?: PropDesc[]; seed: number; assist: number; field?: FieldInfo; traction?: number;
@@ -121,6 +123,8 @@ export class Athlete {
   carryForce: Vec3 = [0, 0, 0];
   /** Broken joints and knockout (design §6.6); set by World.create. */
   injury!: InjuryState;
+  /** World step of the last motor plan (athlete level of detail). */
+  planned = -1;
 
   constructor(readonly index: number, readonly setup: AthleteSetup, readonly plan: BodyPlan, readonly controller: MotorController, readonly brain: Brain) {
     this.muscles = new MuscleSet(plan);
@@ -165,9 +169,9 @@ export class World {
   static async create(engine: PhysicsEngine, setup: WorldSetup): Promise<World> {
     await engine.init();
     const plans = setup.athletes.map((a) => buildBody(a.params, setup.physics.detail));
-    const { solver, tolerance, lsIterations, cone } = setup.physics;
+    const { tolerance, cone } = setup.physics;
     const scene = engine.createScene({
-      hz: setup.physics.hz, iterations: setup.physics.iterations, opts: { solver, tolerance, lsIterations, cone },
+      hz: setup.physics.hz, iterations: setup.physics.iterations, opts: { tolerance, cone },
       athletes: setup.athletes.map((a, i) => ({ plan: plans[i], pos: a.pos, yaw: a.yaw })),
       props: setup.props ?? [], traction: setup.traction,
     });
@@ -215,11 +219,21 @@ export class World {
   }
 
   step() {
-    const dt = this.dt, seen = this.perceive();
+    const dt = this.dt, seen = this.perceive(), lod = this.setup.physics.lod;
     for (const a of this.athletes) {
       a.cmd = this.hurtCommands(a, a.injury.out ? neutralCommands() : a.brain.think(this.perception(a.index, seen), dt));
       for (const h of [0, 1] as const) a.reachTo[h] = this.raised(a, h) ? this.reachPoint(a, h) : null;
-      a.controller.compute(this.view(a), a.cmd, a.targets);
+      // Athlete level of detail (low presets): far from play, a bot re-plans his motor targets on every other step
+      // (half the bots on even steps, half on odd), over the time since his last plan, and his balance controller
+      // rests while it has nothing to do; in between his muscles keep acting on his simulated body from the last
+      // targets.
+      const far = !!lod && this.far(a, lod);
+      if (lod) a.controller.lod = far;
+      if (!far || this.steps % 2 === a.index % 2) {
+        const v = this.view(a);
+        if (lod) { v.dt = (this.steps - a.planned) * dt; a.planned = this.steps; }
+        a.controller.compute(v, a.cmd, a.targets);
+      }
       const s = this.scene.athletes[a.index].state;
       a.muscles.compute(a.targets, s.q, s.qd);
       if (a.injury.broken.size || a.injury.out) this.limp(a);
@@ -234,6 +248,15 @@ export class World {
   }
 
   private supported(a: Athlete) { return !!this.setup.support && !!a.controller.root; }
+
+  /** Far from play (athlete level of detail): a bot, touching nobody, farther than `r` (m) from the ball and from
+   *  every opponent. A player's athlete never is. */
+  private far(a: Athlete, r: number) {
+    if (a.setup.player || a.playerContact) return false;
+    const c = this.scene.athletes[a.index].state.com, d2 = r * r, away = (p: ArrayLike<number>) => (p[0] - c[0]) ** 2 + (p[2] - c[2]) ** 2 > d2;
+    if (this.ballIndex >= 0 && !away(this.scene.propPose(this.ballIndex).pos)) return false;
+    return this.athletes.every((o) => o.setup.team === a.setup.team || away(this.scene.athletes[o.index].state.com));
+  }
 
   /** Active-ragdoll support (design §6.5). Carry: horizontal force toward the root velocity, zero while touching
    *  another athlete. Posture: weight share, pelvis height and pelvis/thorax attitude toward the root target. */

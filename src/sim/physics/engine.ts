@@ -17,9 +17,9 @@ export interface PropDesc {
    *  rolling friction (m). Every other contact keeps the shared rules. */
   turf?: { dampRatio: number; torsional: number; rolling: number };
 }
-/** Solver approximations a low preset may opt into; absent = the exact defaults (Newton, elliptic friction cones,
- *  MuJoCo's own tolerances), which every High-and-above scene keeps so its results stay bit-identical. */
-export interface SolverOptions { solver?: 'newton' | 'cg' | 'pgs'; tolerance?: number; lsIterations?: number; cone?: 'elliptic' | 'pyramidal' }
+/** Solver approximations a low preset may opt into; absent = the exact defaults (elliptic friction cones and
+ *  MuJoCo's own solver tolerance), which every scene from Low up keeps, so their results stay bit-identical. */
+export interface SolverOptions { tolerance?: number; cone?: 'elliptic' | 'pyramidal' }
 export interface SceneDesc { hz: number; iterations: number; athletes: AthleteDesc[]; props: PropDesc[]; /** Cleat–turf friction override (tuning panel). */ traction?: number; opts?: SolverOptions }
 
 /** Who a contact touches. athlete −1 = prop (seg = prop index) or ground (seg = −1). */

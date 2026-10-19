@@ -67,8 +67,7 @@ class MujocoScene implements PhysicsScene {
     const dt = this.dt, o = desc.opts ?? {};
     this.pyramidal = o.cone === 'pyramidal';
     // only the options a preset sets: absent ones leave the model (and its results) exactly as before
-    const opt = (o.solver ? ` solver="${({ newton: 'Newton', cg: 'CG', pgs: 'PGS' } as const)[o.solver]}"` : '') + (o.tolerance !== undefined ? ` tolerance="${o.tolerance}"` : '')
-      + (o.lsIterations !== undefined ? ` ls_iterations="${o.lsIterations}"` : '');
+    const opt = o.tolerance !== undefined ? ` tolerance="${o.tolerance}"` : '';
     let xml = `<mujoco model="zane-stick"><compiler angle="radian" inertiafromgeom="auto" autolimits="true"/>
 <option timestep="${dt}" gravity="0 -9.81 0" integrator="implicitfast" cone="${o.cone ?? 'elliptic'}" iterations="${desc.iterations}"${opt}/>
 <size memory="32M"/><worldbody>
