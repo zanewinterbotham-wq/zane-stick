@@ -9,6 +9,7 @@ import { buildBarrier, buildField } from './field';
 import { LandingMarker } from './landing';
 import { loadStadium, OPEN_FIELD, stadiumById, type Stadium, type StadiumScene } from './stadium';
 import { ExpressionTracker } from '../expressions';
+import type { Expression } from './brows';
 import type { Voice } from './mouth';
 import { CLASSIC, loadSkin, skinById, type Skin, type SkinTemplate } from './skin';
 
@@ -125,6 +126,9 @@ export class GameRenderer {
     if (w !== this.world) return;
     this.faces.step(w, dt).forEach((e, i) => { const b = this.athletes[i]?.brows; if (b) b.driver.target = e; });
   }
+
+  /** Worker mode: the athletes' moods, worked out where the steps ran (one per athlete, as stepFaces gives). */
+  setFaces(e: Expression[]) { e.forEach((x, i) => { const b = this.athletes[i]?.brows; if (b) b.driver.target = x; }); }
 
   setWorld(w: World) {
     this.world = w;

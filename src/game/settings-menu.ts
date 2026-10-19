@@ -222,9 +222,9 @@ function graphicsTab({ host, status, reopen }: Ctx) {
   const ladder = el('ul', { class: 'ladder', 'aria-label': 'Quality levels' }, ...PRESET_ORDER.map((k) => el('li', { 'aria-current': String(k === host.preset.name) },
     el('b', { text: PRESETS[k].label }), el('span', { text: ` ${PRESETS[k].desc}` }))));
   // Advanced: single knobs over the level ('Level' = the level's own value; absent physics options are the exact ones)
-  const level = PRESETS[host.preset.name], EXACT: Record<string, unknown> = { tolerance: 1e-8, lod: 0, cone: 'elliptic' };
+  const level = PRESETS[host.preset.name], EXACT: Record<string, unknown> = { tolerance: 1e-8, lod: 0, cone: 'elliptic', worker: false };
   const own = (k: (typeof PERF_KNOBS)[number]) => {
-    const v = ((k.physics ? level.physics : level.render) as unknown as Record<string, unknown>)[k.key];
+    const v = k.key === 'worker' ? level.worker : ((k.physics ? level.physics : level.render) as unknown as Record<string, unknown>)[k.key];
     return v === Infinity ? 999 : v ?? EXACT[k.key];
   };
   const knob = (k: (typeof PERF_KNOBS)[number]) => {

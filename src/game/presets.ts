@@ -7,8 +7,9 @@ import type { RenderQuality } from './render/renderer';
 
 /** Ids are stored in saved settings: 'minimum' (shown as Low) and 'high' keep their old meaning. */
 export type PresetName = 'potato' | 'minimum' | 'medium' | 'high' | 'ultra';
-/** activeBots: waiting bots play the wait instead of idling at their spot (PlayConfig.activeBots). */
-export interface Preset { name: PresetName; label: string; desc: string; physics: PhysicsSettings; render: RenderQuality; targetFps: number; activeBots: boolean }
+/** activeBots: waiting bots play the wait instead of idling at their spot (PlayConfig.activeBots); worker: the physics
+ *  runs in a Worker beside the page (src/game/worker; absent = on the page). */
+export interface Preset { name: PresetName; label: string; desc: string; physics: PhysicsSettings; render: RenderQuality; targetFps: number; activeBots: boolean; worker?: boolean }
 
 /** Lowest to highest (the auto chooser walks it down from the top). */
 export const PRESET_ORDER: PresetName[] = ['potato', 'minimum', 'medium', 'high', 'ultra'];
@@ -19,10 +20,10 @@ const HIGH_GFX: RenderQuality = { scale: 1, shadows: true, detail: 'high', antia
 export const PRESETS: Record<PresetName, Preset> = {
   potato: {
     name: 'potato', label: 'Potato',
-    desc: 'For the slowest laptops: fewer physics steps with looser solver tolerances, far bots plan every other step, low resolution, 30 fps. Hits feel slightly softer.',
+    desc: 'For the slowest laptops: the physics on its own core, fewer steps with a looser solver tolerance, far bots plan every other step, low resolution, 30 fps. Hits feel slightly softer.',
     physics: { hz: 200, iterations: 20, detail: 'minimum', tolerance: 1e-5, lod: 12 },
     render: { ...LOW_GFX, scale: 0.5, pixelCap: 1, effects: 0.25, faces: 15, maxFps: 30 },
-    targetFps: 30, activeBots: false,
+    targetFps: 30, activeBots: false, worker: true,
   },
   minimum: {
     name: 'minimum', label: 'Low',
@@ -57,7 +58,7 @@ export const PRESETS: Record<PresetName, Preset> = {
 /** Single knobs the Advanced section overrides on top of a level (absent = the level's own). */
 export interface PerfOverrides {
   hz?: number; iterations?: number; detail?: PhysicsSettings['detail']; tolerance?: number; cone?: 'elliptic' | 'pyramidal'; lod?: number;
-  scale?: number; shadows?: boolean; shadowMap?: number; antialias?: boolean; pixelCap?: number; effects?: number; faces?: number; maxFps?: number;
+  worker?: boolean; scale?: number; shadows?: boolean; shadowMap?: number; antialias?: boolean; pixelCap?: number; effects?: number; faces?: number; maxFps?: number;
 }
 
 type Choice = { value: number | string | boolean; text: string };
@@ -76,6 +77,8 @@ export const PERF_KNOBS: { key: keyof PerfOverrides; label: string; desc: string
     choices: [{ value: 'elliptic', text: 'Elliptic' }, { value: 'pyramidal', text: 'Pyramid' }] },
   { key: 'lod', label: 'Far bots', desc: 'Bots this far from the ball and every opponent re-plan their movement every other step (their bodies stay fully simulated).', physics: true,
     choices: [{ value: 0, text: 'Full' }, { value: 12, text: '12 m' }, { value: 20, text: '20 m' }] },
+  { key: 'worker', label: 'Physics thread', desc: 'Worker: the physics runs on its own core beside the graphics (one frame more input delay; the anatomy view shows no muscle effort). Page: one core does both.', physics: true,
+    choices: [{ value: false, text: 'Page' }, { value: true, text: 'Worker' }] },
   { key: 'scale', label: 'Resolution', desc: 'Share of the screen resolution rendered.', physics: false,
     choices: [0.5, 0.6, 0.75, 0.85, 1].map((v) => ({ value: v, text: `${Math.round(v * 100)} %` })) },
   { key: 'pixelCap', label: 'Pixel density cap', desc: 'Highest screen pixel density used (high-DPI screens cost the most).', physics: false,
@@ -101,7 +104,7 @@ export function cleanPerf(o: unknown): PerfOverrides {
 /** The level with the player's overrides applied (lod 0 switches that approximation off). */
 export function effectivePreset(name: PresetName | null, o: PerfOverrides = {}): Preset {
   const p = PRESETS[name && name in PRESETS ? name : 'minimum'];
-  const { hz, iterations, detail, tolerance, cone, lod, ...gfx } = o;
+  const { hz, iterations, detail, tolerance, cone, lod, worker, ...gfx } = o;
   const physics: PhysicsSettings = { ...p.physics };
   if (hz !== undefined) physics.hz = hz;
   if (iterations !== undefined) physics.iterations = iterations;
@@ -111,5 +114,5 @@ export function effectivePreset(name: PresetName | null, o: PerfOverrides = {}):
   if (lod !== undefined) { if (lod > 0) physics.lod = lod; else delete physics.lod; }
   const render = { ...p.render };
   for (const [k, v] of Object.entries(gfx)) if (v !== undefined) (render as Record<string, unknown>)[k] = v;
-  return { ...p, physics, render };
+  return { ...p, physics, render, worker: worker ?? p.worker ?? false };
 }

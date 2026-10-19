@@ -69,6 +69,7 @@ async function benchOne(canvas: HTMLCanvasElement, name: PresetName, seconds: nu
 /** Every level (the benchmark screen and its report). */
 export async function runBenchmark(canvas: HTMLCanvasElement, presets: PresetName[] = PRESET_ORDER, skin = DEFAULT_SETTINGS.skin, seconds = 1): Promise<BenchResult[]> {
   const out: BenchResult[] = [];
+  await benchPhysics(PRESETS.minimum, 0.5); // the JIT warms up on this, so the first level measured is not slowed by it
   for (const name of presets) out.push(await benchOne(canvas, name, seconds, skin));
   return out;
 }
@@ -88,6 +89,7 @@ export function chooseBest(rs: BenchResult[]): PresetName {
 /** First launch: measure from the top of the ladder down and stop at the first level that holds up (a fast device
  *  measures one level, a slow one all of them). */
 export async function autoChoose(canvas: HTMLCanvasElement, skin = DEFAULT_SETTINGS.skin): Promise<PresetName> {
+  await benchPhysics(PRESETS.minimum, 0.3); // JIT warm-up
   for (const name of [...PRESET_ORDER].reverse()) {
     if (name === 'potato') break;
     if (fits(await benchOne(canvas, name, 0.8, skin))) return name;
