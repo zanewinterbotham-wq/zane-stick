@@ -7,7 +7,7 @@ import type { PropDesc } from '../physics/engine';
 import { END_LINE, HALF_WIDTH, NFL } from './rules';
 import type { ModeDef, PlayerSpec } from './types';
 
-const MARKERS = 28, MARK: [number, number] = [0.05, 0.012];
+const MARK_LEN = 0.6, MARK: [number, number] = [0.05, 0.012];
 
 export const SUMO: ModeDef = {
   id: 'sumo', title: 'Sumo Ring', preview: 'modes/sumo.jpg',
@@ -21,6 +21,7 @@ export const SUMO: ModeDef = {
   athletes: (o) => 2 * +o.perSide,
   setup(o, rng) {
     const R = +o.radius, n = +o.perSide, out = new Set<number>(), ring: PropDesc[] = [];
+    const MARKERS = Math.round((2 * Math.PI * R) / MARK_LEN); // rails ~0.6 m long, each tangent to the circle (renderer poses them)
     for (let k = 0; k < MARKERS; k++) {
       const th = (2 * Math.PI * k) / MARKERS, phi = th + Math.PI / 2;
       ring.push({ name: 'ring', shape: 'box', size: [MARK[0], MARK[1], Math.PI * R / MARKERS], mass: 0, pos: [R * Math.sin(th), MARK[1], R * Math.cos(th)],

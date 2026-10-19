@@ -9,6 +9,7 @@ import { Play } from '../src/sim/modes/play';
 import { MODES, resolveOptions } from '../src/sim/modes/registry';
 import type { ModeOptions } from '../src/sim/modes/types';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
+import { Rng } from '../src/sim/rng';
 import { STD } from './helpers/scenario';
 
 beforeAll(() => mujocoEngine.init());
@@ -66,6 +67,25 @@ describe('mode rules', () => {
     else expect(r.ended).toBe('time');
     r.p.destroy();
   }, 240_000);
+
+  it('sumo: the ring is a closed circle of rails, each lying tangent to it', () => {
+    for (const radius of [2.5, 3.5, 6]) {
+      const def = mode('sumo'), s = def.setup(resolveOptions(def, { radius }), new Rng(1), CFG as never), rails = s.props!;
+      expect(rails.length).toBeGreaterThan(20);
+      for (const p of rails) {
+        const [x, , z] = p.pos, [, qy, , qw] = p.quat!, yaw = 2 * Math.atan2(qy, qw), long = [Math.sin(yaw), Math.cos(yaw)]; // the box's local z after the yaw
+        expect(Math.hypot(x, z)).toBeCloseTo(radius, 6);
+        expect(Math.abs(long[0] * x + long[1] * z) / radius).toBeLessThan(1e-9); // long axis perpendicular to the radius
+        expect(2 * p.size[2] * rails.length).toBeGreaterThan(2 * Math.PI * radius * 0.95); // end to end around the circle
+      }
+    }
+  });
+
+  it('big hit: the starting distance spans very close to far, and the runner starts that far out', () => {
+    const def = mode('hitstick'), d = def.options.find((x) => x.id === 'distance') as { min: number; max: number };
+    expect([d.min, d.max]).toEqual([3, 40]);
+    for (const distance of [d.min, d.max]) expect(def.setup(resolveOptions(def, { distance }), new Rng(1), CFG as never).players[1].pos[1]).toBe(distance);
+  });
 
   it('sumo 2 v 2: a side loses only when both its wrestlers are out', async () => {
     const out = new Set<number>();

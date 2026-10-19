@@ -64,4 +64,19 @@ describe('Oklahoma drill', () => {
       console.log(`Oklahoma, human ${role}:`, out.join('; '));
     }, 180_000);
   }
+
+  it('with the Blocker option off: two athletes, no blocker, and the rep still ends with a verdict; the human blocker is never removed', async () => {
+    expect(OKLAHOMA.athletes(resolveOptions(OKLAHOMA, { role: 'defender', blocker: false }))).toBe(2);
+    expect(OKLAHOMA.athletes(resolveOptions(OKLAHOMA, { role: 'blocker', blocker: false }))).toBe(3);
+    for (const role of ['defender', 'carrier'] as OklahomaRole[]) {
+      const p = await Play.create(mujocoEngine, CFG, OKLAHOMA, resolveOptions(OKLAHOMA, { role, blocker: false }), stand[role](), 0);
+      const w = p.world;
+      expect(w.athletes.length).toBe(2);
+      expect(w.athletes.filter((a) => a.setup.team === w.athletes[w.ballCarrier].setup.team).length).toBe(1); // the carrier has no teammate
+      while (!p.ended) p.step();
+      expect(p.verdict).toMatch(/wins/);
+      expect(w.scene.stats().instabilities).toBe(0);
+      p.destroy();
+    }
+  }, 180_000);
 });
