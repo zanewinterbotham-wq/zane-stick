@@ -564,6 +564,11 @@ required; any CC0 sample used later is credited in `docs/realism-sources.md`.
   the art sits on the barrier. `npm run models:export` ships them to `public/models/stadiums/` and writes
   `src/game/stadiums.json` (label, pitch, preview, sky/fog/light); only the equipped one is fetched, at the next rep.
   The Open Field is the plain look with a procedural wall. Renders: `art/concepts/stadiums/<id>.png`.
+  Dolphin Hills Stadium (`art/blender/stadium_dolphinhills.py`, after the owner's reference photo, under 600 KB) has
+  sculpted terrain (the field and track down in a bowl, the home stand built into the slope, the ball fields and school
+  on the upper levels, the sea right behind) and paints the game's field: materials named `*_decalN` (blue end zones,
+  lettering, the midfield DH) get a polygon offset of layer N in `render/stadium.ts`. The camera's far plane is 600 m
+  so its sea horizon shows.
 - **Inventory** (`src/game/inventory.ts`, menu in `ui.ts`): one tab per category (Skins, Stadiums; add a category by
   adding one entry to `CATEGORIES`), a card per item with preview, name, pitch, locked state and Equip. Everything is
   unlocked for now. The equipped skin and stadium persist in settings and show from the next rep.

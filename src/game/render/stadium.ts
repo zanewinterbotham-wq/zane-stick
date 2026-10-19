@@ -32,7 +32,8 @@ export function loadStadium(s: Stadium): Promise<THREE.Group> | null {
   return p;
 }
 
-/** Scenery never moves or shadows: static matrices, no shadow passes, and stars and the moon ignore the fog. */
+/** Scenery never moves or shadows: static matrices, no shadow passes, stars and the moon ignore the fog, and field
+ *  paint is drawn over the turf. */
 function prepare(root: THREE.Group): THREE.Group {
   root.traverse((o) => {
     const m = o as THREE.Mesh;
@@ -42,6 +43,8 @@ function prepare(root: THREE.Group): THREE.Group {
     m.updateMatrix();
     for (const mat of [m.material].flat() as THREE.MeshStandardMaterial[]) {
       if (mat.name.endsWith('nofog')) mat.fog = false;
+      const decal = /_decal(\d)$/.exec(mat.name); // paint on the field (end zones, logos): layer N wins over the turf and layer N-1
+      if (decal) { mat.polygonOffset = true; mat.polygonOffsetFactor = -Number(decal[1]); mat.polygonOffsetUnits = -4 * Number(decal[1]); }
       if (mat.map) { // the crowd sprites: sharp up close, mipmapped far away so the rows do not shimmer
         mat.map.minFilter = THREE.LinearMipmapLinearFilter;
         mat.map.anisotropy = 4;

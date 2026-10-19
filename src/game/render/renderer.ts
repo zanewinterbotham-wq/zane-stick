@@ -23,7 +23,7 @@ const OPEN_SCENE: StadiumScene = { sky: '#9cc3e4', fog: ['#9cc3e4', 80, 220], he
 export class GameRenderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 400);
+  readonly camera = new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 600); // far enough for a stadium's sea horizon
   athletes: AthleteMesh[] = [];
   overlay: AnatomyOverlay | null = null;
   xray = false;
