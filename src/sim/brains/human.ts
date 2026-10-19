@@ -2,7 +2,7 @@
 // one interface; the browser shell writes `latest` once per render frame (no DOM access here).
 import { neutralCommands, type Commands } from '../control/types';
 import { clamp } from '../math';
-import { catchPoint, incoming } from './returner';
+import { catchPoint, dropPoint, incoming, OVERHEAD } from './returner';
 import type { Brain, Perception } from './types';
 
 /** Device-independent input snapshot (what the shell's InputFrame boils down to). */
@@ -75,9 +75,13 @@ export class HumanBrain implements Brain {
       if (c.driveLegs > 0.5) c.gait = 'sprint';
     }
     this.reachLoose(p, c);
-    // a ball flying at him: the raised hands go to where it will pass his chest
+    // a ball coming down on him (a kick, a pop-up) or flying at him: the raised hands go to where it will be, both
+    // to one point when both buttons are held (the diamond: the hands meet behind the ball)
     const me = p.athletes[p.self], chest = [me.head[0], me.head[1] - CHEST_BELOW_HEAD, me.head[2]];
-    if ((c.armL > 0 || c.armR > 0) && p.ball && !p.athletes.some((a) => a.hasBall) && incoming(p.ball, chest)) c.aim = catchPoint(p.ball, chest);
+    if ((c.armL > 0 || c.armR > 0) && p.ball && !p.athletes.some((a) => a.hasBall)) {
+      const drop = p.ball.pos[1] > me.head[1] ? dropPoint(p.ball, chest, me.head[1] + OVERHEAD) : null;
+      if (drop) c.aim = drop; else if (incoming(p.ball, chest)) c.aim = catchPoint(p.ball, chest);
+    }
     return c;
   }
 

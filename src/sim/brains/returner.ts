@@ -1,7 +1,8 @@
 // Bot kick returner: while a kick is in the air, runs to where it comes down to chest height, squares up to it and
-// raises his hands (a ball that meets his hands or his chest is caught: the play's possession rule). Misjudges the
-// spot by the difficulty's noise. Once it is on the turf (a muff, a bounce) he goes for it as a tackler goes for a
-// loose ball; with the ball the play hands him a carrier brain. Same Commands as a human.
+// raises his hands to where it comes down (a ball that meets his hands or his chest may be caught: the play's catch
+// rule, the same chance as anyone's). Misjudges the spot by the difficulty's noise. Once it is on the turf (a muff, a
+// bounce) he goes for it as a tackler goes for a loose ball; with the ball the play hands him a carrier brain. Same
+// Commands as a human.
 import { GAIT_SPEED } from '../control/hand';
 import { neutralCommands, type Commands } from '../control/types';
 import { clamp, wrapAngle, type Vec3 } from '../math';
@@ -27,6 +28,27 @@ export function catchPoint(b: { pos: Vec3; vel: Vec3 }, at: readonly number[], t
   const p = b.pos, v = b.vel, v2 = v[0] * v[0] + v[1] * v[1] + v[2] * v[2] || 1e-9;
   const t = clamp(-((p[0] - at[0]) * v[0] + (p[1] - at[1]) * v[1] + (p[2] - at[2]) * v[2]) / v2, 0, tMax);
   return [p[0] + v[0] * t, p[1] + v[1] * t - G * t * t / 2, p[2] + v[2] * t];
+}
+
+/** Hands at full stretch above the head's centre (m, a standing reach); how far from the chest along the ground a
+ *  falling ball can still be taken (m, an arm's length), and how near a fall counts as coming down on him (m: the
+ *  hands go up toward it while he gets under it). */
+export const OVERHEAD = 0.5;
+const ARM = 0.6, NEAR = 2;
+
+/** Where the hands take a ball coming down near `chest` (its ballistic fall): the highest point of the fall between
+ *  `top` and chest height within ARM of the chest along the ground (overhead if it drops onto him, at the face or
+ *  chest if it comes in front); else the nearest point of that fall within NEAR; else null. */
+export function dropPoint(b: { pos: Vec3; vel: Vec3 }, chest: readonly number[], top: number): Vec3 | null {
+  let best: Vec3 | null = null, bd = NEAR;
+  for (let h = top; h >= chest[1] - 1e-9; h -= 0.1) {
+    const t = fallTime(b.pos, b.vel, h);
+    if (t < 0) continue;
+    const x = b.pos[0] + b.vel[0] * t, z = b.pos[2] + b.vel[2] * t, d = Math.hypot(x - chest[0], z - chest[2]);
+    if (d < ARM) return [x, h, z];
+    if (d < bd) { bd = d; best = [x, h, z]; }
+  }
+  return best;
 }
 
 /** A loose ball flying at `at` (closing faster than `close` m/s, within `range` m): worth reaching for. */
@@ -59,9 +81,8 @@ export class ReturnerBrain implements Brain {
     c.gait = v > 6 ? 'sprint' : 'jog';
     const bx = b.pos[0] - me.com[0], bz = b.pos[2] - me.com[2], bd = Math.hypot(bx, bz);
     if (d < 3 && bd > 1) c.face = { x: bx / bd, z: bz / bd };
-    // the catching hand waits where the ball will come down, at the chest: a hand reaching up to the ball is
-    // still swinging when it closes, and the tuck that follows wrenches the ball out of it
-    if (t < HANDS_T) { c.armL = c.armR = 1; c.gripL = c.gripR = true; c.aim = [cx, CATCH_H, cz]; }
+    // both hands wait together (the diamond) where the ball will come down through their reach, as the human's do
+    if (t < HANDS_T) { c.armL = c.armR = 1; c.gripL = c.gripR = true; c.aim = dropPoint(b, [me.head[0], me.head[1] - 0.3, me.head[2]], me.head[1] + OVERHEAD) ?? [cx, CATCH_H, cz]; }
     return c;
   }
 
