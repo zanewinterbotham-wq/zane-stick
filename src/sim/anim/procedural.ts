@@ -52,6 +52,9 @@ const LAT_ACCEL = [14, 8.5] as const, PIVOT_DECEL = 12, TURN_RATE = 12;
 const BACK_MAX = 6.5, SIDE_MAX = 7; // fastest backpedal / sideways movement, m/s (reference athlete)
 const LEAD = 2.5;                    // farthest the root velocity may lead the measured velocity, m/s
 const GETUP_T = 2.0;
+/** Get-up with a move command held: clip speed-up, and the share of the clip after which he may run off (both feet
+ *  are planted from 0.8). */
+const GETUP_HURRY = 1.35, GETUP_GO = 0.82;
 /** Trunk pitch of a full forward lean (rad, ~83°: shoulders level with the hips), and the share of a posture
  *  lean the spine takes (the world's support turns the pelvis through the other 0.3). */
 const LEAN_MAX = 1.45, PELVIS_REST = 0.7, LEAN_RATE = 1.5;
@@ -297,7 +300,11 @@ export class ProceduralAnimator implements Animator {
       if (this.standT > 0.3) this.enter('loco', 0.3);
       else if (this.settleT > 0.25) this.startGetup(view);
     } else if (this.mode === 'getup') {
+      // wanting to go, he scrambles up faster and runs off once both feet are under him, still unsteady
+      const going = Math.hypot(cmd.move.x, cmd.move.z) > 0.3;
+      if (going) this.modeT += dt * (GETUP_HURRY - 1);
       if (comSpeed > 3) this.enter('down', 0.15);
+      else if (going && this.modeT >= GETUP_GO * GETUP_T && !support.down) this.enter('loco', 0.3);
       else if (this.modeT >= GETUP_T) {
         this.getup.downT = support.down ? this.getup.downT + dt : 0;
         if (!support.down) { this.mode = 'loco'; this.modeT = 0; }

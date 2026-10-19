@@ -53,9 +53,9 @@ const HELD = { start: 0.3, full: 0.9, oneArm: 0.6, sag: 1.0, sagMax: 0.8 };
  *  how long after the last contact a tilt or a flight stops counting as a knock (s), and the largest downward brake
  *  on a body rising past its pelvis target (× body weight), and the largest sideways acceleration the carry gives
  *  to turn a run at up to 4 m/s and from 8 m/s (m/s², the animator's LAT_ACCEL). */
-const SUP = { kv: 6, stable: 0.3, fadeIn: 0.3, window: 0.2, flight: 0.15, decay: 1, getup: 1, hKp: 36, hKd: 10, kUp: 1.5, cUp: 6, yaw: 0.3,
+const SUP = { kv: 6, stable: 0.1, fadeIn: 0.15, window: 0.2, flight: 0.15, decay: 1, getup: 1, hKp: 36, hKd: 10, kUp: 1.5, cUp: 6, yaw: 0.3,
   stunStart: 1, stunFull: 2, stunTime: 0.5, drivenStart: 0.5, drivenFull: 2, drivenTime: 1.5, launchKv: 20, launch: 15, jump: [17, 40] as const, lunge: 12, rise: 0.02, bigRise: 0.008,
-  free: 1, brake: 0.5, lat: [14, 8.5] as const };
+  free: 1, brake: 0.5, goKnock: 0.5, lat: [14, 8.5] as const };
 
 /** One body-part-on-body-part contact between two athletes this step (summed over its contact points). */
 export interface HitEvent {
@@ -394,7 +394,9 @@ export class World {
     if (a.playerContact) { a.carryLevel = 0; a.supStable = 0; }
     else {
       // stable footing: a step's brief flight does not count against it, a lifted or falling body does
-      a.supStable = a.airT < 0.1 && !down && a.knock < 0.3 ? a.supStable + dt : 0;
+      // (still part knocked counts once the hit no longer drives him back: he gets going on the carry's (1 − knock)
+      // share and may stumble, rather than standing still until fully steady)
+      a.supStable = a.airT < 0.1 && !down && a.knock < SUP.goKnock && knockDriven < 0.1 ? a.supStable + dt : 0;
       if (a.supStable >= SUP.stable) a.carryLevel = Math.min(1, a.carryLevel + dt / SUP.fadeIn);
     }
     const flight = clamp(1 - (a.airT - SUP.flight) / 0.1, 0, 1);
