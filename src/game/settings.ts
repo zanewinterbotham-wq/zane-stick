@@ -34,6 +34,7 @@ export interface Settings {
   goreLevel: number;             // injury effects 0..4: none (stars) .. very high (render/effects.ts GORE_LEVELS)
   mode?: string;                 // last game mode played (src/sim/modes/registry.ts id)
   modeOptions?: Record<string, Record<string, unknown>>; // each mode's options as last set in the mode menu
+  netName?: string;              // multiplayer display name (the room server trims it to 24 characters)
 }
 
 /** Owner's tuned baseline for Normal (2026-10-18): the player's strength and speed at 1x, and the carry
