@@ -21,10 +21,8 @@ export const SCRAMBLE: ModeDef = {
       // dropped from 1.5 m with a random sideways offset: the ellipsoid bounces where physics sends it
       ball: { at: [rng.range(-1.5, 1.5), 1.5, rng.range(-2.5, 2.5)], impetus: 0 },
       step(play) { if (!o.playOut && play.recoveredBy >= 0) play.end('recovered', play.team(play.recoveredBy), 1); },
-      ended(play) {
-        if (play.ended === 'recovered') play.verdict = play.scorer === 0 ? 'You won the scramble' : 'The bots won the scramble';
-        else if (play.ended === 'time' && play.recoveredBy < 0) play.verdict = 'Time: nobody got the ball';
-      },
+      verdict: (play, T) => play.ended === 'recovered' ? (play.scorer === T ? 'You won the scramble' : 'They won the scramble')
+        : play.ended === 'time' && play.recoveredBy < 0 ? 'Time: nobody got the ball' : '',
       status: () => `${n} v ${n}  ·  ${o.playOut ? 'recover it, then score' : 'first to recover wins'}`,
     };
   },

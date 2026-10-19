@@ -34,10 +34,14 @@ export const KEEP_AWAY: ModeDef = {
         if (b >= 0 && play.team(b) === 1) play.end('stripped', 1, 1);
       },
       ended(play) {
-        const held = play.world.ballCarrier;
-        if (play.ended === 'time') { play.scorer = 0; play.points = 1; play.verdict = `Survived ${+o.duration} s`; return; }
+        if (play.ended === 'time') { play.scorer = 0; play.points = 1; return; }
         play.scorer = 1; play.points = 1;
-        play.verdict = play.ended === 'stripped' ? 'The ball was taken' : play.ended === 'out' ? 'Stepped out of the arena' : held === 0 ? 'Caught' : 'Your runner was caught';
+      },
+      verdict(play, T) {
+        const held = play.world.ballCarrier, us = T === 0;
+        if (play.ended === 'time') return us ? `Survived ${+o.duration} s` : `They kept it ${+o.duration} s`;
+        return play.ended === 'stripped' ? (us ? 'The ball was taken' : 'You took the ball') : play.ended === 'out' ? (us ? 'Stepped out of the arena' : 'He stepped out of the arena')
+          : held === play.human ? 'Caught' : us ? 'Your runner was caught' : 'Caught him';
       },
       status: (play) => `Hold the ball for ${Math.max(0, +o.duration - play.repTime).toFixed(0)} s more  ·  ${+o.chasers} chaser${+o.chasers > 1 ? 's' : ''}`,
     };

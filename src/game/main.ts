@@ -265,7 +265,8 @@ class App {
   /** A rep's play is ready (the host's own, or a guest's replica): onto the field with it. */
   async netStart(s: StartMsg, play: Play) {
     const fresh = !this.drill;
-    if (!this.net?.isHost) this.freshRep(); // the host's was before he built it
+    // (the host's also ran before he built it, but the old play's result card could come back while it was built)
+    this.freshRep();
     this.drill = play; this.mode = modeById(s.mode); this.modeOpts = s.options;
     this.netBig = this.netBest = null;
     this.countdownUntil = s.countdown ? performance.now() + s.countdown * 1000 : 0;
@@ -785,6 +786,8 @@ class App {
       ]);
     } else this.hud.setOverlay(null);
     this.netHud();
+    // a card is only ever up for a play that is over (a rep that started while one was being built, or any race)
+    if (!d.ended && this.peakShown) { this.hud.showResult(null); this.peakShown = false; this.endWhistled = false; }
     if (d.ended && !this.endWhistled) { this.endWhistled = true; this.audio.play('game_whistle_end', 1); }
     if (d.ended && !this.peakShown && w.time - d.endTime > 0.6) {
       this.peakShown = true;
@@ -818,8 +821,9 @@ class App {
 
 /** The result card's title, from the local player's side (single player: team 0; a spectator sees team 0's). */
 function resultTitle(d: Play): string {
-  if (d.verdict) return d.verdict;
-  const T = d.human >= 0 ? d.team(d.human) : 0, bc = d.world.ballCarrier, me = d.human >= 0 && bc === d.human, ours = bc >= 0 && d.team(bc) === T;
+  const T = d.human >= 0 ? d.team(d.human) : 0, verdict = d.verdictFor(T); // a guest words it for his own side
+  if (verdict) return verdict;
+  const bc = d.world.ballCarrier, me = d.human >= 0 && bc === d.human, ours = bc >= 0 && d.team(bc) === T;
   switch (d.ended) {
     case 'time': return 'Time';
     case 'touchdown': return d.scorer === T ? 'Touchdown!' : 'Missed — touchdown';

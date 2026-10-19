@@ -27,7 +27,7 @@ export const PUNT_BLOCK: ModeDef = {
     // you and your rushers on the line, their protectors across from you, the punter deep
     const rushers = row(0, 1 + +o.rush, los + s, 2.5, rng.range(-0.5, 0.5), 'Rusher', 'Rush'), protectors = row(K, +o.protect, los - s * 0.6, 2, 0, 'Protector', 'Punt team');
     const players: PlayerSpec[] = [...rushers, { team: K, label: 'Punter', group: 'Punt team', pos: [0, pz] }, ...protectors];
-    let kicked = false, flight = false, kickedAt = 0, blocked = false;
+    let kicked = false, flight = false, kickedAt = 0;
     return {
       players, ball: { holder: P }, rules: KICK_RULES, props: goalposts(),
       // the punter waits for the snap-to-kick time; afterwards everyone plays the ball
@@ -40,20 +40,20 @@ export const PUNT_BLOCK: ModeDef = {
           if (w.ballCarrier !== P) return; // stripped before the kick: already a live ball
           const c = w.scene.athletes[P].state.com, from: Vec3 = [c[0], FOOT[1], c[2] + s * FOOT[0]];
           // a rusher on the ball: the punter never gets it away, it comes loose from his hands
-          if (near(play, 0, from, SMOTHER)) { blocked = true; play.note = 'BLOCKED'; return play.ballLoose(K, false); }
+          if (near(play, 0, from, SMOTHER)) { play.note = 'BLOCKED'; return play.ballLoose(K, false); }
           flight = true; kickedAt = play.repTime;
           return kick(play, K, lob(PUNT * YD + Math.abs(from[2] - los), HANG, FOOT[1], [Math.sin(e), s * Math.cos(e)]), [0, 0, 40], from);
         }
         if (!flight || play.repTime - kickedAt <= 0.1) return;
         const t = ballTouches(play), bc = w.ballCarrier;
-        if (t.teams[0] || (bc >= 0 && play.team(bc) === 0)) { blocked = true; play.note = 'BLOCKED'; flight = false; if (bc < 0) rethink(play); }
+        if (t.teams[0] || (bc >= 0 && play.team(bc) === 0)) { play.note = 'BLOCKED'; flight = false; if (bc < 0) rethink(play); }
         else if (s * (play.ballPos()[2] - los) > AWAY) play.end('punt');
         else if (t.turf || t.teams[1] || bc >= 0) { flight = false; if (bc < 0) rethink(play); }
       },
-      ended(play) {
-        const spot = spotVerdict(play);
-        play.verdict = play.ended === 'punt' ? 'Punt away: no block'
-          : blocked ? `Blocked!${spot ? ` ${spot}` : ''}`
+      verdict(play, T) {
+        const spot = spotVerdict(play, T);
+        return play.ended === 'punt' ? 'Punt away: no block'
+          : play.note === 'BLOCKED' ? `Blocked!${spot ? ` ${spot}` : ''}`
           : play.ended === 'down' && play.world.ballCarrier === P ? 'Punter brought down' : spot;
       },
       status: (play) => `Block the punt  ·  ${kickAt.toFixed(1)} s snap to kick${play.note ? `  ·  ${play.note}` : ''}`, // the note reaches guests

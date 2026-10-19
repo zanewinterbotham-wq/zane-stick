@@ -29,11 +29,14 @@ export const GOAL_LINE_STAND: ModeDef = {
       players, ball: { holder: carrier }, rules: { ...NFL, outOfBounds: true, timeLimit: +o.timeLimit },
       ended(play) {
         // the defense (you) wins every rep that is not a touchdown against it
-        if (play.ended === 'touchdown' && play.scorer === 1) { play.verdict = 'Touchdown: they got in'; return; }
         if (play.ended === 'touchdown') return;
         play.scorer = 0; play.points = 1;
-        play.verdict = play.ended === 'time' ? 'Goal-line stand! Time ran out' : play.recoveredBy >= 0 && play.team(play.recoveredBy) === 0 ? 'Goal-line stand! Your ball'
-          : play.ended === 'out' ? 'Goal-line stand! Forced out' : 'Goal-line stand! Stopped short';
+      },
+      verdict(play, T) {
+        if (play.ended === 'touchdown') return play.scorer !== 1 ? '' : T === 1 ? 'Touchdown! You got in' : 'Touchdown: they got in';
+        const how = play.ended === 'time' ? 'Time ran out' : play.recoveredBy >= 0 && play.team(play.recoveredBy) === 0 ? (T === 0 ? 'Your ball' : 'They have the ball')
+          : play.ended === 'out' ? 'Forced out' : 'Stopped short';
+        return T === 0 ? `Goal-line stand! ${how}` : `They held: ${how.toLowerCase()}`;
       },
       status: () => `Defend your goal line  ·  they start ${+o.togo} yd out`,
     };

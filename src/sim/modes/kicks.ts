@@ -109,14 +109,14 @@ export function row(team: 0 | 1, n: number, z: number, gap: number, x0: number, 
 }
 
 /** The result card's title from the player's side, with the spot. '' leaves the game's own title. */
-export function spotVerdict(play: Play): string {
+export function spotVerdict(play: Play, T: 0 | 1 = 0): string {
   const bc = play.world.ballCarrier, at = yardLine(play.ballPos()[2]);
-  const who = bc === play.human ? 'You were' : bc >= 0 && play.team(bc) === 0 ? 'Your teammate was' : 'Their runner was';
+  const who = bc === play.human ? 'You were' : bc >= 0 && play.team(bc) === T ? 'Your teammate was' : 'Their runner was';
   switch (play.ended) {
     case 'down': return `${who} tackled at ${at}`;
     case 'out': return bc < 0 ? `Ball out of bounds at ${at}` : `${who} forced out at ${at}`;
-    case 'downed': return `${play.team(bc) === 0 ? 'Your team' : 'The kicking team'} downs the kick at ${at}`;
-    case 'touchdown': return play.scorer === 0 ? 'Touchdown!' : 'Touchdown against you';
+    case 'downed': return `${play.team(bc) === T ? 'Your team' : 'The kicking team'} downs the kick at ${at}`;
+    case 'touchdown': return play.scorer === T ? 'Touchdown!' : 'Touchdown against you';
     case 'touchback': return 'Touchback';
     default: return '';
   }
@@ -196,7 +196,7 @@ export function returnPlay(s: ReturnSpec): PlaySetup {
         if (punt || Math.hypot(v[0], v[1], v[2]) < 1) play.end('touchback');
       }
     },
-    ended(play) { play.verdict = spotVerdict(play); },
+    verdict: (play, T) => spotVerdict(play, T),
     status: () => s.status,
   };
 }

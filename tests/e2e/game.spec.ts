@@ -400,10 +400,12 @@ test('difficulty screen: presets, the independent sliders and hit power, remembe
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK');
   await page.keyboard.press('Enter');
   await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
-  await page.waitForTimeout(500);
-  if (await page.evaluate(() => !!document.pointerLockElement)) await page.evaluate(() => document.exitPointerLock());
-  else await page.keyboard.press('Escape');
-  await expect(page.locator('.menu h1')).toHaveText('Paused');
+  // retried: under a full parallel run the rep can still be starting (and un-pause) when the first Escape lands
+  await expect(async () => {
+    if (await page.evaluate(() => !!document.pointerLockElement)) await page.evaluate(() => document.exitPointerLock());
+    else await page.keyboard.press('Escape');
+    await expect(page.locator('.menu h1')).toHaveText('Paused', { timeout: 2000 });
+  }).toPass({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('slider', { name: 'Hit power' })).toHaveValue('2.5');
   await expect(page.getByRole('slider', { name: 'AI juking' })).toHaveValue('0.3');

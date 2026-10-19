@@ -96,6 +96,9 @@ test('host, join by link and by code, position menu, ready, start, guest input o
   // the next rep only when both players ask: A's Enter alone changes nothing, B's too starts rep 2 on both screens
   const repOf = (p: Page) => p.evaluate(() => (window as unknown as { __app: { net: { start: { rep: number } | null } } }).__app.net?.start?.rep ?? -1);
   const rep0 = await repOf(a);
+  // the play ends (the host's rules would, on a tackle or the clock): the result card shows on both screens
+  await a.evaluate(() => (window as unknown as { __app: { drill: { end(r: string): void } } }).__app.drill.end('time'));
+  for (const p of [a, b]) await expect(p.locator('.panel.result')).toBeVisible({ timeout: 15_000 });
   await a.keyboard.press('Enter');
   await expect(b.locator('.netbadge')).toContainText('restart 1/2', { timeout: 10_000 }); // both see who has asked
   await a.waitForTimeout(1500);
@@ -104,6 +107,9 @@ test('host, join by link and by code, position menu, ready, start, guest input o
   await expect.poll(() => repOf(a), { timeout: 15_000 }).toBe(rep0 + 1);
   await expect.poll(() => repOf(b), { timeout: 15_000 }).toBe(rep0 + 1);
   await b.waitForFunction(() => ((window as unknown as App).__app.net?.replica?.time ?? 0) > 0.3, null, { timeout: 30_000 });
+  // and the old play's card is gone on both, and stays gone (it came back on the host while the new rep was built)
+  await a.waitForTimeout(1500);
+  for (const p of [a, b]) await expect(p.locator('.panel.result')).toBeHidden();
 
   // C types the code (lowercase, with a dash) mid-game: he watches this rep
   const C = await open(browser, 'Cy'), c = C.page;

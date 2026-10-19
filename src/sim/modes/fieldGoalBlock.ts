@@ -24,7 +24,7 @@ export function fieldGoal(o: ModeOptions, rng: Rng, aim?: number): PlaySetup {
   const kicker = 1 + +o.rush;
   const players: PlayerSpec[] = [...row(0, 1 + +o.rush, los - 1, 2.5, rng.range(-0.5, 0.5), 'Rusher', 'Rush'), { team: K, label: 'Kicker', group: 'Kicking team', pos: [-1, spot + 2.2] },
     ...row(K, +o.protect, los + 0.6, 2, 0, 'Protector', 'Kicking team')];
-  let kicked = false, flight = false, kickedAt = 0, blocked = false, prevZ = spot;
+  let kicked = false, flight = false, kickedAt = 0, prevZ = spot;
   return {
     players, ball: { at: [0, BALL_REST_Y, spot], impetus: K }, rules: KICK_RULES, props: goalposts(),
     // until the kick is up, the kicker waits and the protection guards the ball; after it the ball is everyone's
@@ -38,7 +38,7 @@ export function fieldGoal(o: ModeOptions, rng: Rng, aim?: number): PlaySetup {
         if (play.repTime < kickAt) return;
         kicked = true;
         // a rusher on the ball (or holding it): no kick, it is live where it lies
-        if (w.ballCarrier >= 0 || near(play, 0, b, SMOTHER)) { blocked = true; play.note = 'BLOCKED'; return rethink(play); }
+        if (w.ballCarrier >= 0 || near(play, 0, b, SMOTHER)) { play.note = 'BLOCKED'; return rethink(play); }
         flight = true; kickedAt = play.repTime; prevZ = b[2];
         return kick(play, K, vel, [-10, 0, 0]);
       }
@@ -49,12 +49,12 @@ export function fieldGoal(o: ModeOptions, rng: Rng, aim?: number): PlaySetup {
       prevZ = b[2];
       if (!flight || play.repTime - kickedAt <= 0.1) return;
       const t = ballTouches(play), bc = w.ballCarrier;
-      if (t.teams[0] || (bc >= 0 && play.team(bc) === 0)) { blocked = true; play.note = 'BLOCKED'; flight = false; if (bc < 0) rethink(play); }
+      if (t.teams[0] || (bc >= 0 && play.team(bc) === 0)) { play.note = 'BLOCKED'; flight = false; if (bc < 0) rethink(play); }
       else if (t.turf || t.teams[1] || bc >= 0) { flight = false; play.end('nogood'); }
     },
-    ended(play) {
-      const spot = spotVerdict(play);
-      play.verdict = play.ended === 'fieldgoal' ? `Field goal is good${blocked ? ', off the block' : ''}` : play.ended === 'nogood' ? `No good${blocked ? ', blocked' : ''}`
+    verdict(play, T) {
+      const spot = spotVerdict(play, T), blocked = play.note === 'BLOCKED';
+      return play.ended === 'fieldgoal' ? `Field goal is good${blocked ? ', off the block' : ''}` : play.ended === 'nogood' ? `No good${blocked ? ', blocked' : ''}`
         : blocked ? `Blocked!${spot ? ` ${spot}` : ''}` : spot;
     },
     status: (play) => `Block the field goal  ·  ${+o.distance} yd try  ·  ${kickAt.toFixed(1)} s snap to kick${play.note ? `  ·  ${play.note}` : ''}`, // the note reaches guests

@@ -92,6 +92,9 @@ export interface PlaySetup {
   step?(play: Play): void;
   /** After the play ends: adjust play.scorer / play.points / play.verdict (e.g. a drill's win for either side). */
   ended?(play: Play): void;
+  /** The result in words from team `team`'s side (play.human: the viewer's athlete), read from state every screen has,
+   *  so a multiplayer guest words his own; '' = the shared verdict or the default words. */
+  verdict?(play: Play, team: 0 | 1): string;
   /** One HUD line about the mode (your role, the score to beat). */
   status?(play: Play): string;
 }

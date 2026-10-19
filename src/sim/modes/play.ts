@@ -346,7 +346,11 @@ export class Play {
     if (this.ended) return;
     this.ended = reason; this.endTime = this.world.time; this.scorer = scorer; this.points = points;
     this.mode.ended?.(this);
+    if (!this.verdict && this.mode.verdict) this.verdict = this.verdictFor(this.human >= 0 ? this.team(this.human) : 0);
   }
+
+  /** The result in words from a team's side: the mode's own words for it, else the shared verdict. */
+  verdictFor(team: 0 | 1) { return this.mode.verdict?.(this, team) || this.verdict; }
 
   destroy() { this.world.destroy(); }
 }

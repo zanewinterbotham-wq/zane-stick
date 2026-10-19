@@ -42,10 +42,8 @@ export const SUMO: ModeDef = {
           if (play.world.athletes.every((_, i) => play.team(i) !== t || out.has(i))) return play.end('sumo', t === 0 ? 1 : 0, 1);
         }
       },
-      ended(play) {
-        if (play.ended === 'sumo') play.verdict = play.scorer === 0 ? 'Ring cleared: you win' : 'You are out of the ring';
-        else if (play.ended === 'time') play.verdict = 'Time: nobody is out (draw)';
-      },
+      verdict: (play, T) => play.ended === 'sumo' ? (play.scorer === T ? 'Ring cleared: you win' : 'You are out of the ring')
+        : play.ended === 'time' ? 'Time: nobody is out (draw)' : '',
       status: () => `${n} v ${n}  ·  ${(2 * R).toFixed(0)} m ring${o.fall ? '  ·  touching down loses' : ''}`,
     };
   },

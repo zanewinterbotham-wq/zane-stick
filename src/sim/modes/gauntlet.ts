@@ -40,11 +40,12 @@ export const GAUNTLET: ModeDef = {
         return new BlockerBrain(r, play.cfg.difficulty);
       },
       ended(play) {
-        if (play.ended === 'touchdown') { if (play.scorer === 0) play.verdict = 'Through the gauntlet!'; return; }
+        if (play.ended === 'touchdown') return;
         if (play.world.ballCarrier !== 0) return;
         const yd = Math.max(0, Math.round((play.ballPos()[2] - start) / YD)), by = play.ended === 'out' ? 'Out of bounds' : play.ended === 'down' ? 'Brought down' : 'Time';
         play.verdict = `${by} after ${yd} yd of ${Math.round((GOAL_LINE - start) / YD)}`;
       },
+      verdict: (play, T) => play.ended === 'touchdown' && play.scorer === 0 ? (T === 0 ? 'Through the gauntlet!' : 'He got through') : '',
       status: () => `${n} tackler${n > 1 ? 's' : ''}, ${gap} yd apart  ·  they wake up ${+o.wake} m from you`,
     };
   },
