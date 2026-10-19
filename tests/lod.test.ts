@@ -6,13 +6,14 @@ import { DEFAULT_OPEN_FIELD } from '../src/sim/drills/openField';
 import { Play } from '../src/sim/modes/play';
 import { modeById, resolveOptions } from '../src/sim/modes/registry';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
+import { PRESETS } from '../src/game/presets';
 
 beforeAll(() => mujocoEngine.init());
 
 it('far bots plan every other step, the player every step; every body keeps moving under its muscles', async () => {
   const def = modeById('kickoffReturn'), { carrier, timeLimit: _t, mode: _m, ...base } = DEFAULT_OPEN_FIELD;
   const human = new ScriptBrain((_t, _p, c) => { c.gait = 'jog'; c.move = { x: 0, z: 1 }; });
-  const d = await Play.create(mujocoEngine, { ...base, bot: carrier, physics: { hz: 200, iterations: 20, detail: 'minimum', lod: 12 } }, def, resolveOptions(def, { block: 7, cover: 9 }), human);
+  const d = await Play.create(mujocoEngine, { ...base, bot: carrier, physics: PRESETS.potato.physics }, def, resolveOptions(def, { block: 7, cover: 9 }), human);
   const w = d.world, plans = w.athletes.map(() => 0), moved = w.athletes.map(() => 0);
   w.athletes.forEach((a, i) => { const c = a.controller, f = c.compute.bind(c); c.compute = (...x) => { plans[i]++; f(...x); }; });
   const q0 = w.scene.athletes.map((a) => Float64Array.from(a.state.q));

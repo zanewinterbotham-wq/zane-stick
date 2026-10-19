@@ -16,7 +16,7 @@ it('the ladder: every level once, lowest first; Low and High are today\'s physic
 
 it('overrides change single knobs; Far bots 0 switches the level of detail off; unknown or bad values are dropped', () => {
   const p = effectivePreset('potato', { hz: 240, lod: 0, shadows: true });
-  expect([p.physics.hz, 'lod' in p.physics, p.render.shadows, p.render.maxFps]).toEqual([240, false, true, 30]);
+  expect([p.physics.hz, 'lod' in p.physics, p.physics.cone, p.render.shadows, p.render.maxFps, p.worker]).toEqual([240, false, 'pyramidal', true, 30, true]);
   expect(effectivePreset('high').physics).toEqual(PRESETS.high.physics);
   expect(effectivePreset(null).name).toBe('minimum');
   expect(cleanPerf({ hz: 123, tolerance: 1e-5, cone: 'square', faces: 999, x: 1 })).toEqual({ tolerance: 1e-5, faces: 999 });

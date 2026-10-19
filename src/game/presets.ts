@@ -20,8 +20,8 @@ const HIGH_GFX: RenderQuality = { scale: 1, shadows: true, detail: 'high', antia
 export const PRESETS: Record<PresetName, Preset> = {
   potato: {
     name: 'potato', label: 'Potato',
-    desc: 'For the slowest laptops: the physics on its own core, fewer steps with a looser solver tolerance, far bots plan every other step, low resolution, 30 fps. Hits feel slightly softer.',
-    physics: { hz: 200, iterations: 20, detail: 'minimum', tolerance: 1e-5, lod: 12 },
+    desc: 'For the slowest laptops: the physics on its own core, fewer steps, a simpler friction model and a looser solver, far bots plan every other step, low resolution, 30 fps. Hits feel slightly softer.',
+    physics: { hz: 180, iterations: 20, detail: 'minimum', tolerance: 1e-5, cone: 'pyramidal', lod: 12 },
     render: { ...LOW_GFX, scale: 0.5, pixelCap: 1, effects: 0.25, faces: 15, maxFps: 30 },
     targetFps: 30, activeBots: false, worker: true,
   },

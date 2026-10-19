@@ -20,7 +20,7 @@ const FRICTION = { ground: 0.6, body: 0.6, hand: 1.0 }; // [S5]
 /** Fast contact reads (MujocoScene.contacts()): byte offsets of the fields in this MuJoCo build's mjContact and its
  *  size, and how many more reads are checked against the binding's slow path (−1: the layout did not match, always
  *  the slow path). One build per page, so measured and checked once for every scene. */
-let CON: { pos: number; frame: number; geom: number; efc: number; dim: number; size: number; check: number } | null = null;
+let CON: { pos: number; frame: number; geom: number; efc: number; dim: number; size: number; check: [number, number] } | null = null;
 
 /** mjContact field offsets from the views of the binding's copy of a contact. efc_address and dim have no view:
  *  their places in the 3.x struct (after vert[2] and exclude, its last field; before geom1 and geom2, which precede
@@ -28,7 +28,7 @@ let CON: { pos: number; frame: number; geom: number; efc: number; dim: number; s
 function contactLayout(list: Any): NonNullable<typeof CON> {
   const c = list.get(0), at = (v: { byteOffset: number }) => v.byteOffset, b0 = at(c.pos) - 8; // pos follows dist (one double)
   const efc = at(c.vert) - b0 + 12;
-  const lay = { pos: 8, frame: at(c.frame) - b0, geom: at(c.geom) - b0, efc, dim: at(c.geom) - b0 - 12, size: (efc + 4 + 7) & ~7, check: 50 };
+  const lay = { pos: 8, frame: at(c.frame) - b0, geom: at(c.geom) - b0, efc, dim: at(c.geom) - b0 - 12, size: (efc + 4 + 7) & ~7, check: [50, 50] as [number, number] }; // per cone: the pyramid's force decode reads dim
   c.delete();
   return lay;
 }
@@ -263,12 +263,13 @@ class MujocoScene implements PhysicsScene {
     // each, two views and a WASM call per contact. The first reads are compared with the slow path; a mismatch (a
     // MuJoCo build with another layout) turns the fast path off for good.
     let out: ContactReport[] | null = null;
-    if (CON.check >= 0) {
+    const k = +this.pyramidal;
+    if (CON.check[k] >= 0) {
       out = this.fastContacts((d.arena as Uint8Array).byteOffset, n);
-      if (CON.check > 0) {
-        CON.check--;
+      if (CON.check[k] > 0) {
+        CON.check[k]--;
         const slow = this.slowContacts(list, n);
-        if (JSON.stringify(slow) !== JSON.stringify(out)) { CON.check = -1; out = slow; }
+        if (JSON.stringify(slow) !== JSON.stringify(out)) { CON.check[k] = -1; out = slow; }
       }
     }
     out ??= this.slowContacts(list, n);

@@ -21,7 +21,7 @@ async function play(page: Page, settings: object) {
   await page.mouse.move(683, 384);
 }
 
-test('Potato plays: 200 Hz physics, the overlay names the level', async ({ page }) => {
+test('Potato plays: 180 Hz physics in the Worker, the overlay names the level', async ({ page }) => {
   const errors = watchErrors(page);
   await play(page, { preset: 'potato', overlay: true, mute: true });
   const c0 = await com(page);
@@ -29,7 +29,7 @@ test('Potato plays: 200 Hz physics, the overlay names the level', async ({ page 
   const c1 = await com(page);
   expect(Math.hypot(c1[0] - c0[0], c1[2] - c0[2])).toBeGreaterThan(0.5);
   await expect(page.locator('.panel.overlay')).toContainText('Potato');
-  await expect(page.locator('.panel.overlay')).toContainText('200 Hz');
+  await expect(page.locator('.panel.overlay')).toContainText('180 Hz (physics Worker)');
   await page.screenshot({ path: 'test-results/perf-potato.png' });
   expect(errors).toEqual([]);
 });
