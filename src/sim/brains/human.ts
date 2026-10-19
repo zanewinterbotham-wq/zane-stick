@@ -1,6 +1,6 @@
 // Human brain: turns the latest input snapshot into Commands. Lives in the sim so humans and bots share
 // one interface; the browser shell writes `latest` once per render frame (no DOM access here).
-import { neutralCommands, type Commands } from '../control/types';
+import { neutralCommands, type Commands, type PassCmd } from '../control/types';
 import { clamp } from '../math';
 import { catchPoint, dropPoint, incoming, OVERHEAD } from './returner';
 import { leadShoulder, type AthleteView, type Brain, type Perception } from './types';
@@ -15,6 +15,7 @@ export interface HumanInput {
   aimPitch: number;                 // elevation of the camera's aim above the horizontal (rad)
   /** Side shuffle (Roblox-style shift lock): face the camera's way, so A / D shuffle and S backpedals. */
   shiftLock?: boolean;
+  pass?: PassCmd | null;  // the shell sets it on the frame a scheme triggers a throw
 }
 
 /** Contact mode switches on when a tackle target is this close and roughly ahead, and off past the wider
@@ -63,6 +64,7 @@ export class HumanBrain implements Brain {
     c.shoulder = this.contact ? leadShoulder(p.athletes[p.self], this.nearest) : 0;
     c.dive = h.has('dive'); // one press runs a whole dive; holding changes nothing
     c.jump = h.has('jump'); // the same for a jump
+    c.pass = i.pass ?? null; // a throw scheme's one-shot pass (docs/passing.md)
     const sink = TORSO_SINK * Math.max(0, i.torso);
     c.sink = this.contact ? Math.max(sink, READY_SINK) : sink;
     c.lean = { fwd: i.torso, side: 0 };
