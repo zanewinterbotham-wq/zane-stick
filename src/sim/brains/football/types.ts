@@ -16,8 +16,9 @@ export interface Read { target: number; key?: number; by: number }
 export interface PassAssign { kind: 'pass'; drop: 0 | 3 | 5 | 7; reads: Read[]; hot?: number; checkdown?: number; scramble: boolean }
 export interface ManAssign { kind: 'man'; target: number; press: boolean; leverage: 'inside' | 'outside'; help: 'deep' | 'inside' | 'none' }
 export type ZoneKind = 'flat' | 'hook' | 'curl' | 'deep-third' | 'deep-half' | 'deep-quarter' | 'middle';
-/** side: which part of the field (+1 the left of the offense's view, −1 the right, 0 the middle). */
-export interface ZoneAssign { kind: 'zone'; zone: ZoneKind; side: -1 | 0 | 1 }
+/** side: which part of the field (+1 the left of the offense's view, −1 the right, 0 the middle); inside: a deep
+ *  quarter's inside one (a safety's) on that side, not the outside one (a corner's). Landmarks: sense.ts zoneSpot. */
+export interface ZoneAssign { kind: 'zone'; zone: ZoneKind; side: -1 | 0 | 1; inside?: boolean }
 export interface BlockAssign { kind: 'block'; target?: number }
 export interface RushAssign { kind: 'rush'; lane?: number }
 export interface RunAssign { kind: 'run' }
