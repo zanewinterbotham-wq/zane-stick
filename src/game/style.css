@@ -41,6 +41,11 @@ table.controls .keys-cell { color: var(--accent); white-space: nowrap; }
 table.controls .bind { padding: 2px 8px; margin-right: 4px; font-size: 12px; cursor: pointer; }
 table.controls .bind:hover { background: #2c4431; }
 @media (max-width: 700px) { .keylist { display: none; } }
+.passhud { bottom: 12px; left: 50%; transform: translateX(-50%); text-align: center; max-width: min(460px, 70vw); font-size: 12px; color: var(--dim); }
+.passhud .pass-text { white-space: pre-line; }
+.passhud .pass-text::first-line { color: var(--accent); font-weight: 700; font-size: 14px; }
+.passhud .meter { margin: 6px auto 0; height: 8px; width: min(240px, 50vw); background: #24362a; border: 1px solid #3c5440; border-radius: 4px; overflow: hidden; }
+.passhud .meter i { display: block; height: 100%; width: 0; background: var(--accent); }
 .speedo { bottom: 12px; right: 12px; text-align: right; line-height: 1.2; min-width: 110px; }
 .speedo b { font-size: 34px; color: var(--accent); }
 .speedo span { color: var(--dim); }

@@ -7,6 +7,7 @@ import { AnatomyOverlay } from './anatomy';
 import { GORE_LEVELS, InjuryEffects } from './effects';
 import { buildBarrier, buildField } from './field';
 import { LandingMarker } from './landing';
+import { PassAim } from './passAim';
 import { loadStadium, OPEN_FIELD, stadiumById, type Stadium, type StadiumScene } from './stadium';
 import { ExpressionTracker } from '../expressions';
 import type { Expression } from './brows';
@@ -51,6 +52,8 @@ export class GameRenderer {
   }
   /** Target ring where a loose ball in the air will land (render/landing.ts). */
   readonly landing = new LandingMarker();
+  /** The QB throw scheme's aim aids (main.ts sets them each frame). */
+  readonly passAim = new PassAim();
   /** Render time of the last frame (ms) and the last frame's draw calls. */
   lastMs = 0;
   private lastFrame = performance.now();
@@ -74,7 +77,7 @@ export class GameRenderer {
     const sc = this.sun.shadow.camera as THREE.OrthographicCamera;
     sc.left = -12; sc.right = 12; sc.top = 12; sc.bottom = -12; sc.near = 1; sc.far = 100;
     this.scene.add(this.sun, this.sun.target);
-    this.scene.add(buildField(quality.detail), this.effects.root, this.landing.root);
+    this.scene.add(buildField(quality.detail), this.effects.root, this.landing.root, this.passAim.root);
     this.barrier = buildBarrier();
     this.scene.add(this.barrier);
     this.resize();

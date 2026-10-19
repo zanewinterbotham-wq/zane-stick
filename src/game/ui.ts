@@ -106,12 +106,26 @@ export class Hud {
   private net = el('div', { class: 'panel netbadge mono', 'aria-label': 'Connection' });
   private roster = el('div', { class: 'panel roster-hud', 'aria-label': 'Players' });
   private count = el('div', { class: 'countdown', 'aria-live': 'assertive' });
+  /** QB throw scheme: its name and controls, and the power / touch meter. */
+  private pass = el('div', { class: 'panel passhud', 'aria-label': 'Throw scheme' });
+  private passText = el('div', { class: 'pass-text' });
+  private meterBar = el('i');
+  private meter = el('div', { class: 'meter', role: 'meter', 'aria-label': 'Throw power' }, this.meterBar);
   private shown = new Map<HTMLElement, string>();
   constructor() {
-    this.root.append(this.status, this.keys, this.overlay, this.result, this.toast, this.speedo, this.net, this.roster, this.count);
+    this.pass.append(this.passText, this.meter);
+    this.root.append(this.status, this.keys, this.overlay, this.result, this.toast, this.speedo, this.net, this.roster, this.count, this.pass);
     this.showResult(null);
     this.setOverlay(null);
-    for (const e of [this.net, this.roster, this.count]) e.style.display = 'none';
+    for (const e of [this.net, this.roster, this.count, this.pass]) e.style.display = 'none';
+  }
+  /** The throw scheme panel (null: hidden) and its meter (0..1; null: no meter now). */
+  setPass(text: string | null, meter: number | null = null) {
+    this.put(this.pass, text, () => [this.passText, this.meter]);
+    if (text === null) return;
+    this.passText.textContent = text;
+    this.meter.style.visibility = meter === null ? 'hidden' : '';
+    this.meterBar.style.width = `${((meter ?? 0) * 100).toFixed(1)}%`;
   }
   /** Show `sig`'s content in `e` (built only when it changes), or hide it. */
   private put(e: HTMLElement, sig: string | null, build: () => (Node | string)[]) {
