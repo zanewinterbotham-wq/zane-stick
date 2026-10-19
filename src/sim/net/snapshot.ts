@@ -3,21 +3,21 @@
 // The replica holds a Play built from the same 'start' message but never steps it: each render frame it interpolates
 // the two snapshots around (newest time − delay), writes the pose into the scene (forward pass only) and copies the
 // meta in. Pure TypeScript: no DOM, no clock (the caller passes its own time). Size at the standard body detail:
-// 551 bytes for 2 athletes, 5171 for 22 (tests/net.test.ts), so qpos stays float32 (positions to ~4 µm at 60 m);
+// 596 bytes for 2 athletes, 5216 for 22 (tests/net-sim.test.ts), so qpos stays float32 (positions to ~4 µm at 60 m);
 // quantising (joint angles int16, positions mm) would only be worth it past ~30 athletes.
 import type { Gait } from '../control/types';
 import { BREAK, type InjuryEvent } from '../injury';
 import { clamp } from '../math';
-import type { Play, RepEnd } from '../modes/play';
+import { PASS_STATES, type Play, type RepEnd } from '../modes/play';
 
 /** First byte of every binary game message. */
 export const MSG = { snap: 1, input: 2 } as const;
-const VERSION = 2;
+const VERSION = 3;
 const GAITS: Gait[] = ['walk', 'jog', 'sprint'];
 /** What broke, by index (injury.ts BREAK's names, then a knockout). */
 const WHAT = [...new Set(Object.values(BREAK).map((b) => b.what)), 'ko'];
 const HEAD = 255;
-const HEADER = 20, PER_ATHLETE = 19, PLAY = 39, PER_INJURY = 28;
+const HEADER = 20, PER_ATHLETE = 19, PLAY = 83, PER_INJURY = 28;
 const enc = new TextEncoder(), dec = new TextDecoder();
 
 /** The host's play now: header, qpos as float32, per-athlete meta, play meta, every injury so far (rare, and sent
@@ -45,6 +45,11 @@ export function encodeSnapshot(play: Play): ArrayBuffer {
   }
   i8(w.ballCarrier); i8(play.recoveredBy); u8(Math.min(255, play.fumbles)); i8(play.scorer); v.setInt16(o, play.points, true); o += 2; u8(play.impetus);
   f64(play.repStart); f64(play.endTime); f32(w.impact.closingSpeed); f32(w.impact.peakForce); f64(w.impact.firstContactTime);
+  // the pass: its state, the passer, and the throw (athlete −1: none yet)
+  const lp = play.lastPass;
+  u8(PASS_STATES.indexOf(play.pass)); i8(play.passer); i8(lp?.athlete ?? -1); f64(lp?.time ?? 0);
+  for (const x of [...(lp?.at ?? [0, 0, 0]), ...(lp?.to ?? [0, 0, 0])]) f32(x);
+  unit(lp?.loft ?? 0); f32(lp?.speed ?? 0); f32(lp?.error ?? 0);
   for (const e of inj) {
     const a = w.athletes[e.athlete], j = e.kind === 'ko' ? HEAD : a.plan.joints.findIndex((x) => x.name === e.joint);
     u8(e.athlete); u8(e.kind === 'ko' ? 1 : 0); u8(j); u8(WHAT.indexOf(e.what)); f32(e.pos[0]); f32(e.pos[1]); f32(e.pos[2]); f32(e.load); f64(e.time);
@@ -94,6 +99,9 @@ export function applyMeta(play: Play, s: Snapshot) {
   }
   w.ballCarrier = i8(); play.recoveredBy = i8(); play.fumbles = u8(); play.scorer = i8() as -1 | 0 | 1; play.points = v.getInt16(o, true); o += 2; play.impetus = (u8() & 1) as 0 | 1;
   play.repStart = f64(); play.endTime = f64(); w.impact.closingSpeed = f32(); w.impact.peakForce = f32(); w.impact.firstContactTime = f64();
+  play.pass = PASS_STATES[u8()] ?? 'none'; play.passer = i8();
+  const pa = i8(), pt = f64(), at: [number, number, number] = [f32(), f32(), f32()], to: [number, number, number] = [f32(), f32(), f32()], loft = u8() / 255, speed = f32(), error = f32();
+  play.lastPass = w.lastPass = pa < 0 ? null : { athlete: pa, time: pt, at, to, loft, speed, error };
   for (let k = 0; k < s.injuries; k++) {
     const ai = u8(), ko = u8() === 1, j = u8(), what = WHAT[u8()] ?? 'ko', pos: [number, number, number] = [f32(), f32(), f32()], load = f32(), time = f64();
     if (k < w.injuries.length) continue; // already shown
