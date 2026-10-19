@@ -3,7 +3,7 @@
 // rusher, or never gets away, is blocked: a loose ball, live for both teams (scoop it and score). One that clears
 // the line untouched is away; a punter brought down with the ball is a stop.
 import type { Vec3 } from '../math';
-import { ballTouches, goalposts, HOLD, KICK_RULES, kick, lob, near, ownYard, rethink, row, SMOTHER, spotVerdict } from './kicks';
+import { ballTouches, goalposts, hold, KICK_RULES, kick, lob, near, ownYard, rethink, row, SMOTHER, spotVerdict } from './kicks';
 import { attackDir, YD } from './rules';
 import type { ModeDef, PlayerSpec } from './types';
 
@@ -31,7 +31,7 @@ export const PUNT_BLOCK: ModeDef = {
     return {
       players, ball: { holder: P }, rules: KICK_RULES, props: goalposts(),
       // the punter waits for the snap-to-kick time; afterwards everyone plays the ball
-      brain: (play, i) => (i === P && !kicked && play.world.ballCarrier === P ? HOLD : null),
+      brain: (play, i, rng) => (i === P && !kicked && play.world.ballCarrier === P ? hold(rng) : null),
       step(play) {
         const w = play.world;
         if (!kicked) {

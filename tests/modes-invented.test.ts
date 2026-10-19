@@ -5,6 +5,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { ScriptBrain } from '../src/sim/brains/script';
 import { GateBrain } from '../src/sim/brains/gate';
 import { DEFAULT_OPEN_FIELD } from '../src/sim/drills/openField';
+import { PRESETS } from '../src/game/presets';
+import { wrapAngle } from '../src/sim/math';
 import { Play } from '../src/sim/modes/play';
 import { MODES, resolveOptions } from '../src/sim/modes/registry';
 import type { ModeOptions } from '../src/sim/modes/types';
@@ -57,6 +59,51 @@ describe('mode rules', () => {
     console.log('gauntlet woke tacklers', woke, 'ended', r.ended, r.verdict);
     expect(woke.length).toBeGreaterThan(0);
     expect(woke.length).toBeLessThanOrEqual(3);
+    r.p.destroy();
+  }, 240_000);
+
+  // the human stands (or walks across the field) outside every tackler's wake-up distance, so they all wait throughout
+  async function waiting(cfg: object, human: ScriptBrain, secs: number) {
+    const def = mode('gauntlet'), p = await Play.create(mujocoEngine, { ...CFG, ...cfg }, def, resolveOptions(def, { wake: 6 }), human, 0);
+    const w = p.world, ids = w.athletes.map((_, i) => i).filter((i) => p.team(i) === 1), look = (i: number) => w.perception(i).athletes[i].heading;
+    const spot = ids.map((i) => [...w.scene.athletes[i].state.com]), h0 = ids.map(look), far = ids.map(() => 0), turn = ids.map(() => 0);
+    let down = false;
+    for (let k = 0; k < Math.round(secs / w.dt) && !p.ended; k++) {
+      p.step();
+      ids.forEach((i, j) => {
+        const c = w.scene.athletes[i].state.com;
+        far[j] = Math.max(far[j], Math.hypot(c[0] - spot[j][0], c[2] - spot[j][2]));
+        turn[j] = Math.max(turn[j], Math.abs(wrapAngle(look(i) - h0[j])));
+        down ||= !!w.athletes[i].downBy;
+      });
+    }
+    expect(p.ended).toBeNull();
+    expect(ids.every((i) => p.brains[i] instanceof GateBrain && !(p.brains[i] as GateBrain).awake)).toBe(true);
+    return { p, ids, spot, far, turn, down, unstable: w.scene.stats().instabilities };
+  }
+
+  it('gauntlet: a waiting tackler stays alive at his spot (stance, weight shifts, glances) without falling', async () => {
+    const r = await waiting({ physics: PRESETS.minimum.physics }, new ScriptBrain(() => {}), 10); // the low-end tier idles
+    console.log('idle tacklers: furthest from spot (m)', r.far.map((x) => x.toFixed(2)), 'turned up to (rad)', r.turn.map((x) => x.toFixed(2)));
+    expect(r.down).toBe(false);
+    expect(Math.max(...r.far)).toBeLessThan(1.5);
+    expect(Math.min(...r.turn)).toBeGreaterThan(0.2); // he glances round, not a statue
+    expect(r.unstable).toBe(0);
+    r.p.destroy();
+  }, 240_000);
+
+  it('gauntlet, active bots: a waiting tackler mirrors the runner across the field and comes up into his zone', async () => {
+    const r = await waiting({ physics: PRESETS.high.physics, activeBots: PRESETS.high.activeBots }, new ScriptBrain((t, _p, c) => { if (t < 2.5) { c.move = { x: 1, z: 0 }; c.gait = 'jog'; } }), 9);
+    const w = r.p.world, run = w.scene.athletes[0].state.com;
+    r.ids.forEach((i, j) => {
+      const c = w.scene.athletes[i].state.com;
+      console.log(`active tackler ${i}: x ${c[0].toFixed(2)} (runner ${run[0].toFixed(2)}), came up ${(r.spot[j][2] - c[2]).toFixed(2)} m`);
+      expect(Math.abs(c[0] - run[0])).toBeLessThan(1.5);
+      expect(r.spot[j][2] - c[2]).toBeGreaterThan(2);
+      expect(r.spot[j][2] - c[2]).toBeLessThan(3.6);
+    });
+    expect(r.down).toBe(false);
+    expect(r.unstable).toBe(0);
     r.p.destroy();
   }, 240_000);
 
