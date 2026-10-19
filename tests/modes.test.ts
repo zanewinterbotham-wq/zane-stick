@@ -38,7 +38,7 @@ describe('registry', () => {
   it('stored options are validated: out of range clamps to the step, wrong types and unknown choices fall back', () => {
     const carry = MODES.find((m) => m.id === 'carry')!, ok = MODES.find((m) => m.id === 'oklahoma')!;
     expect(resolveOptions(carry, { tacklers: 9, blockers: 1.4, outOfBounds: 'yes', timeLimit: 33 })).toEqual({ tacklers: 3, blockers: 1, outOfBounds: false, timeLimit: 35 });
-    expect(resolveOptions(ok, { role: 'quarterback', width: -2 })).toEqual({ role: 'defender', width: 3, outOfBounds: true });
+    expect(resolveOptions(ok, { role: 'quarterback', width: -2 })).toEqual({ role: 'defender', width: 3, blocker: true, outOfBounds: true });
   });
 });
 
