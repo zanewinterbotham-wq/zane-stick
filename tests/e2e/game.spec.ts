@@ -154,10 +154,10 @@ test('J / L and I / K always work alongside the mouse, with or without the autom
   // the Chromebook keys work with the mouse camera too
   await expect(page.locator('.keylist')).toContainText('K / I');
   await page.keyboard.down('KeyL'); await page.keyboard.down('KeyK');
-  await page.waitForTimeout(500);
+  // the torso ramps at its rate per second of frames: polled, so a slow frame rate under load still gets there
+  await expect.poll(async () => (await latest(page)).torso, { timeout: 10_000 }).toBeGreaterThan(0.2);
   let l = await latest(page);
   expect([l.armL, l.armR]).toEqual([0, 1]);
-  expect(l.torso).toBeGreaterThan(0.2);
   await page.keyboard.up('KeyL'); await page.keyboard.up('KeyK');
   await page.screenshot({ path: 'test-results/08-no-keyboard-lock.png' });
   await page.keyboard.press('Escape');

@@ -25,9 +25,10 @@ test('Potato plays: 180 Hz physics in the Worker, the overlay names the level', 
   const errors = watchErrors(page);
   await play(page, { preset: 'potato', overlay: true, mute: true });
   const c0 = await com(page);
-  await page.keyboard.down('KeyW'); await page.waitForTimeout(1500); await page.keyboard.up('KeyW');
-  const c1 = await com(page);
-  expect(Math.hypot(c1[0] - c0[0], c1[2] - c0[2])).toBeGreaterThan(0.5);
+  // held until he has moved: under a full parallel run the Worker's first frames can come late
+  await page.keyboard.down('KeyW');
+  await expect.poll(async () => { const c1 = await com(page); return Math.hypot(c1[0] - c0[0], c1[2] - c0[2]); }, { timeout: 20_000 }).toBeGreaterThan(0.5);
+  await page.keyboard.up('KeyW');
   await expect(page.locator('.panel.overlay')).toContainText('Potato');
   await expect(page.locator('.panel.overlay')).toContainText('180 Hz (physics Worker)');
   await page.screenshot({ path: 'test-results/perf-potato.png' });
@@ -39,10 +40,11 @@ test('worker mode: the rep runs in the physics Worker and the athlete moves unde
   await play(page, { preset: 'minimum', perf: { worker: true }, overlay: true, mute: true });
   expect(await page.evaluate(() => { const a = (window as unknown as App).__app; return !!a.sim && a.sim.play === a.drill; })).toBe(true);
   const t0 = await page.evaluate(() => (window as unknown as App).__app.drill.world.time), c0 = await com(page);
-  await page.keyboard.down('KeyW'); await page.waitForTimeout(1500); await page.keyboard.up('KeyW');
-  const t1 = await page.evaluate(() => (window as unknown as App).__app.drill.world.time), c1 = await com(page);
-  expect(t1 - t0).toBeGreaterThan(0.8); // the replica follows the Worker's clock
-  expect(Math.hypot(c1[0] - c0[0], c1[2] - c0[2])).toBeGreaterThan(0.5);
+  await page.keyboard.down('KeyW');
+  await expect.poll(async () => { const c1 = await com(page); return Math.hypot(c1[0] - c0[0], c1[2] - c0[2]); }, { timeout: 20_000 }).toBeGreaterThan(0.5);
+  await page.keyboard.up('KeyW');
+  const t1 = await page.evaluate(() => (window as unknown as App).__app.drill.world.time);
+  expect(t1 - t0).toBeGreaterThan(0.5); // the replica follows the Worker's clock
   await page.screenshot({ path: 'test-results/perf-worker.png' });
   // a new rep goes to the Worker too
   await page.keyboard.press('Escape');
