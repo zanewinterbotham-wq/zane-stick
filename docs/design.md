@@ -407,7 +407,7 @@ Ctrl/Alt/Search combos). Left hand: movement; right hand: body parts.
 | Grip left / right | U / O | X / B |
 | Wrap & squeeze | K | A |
 | Shoot hands | I | Y |
-| Lower / raise the pads (one control: the trunk leans and the hips sink together) | Scroll up, K / scroll down, I | D-pad down or LT / D-pad up |
+| Lower / raise the pads (one control: the trunk leans and the hips sink together; a big hit raises lowered pads back to running) | Scroll up, K / scroll down, I | D-pad down or LT / D-pad up |
 | Thrust hips | H | RS click (R3) |
 | Lean fwd/back/left/right | Arrow keys | Right stick |
 | Chop feet | C | LS click (L3) |

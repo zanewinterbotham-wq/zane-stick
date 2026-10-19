@@ -195,7 +195,7 @@ function controlsTab({ host, status, reopen }: Ctx) {
     table,
     el('div', { class: 'set-list' },
       mode('Sprint', () => s.sprintToggle, (on) => (s.sprintToggle = host.input.sprintToggle = on))),
-    el('p', { class: 'sub', text: 'Click the field to capture the mouse; Esc frees it and pauses. Lowering the pads also gets the hips low.' }),
+    el('p', { class: 'sub', text: 'Click the field to capture the mouse; Esc frees it and pauses. Lowering the pads also gets the hips low; after a big hit they come back up to running.' }),
     el('div', { class: 'items' }, reset, test),
   ];
 }

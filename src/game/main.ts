@@ -438,6 +438,7 @@ class App {
     this.cam.addShake(fx.shake);
     rumble(fx.rumble);
     this.hud.flash('BIG HIT');
+    if (w.hits.some((h) => h.a === d.human || h.b === d.human)) this.input.padsUp(); // given or taken: back to running
     if (fx.slowMo && this.settings.slowMo && now / 1000 > this.slowUntil) { this.timeScale = 0.3; this.slowUntil = now / 1000 + 0.9; }
     this.cam.punch(n[0], n[2], fx.punch);
     if (!fx.stopMs || now < this.nextStop) return false;

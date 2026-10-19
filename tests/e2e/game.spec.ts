@@ -79,8 +79,15 @@ test('title loads, drill starts, mouse and keyboard controls reach the brain, co
   // about ten notches up reach a level trunk (torso 1); scrolling down raises it again
   for (let i = 0; i < 9; i++) await page.mouse.wheel(0, -100);
   await expect.poll(async () => (await latest(page)).torso).toBeGreaterThan(0.97);
+  // a big hit (given or taken) brings lowered pads back up to the running position; a raised torso stays
+  const padsUp = () => page.evaluate(() => (window as unknown as { __app: { input: { padsUp(): void } } }).__app.input.padsUp());
+  await padsUp();
+  await expect.poll(async () => (await latest(page)).torso).toBeLessThan(0.02);
   await page.mouse.wheel(0, 1500);
   await expect.poll(async () => (await latest(page)).torso).toBeLessThan(-0.3);
+  await padsUp();
+  await page.waitForTimeout(200);
+  expect((await latest(page)).torso).toBeLessThan(-0.3);
   await page.evaluate(() => (window as unknown as { __app: { input: { resetTorso(): void } } }).__app.input.resetTorso());
   await page.mouse.up({ button: 'left' }); await page.mouse.up({ button: 'right' });
   await page.keyboard.down('Space');

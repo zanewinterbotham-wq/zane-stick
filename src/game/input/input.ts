@@ -119,6 +119,8 @@ export class InputManager {
 
   clearLook() { this.mouse.x = this.mouse.y = 0; }
   resetTorso() { this.torso = [0, 0]; this.torsoTarget = [0, 0]; this.mouse.wheel = 0; }
+  /** A big hit: lowered pads come back up to the running position (torso 0, eased); a raised torso stays. */
+  padsUp(player = 0) { this.torsoTarget[player] = Math.min(0, this.torsoTarget[player]); this.mouse.wheel = 0; }
   /** New rep: every toggle (side shuffle, sprint toggle) starts off. */
   resetToggles() {
     this.shiftLock = [false, false]; this.sprintOn = [false, false];
