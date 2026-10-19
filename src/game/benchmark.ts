@@ -59,18 +59,17 @@ export async function benchRender(canvas: HTMLCanvasElement, p: Preset, seconds 
   return frames[Math.floor(frames.length * 0.5)] ?? 16.7; // median frame interval
 }
 
-async function benchOne(canvas: HTMLCanvasElement, name: PresetName, seconds: number, skin: string): Promise<BenchResult> {
-  const p = PRESETS[name];
-  const phys = await benchPhysics(p, seconds);
-  const frame = await benchRender(canvas, p, seconds, skin);
-  return { preset: name, physicsMsPerSimSecond: phys, physicsRealtimeShare: phys / 1000, renderMsPerFrame: frame, fpsEstimate: 1000 / Math.max(frame, (phys / 1000) * frame + frame * 0.1) };
-}
+const result = (name: PresetName, phys: number, frame: number): BenchResult =>
+  ({ preset: name, physicsMsPerSimSecond: phys, physicsRealtimeShare: phys / 1000, renderMsPerFrame: frame, fpsEstimate: 1000 / Math.max(frame, (phys / 1000) * frame + frame * 0.1) });
 
-/** Every level (the benchmark screen and its report). */
+/** Every level (the benchmark screen and its report): all the physics first, then all the rendering (a frame's GPU
+ *  work still in flight would slow the physics measured after it, most with software rendering). */
 export async function runBenchmark(canvas: HTMLCanvasElement, presets: PresetName[] = PRESET_ORDER, skin = DEFAULT_SETTINGS.skin, seconds = 1): Promise<BenchResult[]> {
-  const out: BenchResult[] = [];
   await benchPhysics(PRESETS.minimum, 0.5); // the JIT warms up on this, so the first level measured is not slowed by it
-  for (const name of presets) out.push(await benchOne(canvas, name, seconds, skin));
+  const phys: number[] = [];
+  for (const name of presets) phys.push(await benchPhysics(PRESETS[name], seconds));
+  const out: BenchResult[] = [];
+  for (const [k, name] of presets.entries()) out.push(result(name, phys[k], await benchRender(canvas, PRESETS[name], seconds, skin)));
   return out;
 }
 
@@ -78,22 +77,23 @@ export async function runBenchmark(canvas: HTMLCanvasElement, presets: PresetNam
  *  at 60 fps, half at 30) and a frame renders within its target frame rate (15 % slack). */
 export function fits(r: BenchResult): boolean {
   const p = PRESETS[r.preset];
-  return r.physicsRealtimeShare < (p.targetFps >= 60 ? 0.35 : 0.5) && r.renderMsPerFrame < 1000 / p.targetFps * 1.15;
+  return physicsFits(r.preset, r.physicsRealtimeShare) && r.renderMsPerFrame < 1000 / p.targetFps * 1.15;
 }
+const physicsFits = (name: PresetName, share: number) => share < (PRESETS[name].targetFps >= 60 ? 0.35 : 0.5);
 
 /** Highest level that holds up (Potato when none does). */
 export function chooseBest(rs: BenchResult[]): PresetName {
   return [...PRESET_ORDER].reverse().find((n) => { const r = rs.find((x) => x.preset === n); return r && fits(r); }) ?? 'potato';
 }
 
-/** First launch: measure from the top of the ladder down and stop at the first level that holds up (a fast device
- *  measures one level, a slow one all of them). */
+/** First launch: from the top of the ladder down, the first level whose physics holds up, then from there down the
+ *  first that also renders in time (a fast device measures one level of each, a slow one more). Potato is the floor. */
 export async function autoChoose(canvas: HTMLCanvasElement, skin = DEFAULT_SETTINGS.skin): Promise<PresetName> {
   await benchPhysics(PRESETS.minimum, 0.3); // JIT warm-up
-  for (const name of [...PRESET_ORDER].reverse()) {
-    if (name === 'potato') break;
-    if (fits(await benchOne(canvas, name, 0.8, skin))) return name;
-  }
+  const down = [...PRESET_ORDER].reverse().filter((n) => n !== 'potato');
+  let k = 0;
+  while (k < down.length && !physicsFits(down[k], (await benchPhysics(PRESETS[down[k]], 0.8)) / 1000)) k++;
+  for (; k < down.length; k++) if (await benchRender(canvas, PRESETS[down[k]], 0.8, skin) < 1000 / PRESETS[down[k]].targetFps * 1.15) return down[k];
   return 'potato';
 }
 

@@ -575,22 +575,25 @@ required; any CC0 sample used later is credited in `docs/realism-sources.md`.
 
 ## 14. Quality presets
 
-| Preset | Step rate | Solver iters | Body detail | Render scale | Shadows | Effects |
+Built (owner request 2026-10-18; details, measurements and what each level approximates in `performance.md`):
+
+| Preset | Step rate | Solver iters | Body detail | Render scale | Shadows | Approximations |
 |---|---|---|---|---|---|---|
-| Minimum (Phase 1) | 240 Hz | 20 | Minimum | 0.6 | off | off |
-| Low | 240 Hz | low | Standard | 0.75 | off | off |
-| Medium | 240 Hz | medium | Standard | 1.0 | basic | low |
-| High (Phase 1) | 480 Hz | 40 | Standard | 1.0 | soft | on |
-| Ultra (desktop) | 960 Hz | max | Ultra | 1.0–1.5 | soft hi-res | all |
-| Custom | any | any | any | any | any | any |
+| Potato | 180 Hz | 20 | Minimum | 0.5, 30 fps cap | off | solver tolerance, pyramid friction, far-bot level of detail, physics Worker |
+| Low (stored as `minimum`) | 240 Hz | 20 | Minimum | 0.6 | off | none |
+| Medium | 240 Hz | 30 | Standard | 0.85 | 1024 map | none |
+| High | 480 Hz | 40 | Standard | 1.0 | 2048 map | none |
+| Ultra | 480 Hz (High's physics, bit for bit) | 40 | Standard | 1.0, density cap 3x | 4096 map | none |
+| Custom | the Graphics tab's Advanced overrides, any knob over any level |
 
-\*Final step rates are set from the benchmark (see `physics-benchmark.md`). Phase 1 ships Minimum
-and High. First launch runs a ~5 s automatic benchmark and picks the highest preset that holds the
-target frame rate. One control (menu or `=` key) changes preset; changes apply at the next rep.
-Dynamic resolution may change render scale during play. The consistency test checks outcomes match
-across presets within a documented tolerance.
+The earlier plan for Ultra (960 Hz and an Ultra body with thoracic segments and finger groups) is not built: the
+owner asked that the highest level play as today's High. First launch measures from the top of the ladder down and
+picks the highest level that holds its target frame rate; changes apply at the next rep. The consistency test
+(`tests/realism.test.ts`) checks every level against High within documented tolerances and Low, Medium, High and
+Ultra against the pre-ladder code bit for bit.
 
-Performance overlay (toggle): FPS, physics ms/frame, render ms/frame, bodies, contacts, assist level.
+Performance overlay (toggle): level, FPS, physics ms/frame and share of a core, render ms/frame, bodies, contacts,
+step rate and physics thread, assist level.
 
 ## 15. Testing strategy
 
@@ -625,8 +628,8 @@ Performance overlay (toggle): FPS, physics ms/frame, render ms/frame, bodies, co
 **Phase 2** — full move sets, either side, second bot and blocker, bot difficulty, physical get-up,
 rebinding screen, local two player.
 **Phase 3** — remaining drills, sandbox, position/level presets, replay, technique grade, feel pass.
-**Phase 4** — full preset ladder + Custom + advanced panel, Chromebook optimisation, Electron app
-with Ultra and cross-origin isolation.
+**Phase 4** — full preset ladder + Custom + advanced panel, Chromebook optimisation (built early at the owner's
+request, 2026-10-18: `performance.md`), Electron app with Ultra and cross-origin isolation.
 **Phase 5** — learned-controller groundwork: headless training env, Gymnasium bridge, parallel envs,
 reward modules (reference-motion term optional, off by default, no mocap shipped), policy export,
 in-game loading per player, short end-to-end test, training guide. CPU training by default; check

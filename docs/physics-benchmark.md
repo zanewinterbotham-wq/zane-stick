@@ -120,6 +120,9 @@ so swapping it doesn't touch the rest of the sim.
 
 ## In-game preset benchmark (idle desktop, 2026-10-18)
 
+(Superseded by the five-level ladder and its measurements in `performance.md`; kept as the record of the
+two-preset build.)
+
 `npx tsx bench/presets/run.ts` on the production build: headless Chrome 156, Ryzen 7 7800X3D, SwiftShader
 rendering, CPU throttled with DevTools to approximate slower machines (6x ≈ a low-end school Chromebook).
 Three athletes with the game's own controller (active ragdoll: animator + tracking + support), jogging into
