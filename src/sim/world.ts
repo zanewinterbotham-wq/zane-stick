@@ -3,13 +3,14 @@
 import { buildBody, type AthleteParams, type BodyPlan, type Detail } from './anatomy/body';
 import { BALL, GRIP_TIMECONST, EQUIPMENT } from './anatomy/equipment';
 import type { Brain, Perception, AthleteView } from './brains/types';
-import { neutralCommands, type BodyView, type Commands, type FootContact, type MotorController } from './control/types';
+import { neutralCommands, type BodyView, type Commands, type FootContact, type MotorController, type PassCmd } from './control/types';
 import { clamp, headingOf, lerp, qaxis, qconj, qlog, qmul, qrot, type Quat, type Vec3 } from './math';
 import { MuscleSet, newTargets, type MuscleTargets } from './muscles';
 import type { AthleteState, LinkRef, PhysicsEngine, PhysicsScene, PropDesc, SolverOptions } from './physics/engine';
 import { Rng } from './rng';
 import { InjuryState, type InjuryEvent } from './injury';
 import { weightSupport, type SupportSettings, type SupportState } from './anim/types';
+import { THROW, throwError, throwVelocity, type PassRecord } from './throw';
 
 /** Physics precision of a scene (a quality preset's, set only between reps). The solver options and `lod` are the
  *  low presets' approximations; absent, the scene is exactly as it always was. */
@@ -125,6 +126,8 @@ export class Athlete {
   injury!: InjuryState;
   /** World step of the last motor plan (athlete level of detail). */
   planned = -1;
+  /** The throw being played (World.throwStep): time into the motion (s), the pass, the throwing hand, released yet. */
+  throwing: { t: number; cmd: PassCmd; hand: 0 | 1; released: boolean } | null = null;
 
   constructor(readonly index: number, readonly setup: AthleteSetup, readonly plan: BodyPlan, readonly controller: MotorController, readonly brain: Brain) {
     this.muscles = new MuscleSet(plan);
@@ -159,6 +162,11 @@ export class World {
   ballCarrier = -1;
   /** Index of the ball among the props (a prop named 'ball'), or −1. */
   readonly ballIndex: number;
+  /** Passing (docs/passing.md): the rules' say on a pass command from athlete i (Play sets it; absent: any holder may
+   *  throw), told of each throw as the ball leaves the hand, and the last throw. */
+  passAllowed?: (i: number, cmd: PassCmd) => boolean;
+  onPass?: (rec: PassRecord) => void;
+  lastPass: PassRecord | null = null;
 
   private constructor(readonly scene: PhysicsScene, readonly setup: WorldSetup) {
     this.rng = new Rng(setup.seed);
@@ -193,8 +201,10 @@ export class World {
   get dt() { return this.scene.dt; }
 
   view(a: Athlete): BodyView {
+    const th = a.throwing;
     return { plan: a.plan, muscles: a.muscles, state: this.scene.athletes[a.index].state, dt: this.dt, time: this.time, feet: a.feet, playerContact: a.playerContact, support: this.supported(a) ? a.support : undefined,
-      grips: [a.grips[0].active && (a.grips[0].target?.athlete ?? -1) >= 0, a.grips[1].active && (a.grips[1].target?.athlete ?? -1) >= 0], reachTo: a.reachTo, hurt: a.injury };
+      grips: [a.grips[0].active && (a.grips[0].target?.athlete ?? -1) >= 0, a.grips[1].active && (a.grips[1].target?.athlete ?? -1) >= 0], reachTo: a.reachTo, hurt: a.injury,
+      ...(th && { throwing: { t: th.t, at: th.cmd.at, hand: th.hand } }) };
   }
 
   perception(self: number, shared = this.perceive()): Perception { return { time: this.time, self, ...shared }; }
@@ -223,6 +233,7 @@ export class World {
     for (const a of this.athletes) {
       a.cmd = this.hurtCommands(a, a.injury.out ? neutralCommands() : a.brain.think(this.perception(a.index, seen), dt));
       for (const h of [0, 1] as const) a.reachTo[h] = this.raised(a, h) ? this.reachPoint(a, h) : null;
+      this.throwStep(a);
       // Athlete level of detail (low presets): far from play, a bot re-plans his motor targets on every other step
       // (half the bots on even steps, half on odd), over the time since his last plan, and his balance controller
       // rests while it has nothing to do; in between his muscles keep acting on his simulated body from the last
@@ -565,6 +576,48 @@ export class World {
     a.cmd = this.hurtCommands(a, a.cmd);
   }
 
+  /** Passing (docs/passing.md): a pass command from the ball holder starts the throwing motion (the animator plays it
+   *  from BodyView.throwing); at THROW.release the hand lets go and the ball leaves it. Ignored while a motion runs,
+   *  without the ball in hand, down, out of play, or when the rules say no. */
+  private throwStep(a: Athlete) {
+    const th = a.throwing;
+    if (th) {
+      th.t += this.dt;
+      if (!th.released && th.t >= THROW.release) this.release(a, th);
+      if (th.t >= THROW.end) a.throwing = null;
+      return;
+    }
+    const p = a.cmd.pass;
+    if (!p || this.ballCarrier !== a.index || a.downBy || a.injury.out || !(this.passAllowed?.(a.index, p) ?? true)) return;
+    const hand = this.gripping(a.index, { athlete: -1, seg: this.ballIndex });
+    if (hand >= 0) a.throwing = { t: 0, cmd: { at: [p.at[0], p.at[1], p.at[2]], loft: clamp(p.loft, 0, 1) }, hand: hand as 0 | 1, released: false };
+  }
+
+  /** The release: the ball leaves the hand on the trajectory to the pass's point (throw.ts), off by the passer's error
+   *  (seeded), its nose along the flight and spinning about it (a spiral). A ball lost during the motion stays lost. */
+  private release(a: Athlete, th: NonNullable<Athlete['throwing']>) {
+    th.released = true;
+    const bi = this.ballIndex, h = th.hand;
+    if (this.ballCarrier !== a.index || this.gripping(a.index, { athlete: -1, seg: bi }) !== h) return;
+    const s = this.scene.athletes[a.index].state, from = this.handPoint(a, h), at = th.cmd.at, loft = th.cmd.loft;
+    const pressured = this.athletes.some((o) => o.setup.team !== a.setup.team && Math.hypot(...sub3(this.scene.athletes[o.index].state.com, s.com)) < THROW.pressR);
+    const e = throwError(Math.hypot(at[0] - from[0], at[2] - from[2]), Math.hypot(s.comVel[0], s.comVel[2]), a.knock, pressured, loft);
+    const to: Vec3 = [at[0] + e * this.rng.gauss(), at[1] + 0.5 * e * this.rng.gauss(), at[2] + e * this.rng.gauss()];
+    let vel = throwVelocity(from, to, loft).vel;
+    // it leaves from just ahead of the hand along its flight, its tail clear of it: a ball let go against the palm was
+    // struck by the hand still closing on it (fingers would roll it off the hand; the hand model has none)
+    const n = Math.hypot(vel[0], vel[1], vel[2]) || 1;
+    for (let k = 0; k < 3; k++) from[k] += vel[k] / n * THROW.clear;
+    vel = throwVelocity(from, to, loft).vel;
+    this.releaseGrip(a.index, h);
+    // the opened hand does not close on the ball again on its way out, nor does the carry arm
+    a.grips[h].cooldown = THROW.end; a.cmd.carry = 0; this.ballCarrier = -1;
+    this.scene.placeProp(bi, from, noseAlong(vel));
+    this.scene.launchProp(bi, vel, [0, 0, THROW.spin]);
+    this.lastPass = { athlete: a.index, time: this.time, at: [at[0], at[1], at[2]], to, loft, speed: Math.hypot(vel[0], vel[1], vel[2]), error: Math.hypot(...sub3(to, at)) };
+    this.onPass?.(this.lastPass);
+  }
+
   /** Drill rules: put the ball against athlete ai's palm and grip it (a rep start, a recovery, or a hand-off from a
    *  broken arm: the possession rule standing in for what fingerless hands cannot do). The gap clears the contact
    *  margin, so the grip carries only the ball's own load, not a squeeze against the hand. */
@@ -752,6 +805,12 @@ const G = 9.81;
  *  far inside its surface the aim point lies. A loose ball is aimed at from further (the body bends to it): its
  *  surface within `ball` m of the shoulder, taken as a sphere of radius `ballR`. */
 const REACH = { grab: 0.07, aim: 0.9, into: 0.03, ball: 1.3, ballR: 0.1 };
+const sub3 = (a: ArrayLike<number>, b: ArrayLike<number>): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+/** The rotation that turns the prop's long axis (+z) along v. */
+function noseAlong(v: Vec3): Quat {
+  const n = Math.hypot(v[0], v[1], v[2]) || 1, c = v[2] / n, ax: Vec3 = [-v[1], v[0], 0];
+  return Math.hypot(ax[0], ax[1]) < 1e-9 ? (c > 0 ? [0, 0, 0, 1] : [1, 0, 0, 0]) : qaxis(ax, Math.acos(clamp(c, -1, 1)));
+}
 const quatAt = (a: Float64Array, k: number): Quat => [a[4 * k], a[4 * k + 1], a[4 * k + 2], a[4 * k + 3]];
 /** Pad level (design §6.5): pelvis drop below standing (m) at which an athlete counts as fully low, how much
  *  more impulse a fully low athlete takes for the same knock (assumption: a sunk, wide base), and the upward force
