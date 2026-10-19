@@ -15,13 +15,15 @@ export interface RootTarget {
   /** Dive stage: 'launch' = take-off push (the carry may push toward the full vel, y included, off contact);
    *  'flight' = ballistic, the support lets go entirely. */
   dive: 'none' | 'load' | 'launch' | 'flight';
+  /** Jump stage, as for a dive: 'launch' = the take-off push (y included), 'flight' = ballistic until the feet land. */
+  jump: 'none' | 'load' | 'launch' | 'flight';
   /** Hip-thrust level 0..1: the legs drive the body up, so the posture support leaves the weight to them. */
   thrust: number;
 }
 
-/** How much of its weight support the posture support may give (0..1): none through a dive or a hip thrust,
+/** How much of its weight support the posture support may give (0..1): none through a dive, a jump or a hip thrust,
  *  which rise on the legs' own push. */
-export const weightSupport = (r: RootTarget) => (r.dive === 'none' ? 1 - r.thrust : 0);
+export const weightSupport = (r: RootTarget) => (r.dive === 'none' && r.jump === 'none' ? 1 - r.thrust : 0);
 
 /** One frame of the procedural animation, per muscle dof (MuscleSet indices). */
 export interface AnimFrame {
@@ -49,7 +51,7 @@ export interface Animator {
 
 export const newFrame = (n: number): AnimFrame => ({
   q: new Float64Array(n), qd: new Float64Array(n), gain: new Float64Array(n).fill(1),
-  root: { vel: [0, 0, 0], height: 1, heading: 0, pitch: 0, roll: 0, dive: 'none', thrust: 0 },
+  root: { vel: [0, 0, 0], height: 1, heading: 0, pitch: 0, roll: 0, dive: 'none', jump: 'none', thrust: 0 },
   planted: [true, true], phase: 0, clip: 'idle',
 });
 

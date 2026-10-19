@@ -100,6 +100,8 @@ describe('procedural animator', () => {
     }],
     ['chop + carry', (_t, c) => { c.chopFeet = true; c.carry = 2; c.move = { x: 0.2, z: 0.3 }; }],
     ['dive', (t, c) => { c.move = { x: 0, z: 1 }; c.gait = 'sprint'; c.dive = t > 1; }],
+    ['jump', (t, c) => { c.jump = t > 0.3 && t < 0.4; c.armL = 1; c.aim = [0, 3, 1]; }],
+    ['running jump', (t, c) => { c.move = { x: 0, z: 1 }; c.gait = 'sprint'; c.jump = t > 1; }],
   ];
 
   it('keeps every target inside the joint limits and every gain in 0..1, at both detail levels', () => {
