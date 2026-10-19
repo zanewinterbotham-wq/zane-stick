@@ -34,6 +34,18 @@ def shore(y):
     return 180 - 0.55 * max(0.0, y - 110) + 0.3 * max(0.0, -y - 110)
 
 
+def shore_s(x):
+    """y of the waterline past the south (scoreboard) end: the coast turns the corner and runs behind it, bending away
+    south past the parking lot where the hillside rises."""
+    return -150 - 0.7 * max(0.0, -x - 60)
+
+
+def seaward(x, y):
+    """Signed distance past the waterline (positive in the sea), the two coasts joined by a rounded corner."""
+    a, b = x - shore(y), shore_s(x) - y
+    return (a + b + math.sqrt((a - b) ** 2 + 30 ** 2)) / 2
+
+
 PADS = [(46, 80, -92, -36, 1.0, 6.0)]  # the snack-bar terrace: x0 x1 y0 y1, height, blend margin
 
 
@@ -44,12 +56,12 @@ def H(x, y):
     h = max(UP * min(1.0, max(0.0, (x - BOWL_X) / 22)),       # far side: the slope the home stand is built into
             2.2 * sm((-x - BOWL_X) / 6),                       # near side: up to the parking lot
             5.5 * sm((y - BOWL_Y) / 13),                       # the school terrace
-            26 * sm((-y - BOWL_Y) / 95),                       # the green hillside
+            20 * sm((-y - BOWL_Y) / 80) * sm((-x - 40) / 60),  # the green hillside past the south-west corner
             16 * sm((-x - 130) / 110))                         # inland hills beyond the parking lot
     for x0, x1, y0, y1, z, mg in PADS:
         d = max(x0 - x, x - x1, y0 - y, y - y1, 0.0)
         h = z + (h - z) * sm(d / mg)
-    d = x - shore(y)                                           # the bluff, the beach and the sea floor
+    d = seaward(x, y)                                          # the bluff, the beach and the sea floor
     if d > -16:
         h += (-2.4 - h) * sm((d + 16) / 13)
     if d > 8:
@@ -225,7 +237,7 @@ def text(m, body, o, d, u, w, h, mat, bold=0.03, fit=None):
 def terrain(m, rnd):
     xs = sorted({-1500, -700, -450, -330, -260, -210, -175, -150, -130, -118, -105, -92, -80, -68, -56, -52, -49, -BOWL_X,
                  BOWL_X, 48, 51, 55, 59, 64, 68, 74, 80, 86, *range(95, 240, 10), 260, 300, 400, 700, 1500})
-    ys = sorted({-1500, -700, -450, -330, -270, -230, -200, -175, -155, -140, -125, -112, -103, -BOWL_Y, -92, -86,
+    ys = sorted({-1500, -700, -450, -330, -270, -230, -200, -175, -158, -147, -134, -125, -112, -103, -BOWL_Y, -92, -86,
                  -36, -31, 31, 88, BOWL_Y, 99, 103, 108, 114, 125,
                  140, 160, 185, 215, 250, 300, 400, 700, 1500})
     verts = [(x, y, H(x, y)) for y in ys for x in xs]
@@ -235,14 +247,14 @@ def terrain(m, rnd):
         for i in range(nx - 1):
             faces.append((j * nx + i, j * nx + i + 1, (j + 1) * nx + i + 1, (j + 1) * nx + i))
             cx, cy = (xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2
-            d = cx - shore(cy)
+            d = seaward(cx, cy)
             if d > -3:
                 mats.append('sand')
             elif d > -17 and H(cx, cy) < UP - 0.5:
                 mats.append('bluff')
             elif BOWL_X < cx < 68 and (31 < cy < 90 or -40 < cy < -30):
                 mats.append('dirt')                 # bare earth either side of the home stand
-            elif cy < -100 and cx > -140:   # small cells only: a wide one would paint a stripe across the hill
+            elif cy < -100 and cx < -40:   # small cells only: a wide one would paint a stripe across the hill
                 mats.append('dirt' if rnd.random() < 0.15 and (xs[i + 1] - xs[i]) * (ys[j + 1] - ys[j]) < 500 else 'scrub')   # the hillside: scrub with bare patches
             elif cx > 68 or cy > 108 or cx < -53:
                 mats.append('lawn2')                # the upper levels: a little drier
@@ -253,22 +265,28 @@ def terrain(m, rnd):
 
 def sea(m, rnd):
     flat(m, [(-2500, -2500), (2500, -2500), (2500, 2500), (-2500, 2500)], SEA, 'sea')
-    for y in range(-420, 420, 30):  # shallow water, then broken lines of surf parallel to the beach
+    for y in range(-130, 420, 30):  # shallow water, then broken lines of surf parallel to the beaches
         y1 = y + 30
         flat(m, [(shore(y) + 6, y), (shore(y) + 34, y), (shore(y1) + 34, y1), (shore(y1) + 6, y1)], SEA + 0.01, 'sea_s')
         for off, w in ((9, 1.4), (16, 0.9), (30, 0.7))[:3 if y % 60 == 0 else 2]:
             a = rnd.uniform(0, 8)
             b = rnd.uniform(18, 30)
             strip(m, shore(y + a) + off, y + a, shore(y + b) + off, y + b, w, SEA + 0.02, 'foam')
-    for x, y, s in ((420, -60, 1.0), (560, 140, 1.4), (300, 260, 0.8)):  # a few sailboats
+    for x in range(-420, 150, 30):  # and round the corner, past the south end
+        x1 = x + 30
+        flat(m, [(x, shore_s(x) - 6), (x, shore_s(x) - 34), (x1, shore_s(x1) - 34), (x1, shore_s(x1) - 6)], SEA + 0.01, 'sea_s')
+        for off, w in ((9, 1.4), (16, 0.9), (30, 0.7))[:3 if x % 60 == 0 else 2]:
+            a, b = rnd.uniform(0, 8), rnd.uniform(18, 30)
+            strip(m, x + a, shore_s(x + a) - off, x + b, shore_s(x + b) - off, w, SEA + 0.02, 'foam')
+    for x, y, s in ((420, -60, 1.0), (560, 140, 1.4), (300, 260, 0.8), (-60, -360, 1.2), (150, -300, 0.9)):  # a few sailboats
         m.tri([(x, y, SEA), (x, y + 6 * s, SEA), (x, y + 0.5 * s, SEA + 9 * s)], 'white')
     # a lifeguard tower on the beach
-    lx, ly = shore(-30) + 3, -30
-    for dx in (-1, 1):
-        for dy in (-1, 1):
-            m.box(lx + dx, ly + dy, SEA + 2.2, 0.15, 0.15, 3.6, 'white')
-    m.box(lx, ly, SEA + 4.6, 2.8, 2.8, 2.0, 'blue')
-    m.box(lx, ly, SEA + 5.75, 3.4, 3.4, 0.3, 'white')
+    for lx, ly in ((shore(-30) + 3, -30), (40, shore_s(40) - 3)):
+        for dx in (-1, 1):
+            for dy in (-1, 1):
+                m.box(lx + dx, ly + dy, SEA + 2.2, 0.15, 0.15, 3.6, 'white')
+        m.box(lx, ly, SEA + 4.6, 2.8, 2.8, 2.0, 'blue')
+        m.box(lx, ly, SEA + 5.75, 3.4, 3.4, 0.3, 'white')
 
 
 def field_paint(m):
@@ -696,41 +714,36 @@ def school(m, rnd):
     hedge(m, [(-46, 109.5), (44, 109.5)], 1.2, 0.9, 'bush', step=40)
 
 def hillside(m, rnd):
-    """The green hillside past the south end: trees, shrubs, a few palms, bare earth in places."""
-    for _ in range(56):
-        x, y = rnd.uniform(-120, 175), rnd.uniform(-240, -100)
-        if abs(x) < 14 and y > -106:      # keep the scoreboard clear
-            continue
-        if x > shore(y) - 18:
+    """The green hillside past the south-west corner, scrub on the bluff tops and the upper level; the view past the
+    scoreboard stays open to the sea."""
+    for _ in range(46):
+        x, y = rnd.uniform(-230, -45), rnd.uniform(-280, -100)
+        if seaward(x, y) > -18:
             continue
         if rnd.random() < 0.45:
             tree(m, x, y, rnd.uniform(1.2, 2.0), rnd)
         else:
-            bush(m, x, y, rnd.uniform(1.0, 2.2), rnd.choice(('bush', 'bush2', 'hedge')), rnd)
-    for _ in range(34):   # thick scrub low on the hill, where the players look
-        x, y = rnd.uniform(-60, 60), rnd.uniform(-150, -100)
-        if abs(x) > 14 or y < -110:
-            bush(m, x, y, rnd.uniform(1.0, 2.0), rnd.choice(('bush', 'hedge')), rnd)
-    for _ in range(26):   # scrub over the hill's face toward the sea
-        x, y = rnd.uniform(20, 160), rnd.uniform(-210, -100)
-        if x < shore(y) - 18:
-            bush(m, x, y, rnd.uniform(1.4, 2.4), rnd.choice(('bush', 'hedge', 'scrub')), rnd)
-    for _ in range(6):
-        palm(m, rnd.uniform(60, 150), rnd.uniform(-130, -98), rnd.uniform(1.0, 1.3), rnd)
-    hedge(m, [(-44, -96), (0, -100), (44, -96)], 1.6, 1.2, step=15)
-    # trees and scrub along the bluff top and on the inland hills
-    for _ in range(22):
-        y = rnd.uniform(-200, 260)
+            bush(m, x, y, rnd.uniform(1.0, 2.2), rnd.choice(('bush', 'hedge')), rnd)
+    for _ in range(18):   # scrub along the south bluff top (nothing between the field and the sea past the scoreboard)
+        x = rnd.uniform(-45, 165)
+        if abs(x) < 30:
+            continue
+        bush(m, x, shore_s(x) + rnd.uniform(17, 24), rnd.uniform(1.0, 1.8), rnd.choice(('bush', 'hedge')), rnd)
+    for x in (-40, 48, 76, 104, 132):
+        palm(m, x, shore_s(x) + 19, rnd.uniform(1.0, 1.3), rnd)
+    # trees along the east bluff top, over the headland and the upper level, and on the inland hills
+    for _ in range(20):
+        y = rnd.uniform(-110, 260)
         x = shore(y) - rnd.uniform(17, 34)
-        tree(m, x, y, rnd.uniform(1.1, 1.7), rnd)
-    for _ in range(26):   # trees over the upper level between the ball fields and the bluff
-        x, y = rnd.uniform(110, 175), rnd.uniform(-90, 150)
-        if x < shore(y) - 16 and math.hypot(x - 88, y + 40) > 83 and math.hypot(x - 96, y - 108) > 60:   # not in the outfields
+        if seaward(x, y) < -16:
+            tree(m, x, y, rnd.uniform(1.1, 1.7), rnd)
+    for _ in range(32):
+        x, y = rnd.uniform(75, 175), rnd.uniform(-130, 150)
+        if seaward(x, y) < -16 and math.hypot(x - 88, y + 40) > 83 and math.hypot(x - 96, y - 108) > 60:   # not in the outfields
             tree(m, x, y, rnd.uniform(1.1, 1.7), rnd)
     for _ in range(6):
         x, y = rnd.uniform(-330, -150), rnd.uniform(-250, 250)
         tree(m, x, y, rnd.uniform(1.6, 2.6), rnd)
-
 
 def build(m, st):
     rnd = random.Random(81)
@@ -763,5 +776,5 @@ def build(m, st):
     school(m, rnd)
     hillside(m, rnd)
     # the photo's viewpoint: high over the near-side parking lot, looking across the field to the sea
-    return dict(sky='#a5cbe8', fog=['#bfd6e8', 170, 560], hemi=['#e8f1ff', '#6a7a4a', 1.1], sun=['#fff4e0', 2.3],
+    return dict(sky='#a5cbe8', fog=['#bfd6e8', 300, 1400], hemi=['#e8f1ff', '#6a7a4a', 1.1], sun=['#fff4e0', 2.3],
                 cam=((-122, 0, 49), (78, 0, -3)), lens=22, clip=3000)
