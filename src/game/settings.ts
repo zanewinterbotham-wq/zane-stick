@@ -4,7 +4,11 @@ import { catchTuning, type CatchTuning } from '../sim/modes/catching';
 import { qbTuning, type QbTuning } from '../sim/brains/football/qbTuning';
 import { jumpTuning, type JumpTuning } from '../sim/anim/jump';
 import { DEFAULT_SUPPORT, type SupportSettings } from '../sim/anim/types';
-import { cleanPerf, PRESETS, type PerfOverrides, type PresetName } from './presets';
+import { carrierSkill } from '../sim/brains/carrier';
+import { tacklerSkill } from '../sim/brains/tackler';
+import { DEFAULT_OPEN_FIELD } from '../sim/drills/openField';
+import type { PlayConfig } from '../sim/modes/types';
+import { cleanPerf, PRESETS, type PerfOverrides, type Preset, type PresetName } from './presets';
 import skins from './skins.json';
 import stadiums from './stadiums.json';
 
@@ -70,6 +74,16 @@ export type DifficultyName = keyof typeof DIFFICULTY_PRESETS | 'custom';
 export const difficultyOf = (s: Settings): DifficultyName =>
   (Object.keys(DIFFICULTY_PRESETS) as (keyof typeof DIFFICULTY_PRESETS)[]).find((k) => Object.entries(DIFFICULTY_PRESETS[k]).every(([f, v]) => s[f as keyof typeof DIFFICULTY_PRESETS.easy] === v)) ?? 'custom';
 
+/** The World and bodies from a player's settings and quality level: every rep's PlayConfig (a multiplayer host's goes
+ *  to every guest), and what the benches and tests use as "the game's settings". */
+export function gamePlayConfig(s: Settings, p: Preset): PlayConfig {
+  return {
+    physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), defense: tacklerSkill(s.tackling), toughness: s.toughness, hitPower: s.hitPower, catching: s.catching, jump: s.jump, qb: s.qb, boneStrength: s.boneStrength, aiBoneStrength: s.aiBoneStrength, carrierGait: DEFAULT_OPEN_FIELD.carrierGait, activeBots: p.activeBots,
+    human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, bot: DEFAULT_OPEN_FIELD.carrier, traction: s.traction, gains: s.gains,
+    support: { ...GAME_SUPPORT, ...s.support },
+  };
+}
+
 const KEY = 'zane-stick-settings-v1';
 
 export function loadSettings(): Settings {
@@ -100,15 +114,21 @@ export function loadSettings(): Settings {
       // version 6: more levels; an unknown one (an edited or newer file) is chosen again by the benchmark
       if (s.preset != null && !(s.preset in PRESETS)) s.preset = null;
       s.perf = cleanPerf(s.perf);
-      // only known catching knobs, in range (catchTuning clamps), kept as overrides
-      s.catching = s.catching && typeof s.catching === 'object' ? Object.fromEntries(Object.entries(catchTuning(s.catching)).filter(([k]) => k in s.catching)) : {};
-      s.qb = s.qb && typeof s.qb === 'object' ? Object.fromEntries(Object.entries(qbTuning(s.qb)).filter(([k]) => k in s.qb)) : {};
-      // version 8: the jump knobs; only valid ones are kept (clamped to their ranges), the rest are the defaults
-      const jt = jumpTuning(s.jump), jump = Object.fromEntries(Object.keys(jt).filter((k) => typeof s.jump?.[k] === 'number' && Number.isFinite(s.jump[k])).map((k) => [k, jt[k as keyof JumpTuning]]));
-      return { ...DEFAULT_SETTINGS, ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support }, jump };
+      // the tuning groups (catching, bot QB, version 8: jump): only valid knobs are kept, clamped; the rest are the defaults
+      s.catching = overrides(s.catching, catchTuning(s.catching));
+      s.qb = overrides(s.qb, qbTuning(s.qb));
+      const jump = overrides(s.jump, jumpTuning(s.jump));
+      // (a copy of the defaults: a field the file lacks must not share, and later mutate, DEFAULT_SETTINGS')
+      return { ...structuredClone(DEFAULT_SETTINGS), ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support }, jump };
     }
   } catch { /* storage unavailable: use defaults */ }
-  return { ...DEFAULT_SETTINGS, perf: {}, support: { ...GAME_SUPPORT }, jump: {} };
+  return structuredClone(DEFAULT_SETTINGS);
+}
+
+/** A tuning group's stored overrides: the known knobs saved as finite numbers, at their validated values (`tuned`). */
+function overrides<T extends object>(raw: unknown, tuned: T): Partial<T> {
+  if (!raw || typeof raw !== 'object') return {};
+  return Object.fromEntries(Object.entries(tuned).filter(([k]) => Number.isFinite((raw as Record<string, unknown>)[k]))) as Partial<T>;
 }
 
 /** v4 → v5 keyboard rebinds: Space leaves a saved thrust rebind (dropped if nothing is left), and a key another saved

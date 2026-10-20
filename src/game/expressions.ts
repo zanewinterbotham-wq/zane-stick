@@ -2,7 +2,7 @@
 // opponent or charges, and for a moment after a hard hit; sad/hurt while injured or knocked out, and briefly after a
 // hard hit that leaves him on the turf. Presentation only: reads the sim, never writes to it.
 import type { World } from '../sim/world';
-import { isBigHit } from './feel';
+import { comClosing as closing, isBigHit } from './feel';
 import type { Expression } from './render/brows';
 
 /** Closing on an opponent: within this distance (m), at least this fast relative to him and himself (m/s). */
@@ -47,13 +47,6 @@ export class ExpressionTracker {
       return { angry: angry ? 1 : 0, sad: 0 };
     });
   }
-}
-
-/** Centre-of-mass closing speed of two athletes along the line between them (m/s, positive when approaching). */
-function closing(w: World, i: number, j: number) {
-  const a = w.scene.athletes[i].state, b = w.scene.athletes[j].state;
-  const d = [b.com[0] - a.com[0], b.com[1] - a.com[1], b.com[2] - a.com[2]], L = Math.hypot(...d) || 1;
-  return Math.max(0, -((b.comVel[0] - a.comVel[0]) * d[0] + (b.comVel[1] - a.comVel[1]) * d[1] + (b.comVel[2] - a.comVel[2]) * d[2]) / L);
 }
 
 /** Athlete i is running at opponent j: close, closing fast, and himself moving toward him at speed. */

@@ -13,6 +13,14 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<
   return e;
 }
 
+/** A range input with a live value readout; `set` runs on every edit, then `changed`. */
+export function range(label: string, value: number, min: number, max: number, step: number, set: (v: number) => void, fmt: (v: number) => string, changed: () => void) {
+  const out = el('span', { class: 'mono', text: fmt(value) });
+  const r = el('input', { type: 'range', min: String(min), max: String(max), step: String(step), value: String(value), 'aria-label': label });
+  r.addEventListener('input', () => { const v = +r.value; out.textContent = fmt(v); set(v); changed(); });
+  return [r, out] as const;
+}
+
 /** sfx: the sound category played on activation (default ui_select). */
 export interface MenuItem { label: string; hint?: string; sfx?: string; action: () => void }
 

@@ -12,9 +12,8 @@ import { DEFAULT_OPEN_FIELD } from '../src/sim/drills/openField';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
 import { Rng } from '../src/sim/rng';
 import { ScriptBrain } from '../src/sim/brains/script';
-import { carrierSkill } from '../src/sim/brains/carrier';
-import { tacklerSkill } from '../src/sim/brains/tackler';
-import { DEFAULT_SETTINGS as S, GAME_SUPPORT, PLAYER_BASE } from '../src/game/settings';
+import { PRESETS } from '../src/game/presets';
+import { DEFAULT_SETTINGS, gamePlayConfig } from '../src/game/settings';
 import { STD } from './helpers/scenario';
 
 beforeAll(() => mujocoEngine.init());
@@ -89,9 +88,7 @@ describe('Oklahoma: the carrier keeps the ball off his own blocker', () => {
   it('with the game settings and the human blocker standing still, the bot carrier rarely loses the ball at the start', async () => {
     // owner report 2026-10-19: he ran up his blocker's back as the defender drove him back, the bump stripped the ball,
     // and chasing it took him out of the lane; he now presses the block and runs off its hip
-    const CFG_GAME = { physics: { hz: 240, iterations: 20, detail: 'minimum' as const }, assist: S.assist, seed: 1, difficulty: carrierSkill(S.juking), defense: tacklerSkill(S.tackling),
-      toughness: S.toughness, hitPower: S.hitPower, carrierGait: DEFAULT_OPEN_FIELD.carrierGait, human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength, speed: PLAYER_BASE.speed },
-      bot: DEFAULT_OPEN_FIELD.carrier, traction: S.traction, support: { ...GAME_SUPPORT } };
+    const CFG_GAME = gamePlayConfig(DEFAULT_SETTINGS, PRESETS.minimum);
     let lost = 0;
     for (let rep = 0; rep < 12; rep++) {
       const p = await Play.create(mujocoEngine, CFG_GAME, OKLAHOMA, resolveOptions(OKLAHOMA, { role: 'blocker' }), new ScriptBrain(() => {}), rep);

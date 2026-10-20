@@ -3,15 +3,12 @@
 //   npx tsx bench/perf/sim.ts [seconds] [preset ids…] [--phys={json} | --vary=[{json}, …]] [--scene=tackle|kickoff17] [--reps=3]
 //   (default 3 s, every preset, both scenes; --phys overrides the presets' physics settings, --vary runs each override)
 import { createHash } from 'node:crypto';
-import { DEFAULT_ATHLETE } from '../../src/sim/anatomy/body';
-import { carrierSkill } from '../../src/sim/brains/carrier';
-import { tacklerSkill } from '../../src/sim/brains/tackler';
 import { Play } from '../../src/sim/modes/play';
 import { modeById, resolveOptions } from '../../src/sim/modes/registry';
 import type { PlayConfig } from '../../src/sim/modes/types';
 import { mujocoEngine } from '../../src/sim/physics/mujoco';
 import { PRESETS, type PresetName } from '../../src/game/presets';
-import { GAME_SUPPORT, PLAYER_BASE } from '../../src/game/settings';
+import { DEFAULT_SETTINGS, gamePlayConfig } from '../../src/game/settings';
 
 const args = process.argv.slice(2), flag = (k: string) => args.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3);
 const pos = args.filter((a) => !a.startsWith('--'));
@@ -19,11 +16,10 @@ const reps = +(flag('reps') ?? 3), seconds = +(pos[0] ?? 3), vary: object[] = JS
 const names = (pos.slice(1).length ? pos.slice(1) : Object.keys(PRESETS)) as PresetName[];
 const SCENES = [{ id: 'tackle', mode: 'tackle', opts: {} }, { id: 'kickoff17', mode: 'kickoffReturn', opts: { block: 7, cover: 9 } }].filter((s) => !flag('scene') || s.id === flag('scene'));
 
+/** The game's config at its default settings, with the physics overrides on top. */
 function config(p: PresetName, phys: object): PlayConfig {
-  const pr = PRESETS[p];
-  return { physics: { ...pr.physics, ...phys }, assist: 0.2, seed: 1, difficulty: carrierSkill(0.5), defense: tacklerSkill(0.5), toughness: 1, hitPower: 1.5, boneStrength: 1, aiBoneStrength: 1,
-    carrierGait: 'jog', activeBots: pr.activeBots, human: { ...DEFAULT_ATHLETE, strength: PLAYER_BASE.strength, speed: PLAYER_BASE.speed }, bot: { height: 1.8, mass: 98, strength: 1, speed: 1 },
-    traction: 1.2, gains: {}, support: { ...GAME_SUPPORT } };
+  const c = gamePlayConfig(DEFAULT_SETTINGS, PRESETS[p]);
+  return { ...c, physics: { ...c.physics, ...phys } };
 }
 
 /** Wrap obj[k] to add its wall time to acc[label]. */

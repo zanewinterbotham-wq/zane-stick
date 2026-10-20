@@ -2,9 +2,6 @@
 // timestep; slow motion only changes how fast real time feeds the fixed steps.
 import './testLock'; // first: tests must not capture the owner's real cursor
 import { HumanBrain } from '../sim/brains/human';
-import { carrierSkill } from '../sim/brains/carrier';
-import { tacklerSkill } from '../sim/brains/tackler';
-import { DEFAULT_OPEN_FIELD } from '../sim/drills/openField';
 import { Play } from '../sim/modes/play';
 import { modeById } from '../sim/modes/registry';
 import type { ModeDef, ModeOptions } from '../sim/modes/types';
@@ -16,11 +13,11 @@ import { Audio } from './audio';
 import { autoChoose, chooseBest, reportText, runBenchmark } from './benchmark';
 import { ChaseCamera } from './camera';
 import { SoundCues } from './cues';
-import { HitMeter, hitFeel, MPH } from './feel';
+import { HitMeter, hitFeel, MPH, type BigHit, type HitSound } from './feel';
 import { InputManager, keyName, keysText, type InputFrame } from './input/input';
 import { effectivePreset, PRESETS, type PresetName } from './presets';
 import { GameRenderer } from './render/renderer';
-import { DEFAULT_SETTINGS, GAME_SUPPORT, PLAYER_BASE, loadSettings, saveSettings, type Settings } from './settings';
+import { DEFAULT_SETTINGS, gamePlayConfig, loadSettings, saveSettings, type Settings } from './settings';
 import { CATEGORIES, equipItem } from './inventory';
 import { modeMenu, savedOptions } from './modes';
 import { openSettings } from './settings-menu';
@@ -80,7 +77,10 @@ async function devScenario(name: string) {
 }
 
 // ------------------------------------------------------------------ the game
-class App {
+/** The running game, for the e2e tests and benches. */
+declare global { interface Window { __app: App } }
+
+export class App {
   settings: Settings = loadSettings();
   input = new InputManager();
   audio = new Audio();
@@ -414,14 +414,7 @@ class App {
   }
 
   /** The World and bodies from this player's settings and preset (a multiplayer host's go to every guest). */
-  playConfig(): PlayConfig {
-    const p = this.preset, s = this.settings;
-    return {
-      physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), defense: tacklerSkill(s.tackling), toughness: s.toughness, hitPower: s.hitPower, catching: s.catching, jump: s.jump, qb: s.qb, boneStrength: s.boneStrength, aiBoneStrength: s.aiBoneStrength, carrierGait: DEFAULT_OPEN_FIELD.carrierGait, activeBots: p.activeBots,
-      human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, bot: DEFAULT_OPEN_FIELD.carrier, traction: s.traction, gains: s.gains,
-      support: { ...GAME_SUPPORT, ...s.support },
-    };
-  }
+  playConfig(): PlayConfig { return gamePlayConfig(this.settings, this.preset); }
 
   /** Show a rep's play: renderer (rebuilt when the preset changed), skin, stadium, camera on the player's athlete. */
   async attach(play: Play) {
@@ -430,7 +423,6 @@ class App {
     this.cam.target = play.human >= 0 ? play.human : Math.min(this.spectate, play.world.athletes.length - 1);
     const gfx = JSON.stringify(p.render);
     if (!this.renderer || this.rendererPreset !== gfx) {
-      this.renderer?.renderer.dispose();
       this.renderer = new GameRenderer(canvas, p.render);
       this.rendererPreset = gfx;
     }
@@ -578,7 +570,8 @@ class App {
     }
     if (!this.drill) return;
     if (e.code === 'Tab' && this.net) { this.rosterOn = true; e.preventDefault(); return; } // held: who is in the room
-    const k = this.input.bindings.keyboard;
+    if (e.repeat) return; // a held key restarts, votes or toggles once
+    const k =this.input.bindings.keyboard;
     if (k.pause.includes(e.code)) this.pauseMenu();
     else if (k.reset.includes(e.code)) void this.newRep();
     else if (k.overlay.includes(e.code)) { this.settings.overlay = !this.settings.overlay; this.save(); }
@@ -596,7 +589,8 @@ class App {
       if (edge(13)) this.focusMove(1);
       if (edge(12)) this.focusMove(-1);
       if (edge(0)) (document.activeElement as HTMLElement | null)?.click();
-      if (edge(1) && this.drill) { this.audio.play('ui_back', 1); this.resume(); }
+      // B is Esc: each screen's own Esc handler steps back one level (the pause menu's resumes)
+      if (edge(1)) (document.activeElement ?? this.layer.root).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
     } else if (this.drill) {
       if (down(9)) { this.startHeld += dt; if (this.startHeld > 0.6 && this.startHeld - dt <= 0.6) this.pauseMenu(); }
       else { if (this.startHeld > 0 && this.startHeld < 0.6) void this.newRep(); this.startHeld = 0; }
@@ -633,7 +627,7 @@ class App {
           if (f.pressed.has('shiftLock')) this.hud.flash(`Side shuffle ${f.shiftLock ? 'on' : 'off'}`);
           if (this.net && d.human < 0) this.spectateKeys(f);
         } else this.human.latest = null; // in the menu he stands still
-        if (this.net && !this.net.isHost) this.guestFrame(dtReal);
+        if (this.net && !this.net.isHost) this.guestFrame(now, dtReal);
         else if (this.sim && d === this.sim.play) this.workerFrame(now, dtReal);
         else this.simulate(now, dtReal);
       }
@@ -689,19 +683,11 @@ class App {
     }
     for (const f of sim.take()) {
       this.physMs += (f.ms - this.physMs) * 0.1;
-      for (const s of f.sounds) this.audio.hit(s);
       for (const c of f.cues) this.audio.play(c.cat, c.loud, c.pos, c.athlete);
       this.renderer?.setFaces(f.faces);
       this.human.contact = f.contact;
       this.netBig = f.first; this.netBest = f.best;
-      if (!f.big) {
-        const loud = Math.max(0, ...f.sounds.map((s) => s.loud));
-        if (loud > 0.1) { this.cam.addShake(0.04 * loud * loud); this.rumble({ duration: 60, strong: 0.3 * loud, weak: 0.5 * loud }); }
-        continue;
-      }
-      const fx = this.bigHit(d, f.big);
-      if (fx.slowMo && this.settings.slowMo && now / 1000 > this.slowUntil) { this.timeScale = 0.3; this.slowUntil = now / 1000 + 0.9; }
-      if (fx.stopMs && now >= this.nextStop) { this.freezeUntil = now + fx.stopMs; this.nextStop = now + 500; this.acc = 0; }
+      if (this.hitFx(d, f.sounds, f.big, now)) this.acc = 0;
     }
     if (now / 1000 > this.slowUntil) this.timeScale = 1;
     if (now >= this.freezeUntil) this.acc += dtReal * this.timeScale;
@@ -711,17 +697,15 @@ class App {
 
   /** A multiplayer guest's frame: send the input, show the host's play (interpolated), and the sounds and faces it
    *  makes. Big hits come from the host's events (replica contact forces are only an estimate). */
-  guestFrame(dt: number) {
+  guestFrame(now: number, dt: number) {
     const net = this.net!, d = this.drill!, w = d.world;
     net.sendInput(this.human.latest ?? IDLE);
     if (!net.render()) return; // nothing of this rep yet: the start pose
-    if (this.meterWorld !== w) { this.meter = new HitMeter(); this.cues = new SoundCues(d.ball); this.meterWorld = w; }
+    this.meterFor(d);
     const { sounds } = this.meter.step(w, dt);
-    for (const s of sounds) this.audio.hit(s);
     for (const c of this.cues.step(w, dt)) this.audio.play(c.cat, c.loud, c.pos, c.athlete);
     this.renderer?.stepFaces(w, dt);
-    const loud = sounds[0]?.loud ?? 0;
-    if (loud > 0.1) this.cam.addShake(0.04 * loud * loud);
+    this.hitFx(d, sounds, null, now);
   }
 
   /** The throw control this frame: whether it applies (he holds the ball), the pass and the aim aids. Only the Throw
@@ -754,23 +738,32 @@ class App {
     if (step) this.cam.target = this.spectate = (this.cam.target + step + n) % n;
   }
 
-  /** Every contact makes a sound and a light shake by how hard it was; only a big hit (impulse over 30 ms
-   *  and closing speed) gets slow motion, hit-stop, the camera punch and the banner. Call after each step;
-   *  returns true when a hit-stop starts. */
+  /** A fresh hit meter and sound cues for a new rep's World. */
+  meterFor(d: Play) { if (this.meterWorld !== d.world) { this.meter = new HitMeter(); this.cues = new SoundCues(d.ball); this.meterWorld = d.world; } }
+
+  /** The page's steps: sounds, cues and moods, then the hit feedback. Call after each step; returns true when a
+   *  hit-stop starts. */
   feedback(now: number): boolean {
     const d = this.drill!, w = d.world;
-    if (this.meterWorld !== w) { this.meter = new HitMeter(); this.cues = new SoundCues(d.ball); this.meterWorld = w; }
+    this.meterFor(d);
     const { sounds, bigNow } = this.meter.step(w);
-    for (const s of sounds) this.audio.hit(s);
     for (const c of this.cues.step(w)) this.audio.play(c.cat, c.loud, c.pos, c.athlete);
     this.renderer?.stepFaces(w);
-    const loud = sounds[0]?.loud ?? 0;
-    if (!bigNow) {
+    return this.hitFx(d, sounds, bigNow, now);
+  }
+
+  /** Every contact makes a sound and a light shake and rumble by how hard it was; only a big hit (impulse over 30 ms
+   *  and closing speed) gets slow motion, hit-stop, the camera punch and the banner (page, Worker and multiplayer guest
+   *  alike; a guest's big hits come from the host's events). Returns true when a hit-stop starts. */
+  hitFx(d: Play, sounds: HitSound[], big: BigHit | null, now: number): boolean {
+    for (const s of sounds) this.audio.hit(s);
+    if (!big) {
+      const loud = Math.max(0, ...sounds.map((s) => s.loud));
       if (loud > 0.1) { this.cam.addShake(0.04 * loud * loud); this.rumble({ duration: 60, strong: 0.3 * loud, weak: 0.5 * loud }); }
       return false;
     }
-    const fx = this.bigHit(d, bigNow);
-    if (this.net) { this.net.event({ k: 'hit', closing: bigNow.closing, impulse: bigNow.impulse, a: 0, b: 1 }); return false; } // shared time: no slow motion or hit-stop
+    const fx = this.bigHit(d, big);
+    if (this.net) { this.net.event({ k: 'hit', closing: big.closing, impulse: big.impulse, a: big.a, b: big.b }); return false; } // shared time: no slow motion or hit-stop
     if (fx.slowMo && this.settings.slowMo && now / 1000 > this.slowUntil) { this.timeScale = 0.3; this.slowUntil = now / 1000 + 0.9; }
     if (!fx.stopMs || now < this.nextStop) return false;
     this.freezeUntil = now + fx.stopMs;
@@ -779,14 +772,14 @@ class App {
   }
 
   /** A big hit's sound, shake, rumble, banner and camera punch (a multiplayer guest's from the host's event). */
-  bigHit(d: Play, big: { impulse: number; closing: number }) {
+  bigHit(d: Play, big: BigHit) {
     const w = d.world, fx = hitFeel(big.impulse, big.closing);
-    const a = w.scene.athletes[0].state, b = w.scene.athletes[1].state;
+    const a = w.scene.athletes[big.a].state, b = w.scene.athletes[big.b].state;
     const n = [0, 1, 2].map((k) => b.com[k] - a.com[k]), along = (v: number[]) => v[0] * n[0] + v[1] * n[1] + v[2] * n[2];
     this.audio.play('hit_big_layer', 0.5 + 0.5 * fx.k, [0, 1, 2].map((k) => (a.com[k] + b.com[k]) / 2));
     this.audio.play('crowd_ooh', 0.6 + 0.4 * fx.k);
     // the grunt comes from the athlete who was hit: the one closing less along the line between them
-    const hit = along(a.comVel) >= -along(b.comVel) ? 1 : 0, hs = w.scene.athletes[hit].state, hi = w.athletes[hit].segIndex.get('head')!;
+    const hit = along(a.comVel) >= -along(b.comVel) ? big.b : big.a, hs = w.scene.athletes[hit].state, hi = w.athletes[hit].segIndex.get('head')!;
     this.audio.play('voice_grunt', 1, [hs.segPos[3 * hi], hs.segPos[3 * hi + 1], hs.segPos[3 * hi + 2]], hit);
     this.cam.addShake(fx.shake);
     this.rumble(fx.rumble);
@@ -892,7 +885,7 @@ if (params.get('bench') === '1') {
 } else if (params.get('scenario')) void devScenario(params.get('scenario')!).catch((e) => console.error(e));
 else {
   const app = new App();
-  (window as unknown as { __app: App }).__app = app;
+  window.__app = app;
   app.boot().catch((e) => {
     console.error(e);
     const el0 = document.getElementById('loading');

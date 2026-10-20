@@ -33,7 +33,7 @@ export function hitLoudness(speed: number, force: number): number {
 
 /** limb: an arm segment (upper arm, forearm, hand) was one of the two; pos: contact point (world). */
 export interface HitSound { kind: HitKind; loud: number; speed: number; force: number; pair: string; limb: boolean; pos: Vec3 }
-export interface BigHit { closing: number; impulse: number } // m/s, N·s over 30 ms
+export interface BigHit { closing: number; impulse: number; a: number; b: number } // m/s, N·s over 30 ms; the athletes
 
 export interface HitFeel {
   k: number;          // 0..1 intensity
@@ -67,8 +67,9 @@ export class HitMeter {
   private win: number[] = [];
   private pairSeen = new Map<string, number>();
   private fired = false;
-  /** The collision in progress: COM closing speed at first touch and peak impulse over 30 ms so far. */
-  cur: BigHit = { closing: 0, impulse: 0 };
+  /** The collision in progress: COM closing speed at first touch of its strongest pair (a, b) and peak impulse over
+   *  30 ms so far. */
+  cur: BigHit = { closing: 0, impulse: 0, a: 0, b: 1 };
   /** Hardest collision this rep (by impulse) and the first big hit, if any. */
   best: BigHit | null = null;
   big: BigHit | null = null;
@@ -91,7 +92,9 @@ export class HitMeter {
     sounds.sort((x, y) => y.loud - x.loud).splice(2);
     if (total > 0 && this.t - this.lastContact > NEW_COLLISION_GAP) {
       this.win = []; this.fired = false;
-      this.cur = { closing: comClosing(w), impulse: 0 };
+      let h: HitEvent | null = null;
+      for (const x of w.hits) if (x.a >= 0 && x.b >= 0 && (!h || x.force > h.force)) h = x;
+      this.cur = h ? { closing: comClosing(w, h.a, h.b), impulse: 0, a: h.a, b: h.b } : { closing: 0, impulse: 0, a: 0, b: 1 };
     }
     if (total > 0) this.lastContact = this.t;
     this.win.push(total * dt);
@@ -116,10 +119,9 @@ function pairKey(h: HitEvent) {
   return x < y ? `${x}|${y}` : `${y}|${x}`;
 }
 
-/** Centre-of-mass closing speed of athletes 0 and 1 along the line between them (m/s). */
-function comClosing(w: World) {
-  if (w.scene.athletes.length < 2) return 0;
-  const [s0, s1] = [0, 1].map((i) => w.scene.athletes[i].state);
-  const d = [s1.com[0] - s0.com[0], s1.com[1] - s0.com[1], s1.com[2] - s0.com[2]], L = Math.hypot(...d) || 1;
-  return Math.max(0, -((s1.comVel[0] - s0.comVel[0]) * d[0] + (s1.comVel[1] - s0.comVel[1]) * d[1] + (s1.comVel[2] - s0.comVel[2]) * d[2]) / L);
+/** Centre-of-mass closing speed of athletes i and j along the line between them (m/s, positive when approaching). */
+export function comClosing(w: World, i: number, j: number) {
+  const a = w.scene.athletes[i].state, b = w.scene.athletes[j].state;
+  const d = [b.com[0] - a.com[0], b.com[1] - a.com[1], b.com[2] - a.com[2]], L = Math.hypot(...d) || 1;
+  return Math.max(0, -((b.comVel[0] - a.comVel[0]) * d[0] + (b.comVel[1] - a.comVel[1]) * d[1] + (b.comVel[2] - a.comVel[2]) * d[2]) / L);
 }

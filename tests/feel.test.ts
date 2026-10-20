@@ -46,12 +46,13 @@ describe('big hits', () => {
   });
 });
 
-/** A two-athlete World stand-in: closing at `v` m/s along z, contacts set per step. */
-function fakeWorld(v: number) {
+/** A World stand-in: athletes in pairs (0-1, 2-3, …) a metre apart along z, pair k closing at `v[k]` m/s; contacts set
+ *  per step. */
+function fakeWorld(...v: number[]) {
   const st = (z: number, vz: number) => ({ state: { com: [0, 1, z], comVel: [0, 0, vz] } });
-  return { dt: 1 / 240, hits: [] as HitEvent[], scene: { athletes: [st(0, v / 2), st(1, -v / 2)] } };
+  return { dt: 1 / 240, hits: [] as HitEvent[], scene: { athletes: v.flatMap((x) => [st(0, x / 2), st(1, -x / 2)]) } };
 }
-const ev = (segA: string, segB: string, force: number, speed: number): HitEvent => ({ a: 0, segA, b: 1, segB, force, pos: [0, 0, 0], speed });
+const ev = (segA: string, segB: string, force: number, speed: number, a = 0, b = 1): HitEvent => ({ a, segA, b, segB, force, pos: [0, 0, 0], speed });
 
 describe('HitMeter', () => {
   it('a long contact sounds once, and a light touch is never big', () => {
@@ -79,5 +80,17 @@ describe('HitMeter', () => {
     expect(bigs).toBe(1);
     expect(m.big!.closing).toBeCloseTo(10, 6);
     expect(m.big!.impulse).toBeCloseTo(25800 * 7 / 240, 3); // 30 ms = 7 steps at 240 Hz
+    expect([m.big!.a, m.big!.b]).toEqual([0, 1]);
+  });
+  it("a collision's closing speed and pair are its strongest contact's, not athletes 0 and 1", () => {
+    // athletes 0 and 1 run at each other at 12 m/s without touching; 2 and 3 collide at 3 m/s, 4 and 5 at 10 m/s
+    const slow = fakeWorld(12, 3), ms = new HitMeter();
+    for (let i = 0; i < 12; i++) { slow.hits = [ev('thorax', 'thorax', 20000, 3, 2, 3)]; expect(ms.step(slow as unknown as World).bigNow).toBeNull(); }
+    expect(ms.best).toMatchObject({ a: 2, b: 3 });
+    expect(ms.best!.closing).toBeCloseTo(3, 6);
+    const w = fakeWorld(0, 3, 10), m = new HitMeter();
+    for (let i = 0; i < 12; i++) { w.hits = [ev('handL', 'thorax', 500, 3, 2, 3), ev('thorax', 'thorax', 20000, 10, 5, 4)]; m.step(w as unknown as World); }
+    expect(m.big).toMatchObject({ a: 5, b: 4 });
+    expect(m.big!.closing).toBeCloseTo(10, 6);
   });
 });

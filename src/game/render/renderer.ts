@@ -22,6 +22,9 @@ export interface RenderQuality { scale: number; shadows: boolean; detail: 'low' 
 
 /** The Open Field's sky and light (what the renderer starts with). */
 const OPEN_SCENE: StadiumScene = { sky: '#9cc3e4', fog: ['#9cc3e4', 80, 220], hemi: ['#dfeeff', '#3c5a2c', 1.1], sun: ['#ffffff', 2.2] };
+/** One WebGLRenderer per canvas, shared by every GameRenderer on it: a canvas hands back its first context (and that
+ *  context's antialias) to every later request, so a second WebGLRenderer would only duplicate the GPU buffers. */
+const gls = new WeakMap<HTMLCanvasElement, THREE.WebGLRenderer>();
 
 export class GameRenderer {
   readonly renderer: THREE.WebGLRenderer;
@@ -63,7 +66,9 @@ export class GameRenderer {
   private faces = new ExpressionTracker();
 
   constructor(canvas: HTMLCanvasElement, public quality: RenderQuality) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality.antialias, powerPreference: 'high-performance' });
+    let gl = gls.get(canvas);
+    if (!gl) gls.set(canvas, gl = new THREE.WebGLRenderer({ canvas, antialias: quality.antialias, powerPreference: 'high-performance' }));
+    this.renderer = gl;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.pixelCap) * quality.scale);
     this.effects.density = quality.effects;
     this.renderer.shadowMap.enabled = quality.shadows;
@@ -139,8 +144,8 @@ export class GameRenderer {
   setWorld(w: World) {
     this.world = w;
     this.faces = new ExpressionTracker();
-    for (const p of this.props) this.scene.remove(p);
-    if (this.overlay) this.scene.remove(this.overlay.root);
+    for (const p of this.props) { this.scene.remove(p); disposeTree(p); }
+    if (this.overlay) { this.scene.remove(this.overlay.root); disposeTree(this.overlay.root); }
     this.dress(w);
     this.props = (w.setup.props ?? []).map((p) => {
       if (p.hidden) return new THREE.Object3D(); // a collision wall: the stadium draws it (kept so prop indices line up)
@@ -248,6 +253,17 @@ export class GameRenderer {
     this.renderer.render(this.scene, this.camera);
     this.lastMs = performance.now() - t0;
   }
+}
+
+/** Free the GPU buffers of every geometry and material under `o` (an object leaving the scene for good; disposing twice
+ *  is harmless). Never on a skin's meshes: their geometry is the cached template's. */
+export function disposeTree(o: THREE.Object3D) {
+  o.traverse((x) => {
+    const m = x as THREE.Mesh;
+    if (!m.geometry) return;
+    m.geometry.dispose();
+    for (const mat of Array.isArray(m.material) ? m.material : [m.material]) mat?.dispose();
+  });
 }
 
 type Vec7 = [number, number, number, number, number, number, number];

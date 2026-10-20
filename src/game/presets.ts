@@ -85,7 +85,7 @@ export const PERF_KNOBS: { key: keyof PerfOverrides; label: string; desc: string
     choices: [1, 1.5, 2, 3].map((v) => ({ value: v, text: `${v}x` })) },
   { key: 'shadows', label: 'Shadows', desc: 'Athletes cast shadows on the turf.', physics: false, choices: [{ value: false, text: 'Off' }, { value: true, text: 'On' }] },
   { key: 'shadowMap', label: 'Shadow quality', desc: 'Shadow map size.', physics: false, choices: [512, 1024, 2048, 4096].map((v) => ({ value: v, text: String(v) })) },
-  { key: 'antialias', label: 'Antialiasing', desc: 'Smooth edges (MSAA).', physics: false, choices: [{ value: false, text: 'Off' }, { value: true, text: 'On' }] },
+  { key: 'antialias', label: 'Antialiasing', desc: 'Smooth edges (MSAA). Applies after a page reload.', physics: false, choices: [{ value: false, text: 'Off' }, { value: true, text: 'On' }] },
   { key: 'effects', label: 'Injury effects', desc: 'Share of the particles an injury throws.', physics: false,
     choices: [0, 0.25, 0.5, 1].map((v) => ({ value: v, text: `${Math.round(v * 100)} %` })) },
   { key: 'faces', label: 'Face animation range', desc: 'Faces farther from the camera keep their last expression.', physics: false,
