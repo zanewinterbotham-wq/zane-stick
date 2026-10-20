@@ -430,7 +430,6 @@ class App {
     this.cam.target = play.human >= 0 ? play.human : Math.min(this.spectate, play.world.athletes.length - 1);
     const gfx = JSON.stringify(p.render);
     if (!this.renderer || this.rendererPreset !== gfx) {
-      this.renderer?.renderer.dispose();
       this.renderer = new GameRenderer(canvas, p.render);
       this.rendererPreset = gfx;
     }

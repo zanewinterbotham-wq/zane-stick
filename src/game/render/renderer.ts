@@ -22,6 +22,9 @@ export interface RenderQuality { scale: number; shadows: boolean; detail: 'low' 
 
 /** The Open Field's sky and light (what the renderer starts with). */
 const OPEN_SCENE: StadiumScene = { sky: '#9cc3e4', fog: ['#9cc3e4', 80, 220], hemi: ['#dfeeff', '#3c5a2c', 1.1], sun: ['#ffffff', 2.2] };
+/** One WebGLRenderer per canvas, shared by every GameRenderer on it: a canvas hands back its first context (and that
+ *  context's antialias) to every later request, so a second WebGLRenderer would only duplicate the GPU buffers. */
+const gls = new WeakMap<HTMLCanvasElement, THREE.WebGLRenderer>();
 
 export class GameRenderer {
   readonly renderer: THREE.WebGLRenderer;
@@ -63,7 +66,9 @@ export class GameRenderer {
   private faces = new ExpressionTracker();
 
   constructor(canvas: HTMLCanvasElement, public quality: RenderQuality) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality.antialias, powerPreference: 'high-performance' });
+    let gl = gls.get(canvas);
+    if (!gl) gls.set(canvas, gl = new THREE.WebGLRenderer({ canvas, antialias: quality.antialias, powerPreference: 'high-performance' }));
+    this.renderer = gl;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.pixelCap) * quality.scale);
     this.effects.density = quality.effects;
     this.renderer.shadowMap.enabled = quality.shadows;

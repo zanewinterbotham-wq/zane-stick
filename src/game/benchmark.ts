@@ -53,7 +53,6 @@ export async function benchRender(canvas: HTMLCanvasElement, p: Preset, seconds 
     };
     requestAnimationFrame(tick);
   });
-  r.renderer.dispose();
   w.destroy();
   frames.sort((a, b) => a - b);
   return frames[Math.floor(frames.length * 0.5)] ?? 16.7; // median frame interval
