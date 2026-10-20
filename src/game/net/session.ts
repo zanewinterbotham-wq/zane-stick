@@ -194,6 +194,7 @@ export class Session {
       if (m.v !== this.version) {
         const name = this.known.get(from) ?? '';
         this.tell({ t: 'kick', why: 'version' }, from);
+        this.banned.add(from); // or the next peers update (an rtt probe) puts him back on a slot
         this.gone(from); this.sendLobby();
         this.onEvent({ k: 'old', name }); this.event({ k: 'old', name });
         return;

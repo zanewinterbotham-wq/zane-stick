@@ -219,6 +219,10 @@ describe('versions (headless)', () => {
     expect(events).toContainEqual({ k: 'old', name: 'Old' });
     expect(host.lobby.players.map((p) => p.name)).toEqual(['Host', 'New']);
     expect(same.closed).toBe('');
+    const deaf = room.join('Deaf'); // another build that ignores the kick: banned, he never comes back
+    deaf.broadcast(JSON.stringify({ t: 'hi', steer: 0, v: 'r0' }), true); await flush();
+    room.join('Late'); await flush(); // a peers update with him still in the room
+    expect(host.lobby.players.map((p) => p.name)).toEqual(['Host', 'New', 'Late']);
     host.close(); await flush();
     // the other way: an older host's lobby
     const room2 = createLoopbackRoom(['Newer']);
