@@ -1,7 +1,7 @@
 // Browser transport for multiplayer (docs/multiplayer.md): the room WebSocket carries signaling and the relay
 // fallback; each guest gets a WebRTC peer connection to the host with data channels 'r' (reliable, ordered) and 'u'
 // (unordered, no retransmits). Both paths look the same to the game. Only the game shell imports this, never src/sim.
-import { CLOSE, decodeFrame, encodeFrame, normCode } from './protocol';
+import { CLOSE_REASON, decodeFrame, encodeFrame, normCode } from './protocol';
 import type { ClientMsg, ServerMsg, WirePeer } from './protocol';
 
 /** rtt: round trip to that peer over its current path, in seconds (smoothed; 0 until measured). */
@@ -13,7 +13,7 @@ export interface NetRoom {
   broadcast(data: ArrayBuffer | string, reliable: boolean): void;   // host: to every guest; guest: to the host
   onMessage(cb: (from: string, data: ArrayBuffer | string) => void): void;
   onPeers(cb: (peers: PeerInfo[]) => void): void;        // join, leave, path or rtt change
-  onClose(cb: (reason: string) => void): void;           // 'host-left' | 'disconnected' | 'closed' (own close())
+  onClose(cb: (reason: string) => void): void;           // 'host-left' | 'kicked' | 'disconnected' | 'closed' (own close())
   close(): void;
 }
 
@@ -47,7 +47,7 @@ export function createRoom(name: string, server = defaultServer()): Promise<NetR
 
 export function joinRoom(code: string, name: string, server = defaultServer()): Promise<NetRoom> {
   const c = normCode(code);
-  return c ? open(roomUrl(server, c, name)) : Promise.reject(new Error('Room not found'));
+  return c ? open(roomUrl(server, c, name)) : Promise.reject(new Error('no-room'));
 }
 
 function open(url: string): Promise<NetRoom> {
@@ -58,7 +58,7 @@ function open(url: string): Promise<NetRoom> {
       const m = typeof e.data === 'string' ? (JSON.parse(e.data) as ServerMsg) : null;
       if (m?.t === 'hello') resolve(new Room(ws, m));
     };
-    ws.onclose = (e) => reject(new Error(e.code === CLOSE.noRoom ? 'Room not found' : e.code === CLOSE.roomClosed ? 'Room closed' : 'Could not reach the room server'));
+    ws.onclose = (e) => reject(new Error(CLOSE_REASON[e.code] ?? 'unreachable'));
   });
 }
 
@@ -76,7 +76,7 @@ class Room implements NetRoom {
   constructor(private ws: WebSocket, hello: Extract<ServerMsg, { t: 'hello' }>) {
     this.code = hello.code; this.selfId = hello.id; this.isHost = hello.host;
     ws.onmessage = (e) => this.onServer(e.data);
-    ws.onclose = (e) => this.end(e.code === CLOSE.hostLeft ? 'host-left' : 'disconnected');
+    ws.onclose = (e) => this.end(CLOSE_REASON[e.code] ?? 'disconnected');
     let n = 0;
     this.ticker = setInterval(() => {
       for (const l of this.links.values()) this.send(l.info.id, CTRL + 'p' + performance.now(), false);

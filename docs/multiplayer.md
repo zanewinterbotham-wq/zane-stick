@@ -49,8 +49,9 @@ export function joinRoom(code: string, name: string, server?: string): Promise<N
 
 Implementation notes (src/net/, server/rooms/):
 - `rtt` is in seconds (SI), smoothed, 0 until the first probe returns (probes run once a second).
-- `onClose` reasons: `'host-left'`, `'disconnected'` (socket lost), `'closed'` (own `close()`). `createRoom`/`joinRoom`
-  reject with `Error('Room not found' | 'Room closed' | 'Could not reach the room server')`.
+- `onClose` reasons: `'host-left'`, `'kicked'`, `'disconnected'` (socket lost), `'closed'` (own `close()`).
+  `createRoom`/`joinRoom` reject with `Error('no-room' | 'room-closed' | 'room-full' | 'unreachable')`. One table,
+  `CLOSE_REASON` in src/net/protocol.ts, spells every close code. A room takes `MAX_PEERS` (32) sockets.
 - A guest knows the host when `joinRoom` resolves; the host learns of a guest from `onPeers`. A send to an id not in
   `peers()` (or guest to guest) is dropped. Relay messages over 64 KB are dropped by the server. Strings starting
   with `\u0001` are reserved for the transport.

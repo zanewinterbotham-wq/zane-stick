@@ -4,7 +4,7 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { RoomDO, routeRoom, type CfSocket, type DONamespace, type DOState } from '../server/rooms/index';
 import { createRoom, joinRoom, type NetRoom } from '../src/net/room';
-import { CODE_ALPHABET } from '../src/net/protocol';
+import { CODE_ALPHABET, MAX_PEERS } from '../src/net/protocol';
 
 type Data = string | ArrayBuffer;
 /** One end of a fake WebSocketPair. Events wait until someone listens, like a socket handed over in a 101. */
@@ -153,7 +153,7 @@ describe('room server over the relay path', () => {
     expect(host.peers()).toEqual([]);
   });
 
-  it('host leaving closes the room: guests see host-left, late joiners "Room closed", unknown codes "Room not found"', async () => {
+  it('host leaving closes the room: guests see host-left, late joiners room-closed, unknown codes no-room', async () => {
     ns = namespace();
     const host = await room(createRoom('H', SERVER));
     const g = await room(joinRoom(host.code, 'G', SERVER));
@@ -162,12 +162,20 @@ describe('room server over the relay path', () => {
     host.close();
     await until(() => why.length === 1);
     expect(why).toEqual(['host-left']);
-    await expect(joinRoom(host.code, 'Late', SERVER)).rejects.toThrow('Room closed');
-    await expect(joinRoom('ZZZZZ', 'X', SERVER)).rejects.toThrow('Room not found');
-    await expect(joinRoom('nope', 'X', SERVER)).rejects.toThrow('Room not found');
+    await expect(joinRoom(host.code, 'Late', SERVER)).rejects.toThrow('room-closed');
+    await expect(joinRoom('ZZZZZ', 'X', SERVER)).rejects.toThrow('no-room');
+    await expect(joinRoom('nope', 'X', SERVER)).rejects.toThrow('no-room');
     expect((await routeRoom(new Request(`${SERVER}/api/room/${host.code}`), ns)).status).toBe(410);
     expect((await routeRoom(new Request(`${SERVER}/api/room/ZZZZZ`), ns)).status).toBe(404);
     expect((await routeRoom(new Request(`${SERVER}/api/room`), ns)).status).toBe(200);
+  });
+
+  it(`a room takes ${MAX_PEERS} sockets: the next join is refused room-full`, async () => {
+    ns = namespace();
+    const host = await room(createRoom('H', SERVER));
+    for (let i = 1; i < MAX_PEERS; i++) await room(joinRoom(host.code, `G${i}`, SERVER));
+    await expect(joinRoom(host.code, 'One too many', SERVER)).rejects.toThrow('room-full');
+    await until(() => host.peers().length === MAX_PEERS - 1);
   });
 
   it('a code with a host in it is never handed out twice', async () => {
