@@ -80,7 +80,7 @@ export class GameRenderer {
     const sc = this.sun.shadow.camera as THREE.OrthographicCamera;
     sc.left = -12; sc.right = 12; sc.top = 12; sc.bottom = -12; sc.near = 1; sc.far = 100;
     this.scene.add(this.sun, this.sun.target);
-    this.scene.add(buildField(quality.detail), this.effects.root, this.landing.root, this.passAim.root, this.tags.root);
+    this.scene.add(buildField(quality.detail), this.effects.root, this.landing.root, this.landing.path, this.passAim.root, this.tags.root);
     this.barrier = buildBarrier();
     this.scene.add(this.barrier);
     this.resize();
