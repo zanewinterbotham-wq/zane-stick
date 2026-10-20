@@ -2,9 +2,6 @@
 // timestep; slow motion only changes how fast real time feeds the fixed steps.
 import './testLock'; // first: tests must not capture the owner's real cursor
 import { HumanBrain } from '../sim/brains/human';
-import { carrierSkill } from '../sim/brains/carrier';
-import { tacklerSkill } from '../sim/brains/tackler';
-import { DEFAULT_OPEN_FIELD } from '../sim/drills/openField';
 import { Play } from '../sim/modes/play';
 import { modeById } from '../sim/modes/registry';
 import type { ModeDef, ModeOptions } from '../sim/modes/types';
@@ -20,7 +17,7 @@ import { HitMeter, hitFeel, MPH, type BigHit, type HitSound } from './feel';
 import { InputManager, keyName, keysText, type InputFrame } from './input/input';
 import { effectivePreset, PRESETS, type PresetName } from './presets';
 import { GameRenderer } from './render/renderer';
-import { DEFAULT_SETTINGS, GAME_SUPPORT, PLAYER_BASE, loadSettings, saveSettings, type Settings } from './settings';
+import { DEFAULT_SETTINGS, gamePlayConfig, loadSettings, saveSettings, type Settings } from './settings';
 import { CATEGORIES, equipItem } from './inventory';
 import { modeMenu, savedOptions } from './modes';
 import { openSettings } from './settings-menu';
@@ -80,7 +77,10 @@ async function devScenario(name: string) {
 }
 
 // ------------------------------------------------------------------ the game
-class App {
+/** The running game, for the e2e tests and benches. */
+declare global { interface Window { __app: App } }
+
+export class App {
   settings: Settings = loadSettings();
   input = new InputManager();
   audio = new Audio();
@@ -414,14 +414,7 @@ class App {
   }
 
   /** The World and bodies from this player's settings and preset (a multiplayer host's go to every guest). */
-  playConfig(): PlayConfig {
-    const p = this.preset, s = this.settings;
-    return {
-      physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), defense: tacklerSkill(s.tackling), toughness: s.toughness, hitPower: s.hitPower, catching: s.catching, jump: s.jump, qb: s.qb, boneStrength: s.boneStrength, aiBoneStrength: s.aiBoneStrength, carrierGait: DEFAULT_OPEN_FIELD.carrierGait, activeBots: p.activeBots,
-      human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, bot: DEFAULT_OPEN_FIELD.carrier, traction: s.traction, gains: s.gains,
-      support: { ...GAME_SUPPORT, ...s.support },
-    };
-  }
+  playConfig(): PlayConfig { return gamePlayConfig(this.settings, this.preset); }
 
   /** Show a rep's play: renderer (rebuilt when the preset changed), skin, stadium, camera on the player's athlete. */
   async attach(play: Play) {
@@ -892,7 +885,7 @@ if (params.get('bench') === '1') {
 } else if (params.get('scenario')) void devScenario(params.get('scenario')!).catch((e) => console.error(e));
 else {
   const app = new App();
-  (window as unknown as { __app: App }).__app = app;
+  window.__app = app;
   app.boot().catch((e) => {
     console.error(e);
     const el0 = document.getElementById('loading');

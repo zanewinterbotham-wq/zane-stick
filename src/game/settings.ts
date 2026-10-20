@@ -4,7 +4,11 @@ import { catchTuning, type CatchTuning } from '../sim/modes/catching';
 import { qbTuning, type QbTuning } from '../sim/brains/football/qbTuning';
 import { jumpTuning, type JumpTuning } from '../sim/anim/jump';
 import { DEFAULT_SUPPORT, type SupportSettings } from '../sim/anim/types';
-import { cleanPerf, PRESETS, type PerfOverrides, type PresetName } from './presets';
+import { carrierSkill } from '../sim/brains/carrier';
+import { tacklerSkill } from '../sim/brains/tackler';
+import { DEFAULT_OPEN_FIELD } from '../sim/drills/openField';
+import type { PlayConfig } from '../sim/modes/types';
+import { cleanPerf, PRESETS, type PerfOverrides, type Preset, type PresetName } from './presets';
 import skins from './skins.json';
 import stadiums from './stadiums.json';
 
@@ -69,6 +73,16 @@ export type DifficultyName = keyof typeof DIFFICULTY_PRESETS | 'custom';
 /** The preset the settings match, or 'custom'. */
 export const difficultyOf = (s: Settings): DifficultyName =>
   (Object.keys(DIFFICULTY_PRESETS) as (keyof typeof DIFFICULTY_PRESETS)[]).find((k) => Object.entries(DIFFICULTY_PRESETS[k]).every(([f, v]) => s[f as keyof typeof DIFFICULTY_PRESETS.easy] === v)) ?? 'custom';
+
+/** The World and bodies from a player's settings and quality level: every rep's PlayConfig (a multiplayer host's goes
+ *  to every guest), and what the benches and tests use as "the game's settings". */
+export function gamePlayConfig(s: Settings, p: Preset): PlayConfig {
+  return {
+    physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), defense: tacklerSkill(s.tackling), toughness: s.toughness, hitPower: s.hitPower, catching: s.catching, jump: s.jump, qb: s.qb, boneStrength: s.boneStrength, aiBoneStrength: s.aiBoneStrength, carrierGait: DEFAULT_OPEN_FIELD.carrierGait, activeBots: p.activeBots,
+    human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, bot: DEFAULT_OPEN_FIELD.carrier, traction: s.traction, gains: s.gains,
+    support: { ...GAME_SUPPORT, ...s.support },
+  };
+}
 
 const KEY = 'zane-stick-settings-v1';
 
