@@ -186,6 +186,21 @@ describe('a host and two guests over a loopback room (headless)', () => {
   }, 120_000);
 });
 
+describe('joining while the host builds a rep (headless)', () => {
+  it('the joiner gets the rep being built, not the old one (or none)', async () => {
+    const room = createLoopbackRoom(['Ann']);
+    const host = new Session(room.host, mujocoEngine, 'Host', { mode: 'tackle', options: {}, steer: 0.3 });
+    new Session(room.guests[0], mujocoEngine, 'Ann', { mode: 'tackle', options: {}, steer: 0 });
+    await flush();
+    const building = host.begin(CFG, new HumanBrain(), 3); // the first rep: no start of the host's yet
+    const cy = new Session(room.join('Cy'), mujocoEngine, 'Cy', { mode: 'tackle', options: {}, steer: 0 });
+    await building;
+    for (let k = 0; k < 200 && !cy.play; k++) await flush();
+    expect([cy.start?.rep, cy.start?.countdown, cy.mySlot]).toEqual([0, 3, -1]);
+    host.close();
+  }, 60_000);
+});
+
 describe('versions (headless)', () => {
   it('a guest on another build is told to reload, the host hears who; a host on another build sends guests away too', async () => {
     const room = createLoopbackRoom(['Old', 'New']);

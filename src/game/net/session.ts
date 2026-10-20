@@ -32,6 +32,8 @@ export class Session {
   /** This rep's play (the host's simulation, or the guest's replica world), its start message, and the replica. */
   play: Play | null = null;
   start: StartMsg | null = null;
+  /** Host: the rep being built (its start is out, its play not yet): a guest joining now gets this one. */
+  private next: StartMsg | null = null;
   replica: Replica | null = null;
   closed = '';
   // the shell's hooks
@@ -115,6 +117,7 @@ export class Session {
     l.phase = 'game'; l.votes = [];
     this.sendLobby();
     this.tell({ t: 'start', start }); // first, so the guests build while the host does
+    this.next = start;
     for (const r of this.remote.values()) r.brain = null;
     const fixed = assign.map((id) => {
       const r = id && id !== this.selfId ? this.remote.get(id) : undefined;
@@ -222,12 +225,12 @@ export class Session {
 
   private swap(play: Play, s: StartMsg) {
     const old = this.play;
-    this.play = play; this.start = s;
+    this.play = play; this.start = s; this.next = null;
     this.onStart(s, play); // the shell moves its renderer to the new world before the old one goes
     old?.destroy();
   }
 
-  private drop() { this.play?.destroy(); this.play = null; this.start = null; this.replica = null; }
+  private drop() { this.play?.destroy(); this.play = null; this.start = null; this.next = null; this.replica = null; }
 
   /** Host: the transport's peer list changed (join, leave, path, ping). */
   private peers(list: ReturnType<NetRoom['peers']>) {
@@ -236,7 +239,9 @@ export class Session {
     for (const p of list) this.known.set(p.id, p.name);
     for (const id of joined) {
       this.remote.set(id, { brain: null, steer: 0.3, seq: -1 });
-      if (this.start && this.play) this.tell({ t: 'start', start: { ...this.start, countdown: 0 } }, id); // joined mid-game: he watches this rep
+      // joined mid-game: he watches this rep (the one being built, else the running one)
+      if (this.next) this.tell({ t: 'start', start: this.next }, id);
+      else if (this.start && this.play) this.tell({ t: 'start', start: { ...this.start, countdown: 0 } }, id);
     }
     for (const id of left) this.gone(id, names.get(id) ?? '');
     if (joined.length || left.length || changed || this.clock() - this.pingSent >= PING_EVERY / 1000) this.sendLobby();
