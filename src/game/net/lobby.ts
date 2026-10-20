@@ -29,7 +29,7 @@ export interface Lobby {
 export interface StartMsg { mode: string; options: ModeOptions; seed: number; rep: number; assign: (string | null)[]; cfg: PlayConfig; countdown: number }
 /** Presentation events the host knows best (feel.ts big hits; a player leaving). */
 export type NetEvent = { k: 'hit'; closing: number; impulse: number; a: number; b: number } | { k: 'left'; name: string; athlete: number } | { k: 'old'; name: string };
-export type ToHost = { t: 'hi'; steer: number; v?: string } | { t: 'want'; slot: number | null } | { t: 'ready'; on: boolean } | { t: 'restart'; on: boolean };
+export type ToHost = { t: 'hi'; steer: number; v?: string } | { t: 'want'; slot: number | null } | { t: 'ready'; on: boolean } | { t: 'restart'; on: boolean; rep: number };
 export type ToGuest = { t: 'lobby'; lobby: Lobby } | { t: 'start'; start: StartMsg } | { t: 'ev'; ev: NetEvent } | { t: 'kick'; why?: 'version' };
 
 /** A guest's message as the host may trust it, or null. */
@@ -40,7 +40,7 @@ export function parseToHost(data: string): ToHost | null {
   if (o?.t === 'hi' && typeof o.steer === 'number' && Number.isFinite(o.steer)) return { t: 'hi', steer: Math.min(1, Math.max(0, o.steer)), ...(typeof o.v === 'string' && { v: o.v.slice(0, 40) }) };
   if (o?.t === 'want' && (o.slot === null || Number.isInteger(o.slot))) return { t: 'want', slot: o.slot as number | null };
   if (o?.t === 'ready' && typeof o.on === 'boolean') return { t: 'ready', on: o.on };
-  if (o?.t === 'restart' && typeof o.on === 'boolean') return { t: 'restart', on: o.on };
+  if (o?.t === 'restart' && typeof o.on === 'boolean' && Number.isInteger(o.rep)) return { t: 'restart', on: o.on, rep: o.rep as number };
   return null;
 }
 

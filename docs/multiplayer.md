@@ -100,7 +100,8 @@ Implementation notes (src/net/, server/rooms/):
 - **Playing**: the host steps the play at the fixed rate for everyone (no slow motion, no hit-stop) and sends
   snapshots 30 times a second of play time; the next rep starts only when every player on a position has asked for it (Enter / Start or the menu's Vote to
   restart; again takes it back; a watcher may ask but is not waited for; owner decision 2026-10-19). The HUD corner shows
-  the count (restart 1/2); the votes reset each rep.
+  the count (restart 1/2); the votes reset each rep. A vote (`{t:'restart', on, rep}`) names its rep: the host ignores one
+  for a rep gone by, and a guest flips his own vote at once, so a double tap asks and takes back.
   Guests send their input every frame and render `Replica.render(now)`; the camera, HUD, faces, sounds and gore
   read the replica world. The HUD shows your position and team, the score per team, and the room / path / ping
   corner; Tab shows everyone. Spectators follow any athlete (Space / arm buttons cycle). The pause menu keeps the

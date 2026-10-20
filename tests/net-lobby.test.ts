@@ -72,8 +72,9 @@ describe('lobby rules', () => {
     const empty = L.newLobby({ id: 'h', name: 'Host' }, 'tackle', {});
     expect(L.restartTally(empty, [null, null]).due).toBe(false); // all bots: anyone's vote restarts
     L.vote(empty, 'h', true); expect(L.restartTally(empty, [null, null]).due).toBe(true);
-    expect(L.parseToHost(JSON.stringify({ t: 'restart', on: true }))).toEqual({ t: 'restart', on: true });
-    expect(L.parseToHost(JSON.stringify({ t: 'restart', on: 'yes' }))).toBeNull();
+    expect(L.parseToHost(JSON.stringify({ t: 'restart', on: true, rep: 4 }))).toEqual({ t: 'restart', on: true, rep: 4 });
+    expect(L.parseToHost(JSON.stringify({ t: 'restart', on: 'yes', rep: 4 }))).toBeNull();
+    expect(L.parseToHost(JSON.stringify({ t: 'restart', on: true }))).toBeNull(); // which rep it is for
   });
 
   it('ready, start checks and trusting nothing a guest sends', () => {
@@ -173,6 +174,10 @@ describe('a host and two guests over a loopback room (headless)', () => {
     await host.begin(CFG, human, 0);
     for (let k = 0; k < 200 && ann.start?.rep !== 1; k++) await flush();
     expect([ann.start?.rep, host.lobby.votes, ann.voted]).toEqual([1, [], false]);
+    room.guests[0].broadcast(JSON.stringify({ t: 'restart', on: true, rep: 0 }), true); await flush(); // a vote from rep 0, late
+    expect(host.lobby.votes).toEqual([]);
+    ann.voteRestart(); ann.voteRestart(); await flush(); // a double tap inside one round trip: asked, taken back
+    expect([host.lobby.votes, ann.voted]).toEqual([[], false]);
     host.onRestart = () => {};
 
     // a late joiner watches the rep in progress; back to the lobby, the guests drop their replicas

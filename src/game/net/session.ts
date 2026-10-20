@@ -75,8 +75,14 @@ export class Session {
   want(slot: number | null) { this.isHost ? this.edit(() => L.want(this.lobby, this.selfId, slot)) : this.say({ t: 'want', slot }); }
   ready(on: boolean) { if (!this.isHost) this.say({ t: 'ready', on }); }
   /** Ask for the next rep (or take it back): it starts once every player on a position has asked. */
-  voteRestart(on = !this.voted) { this.isHost ? this.edit(() => L.vote(this.lobby, this.selfId, on)) : this.say({ t: 'restart', on }); }
-  get voted() { return this.lobby.votes.includes(this.selfId); }
+  voteRestart(on = !this.voted) {
+    if (this.isHost) return this.edit(() => L.vote(this.lobby, this.selfId, on));
+    this.myVote = on; // at once: a second press before the host's lobby comes back takes it back
+    this.say({ t: 'restart', on, rep: this.start?.rep ?? -1 });
+  }
+  get voted() { return this.isHost ? this.lobby.votes.includes(this.selfId) : this.myVote; }
+  /** Guest: his own vote this rep, as he last sent it. */
+  private myVote = false;
   /** This rep's restart votes (have / need), for the HUD. */
   get tally() { return L.restartTally(this.lobby, this.start?.assign ?? this.lobby.assign); }
   // host only
@@ -195,7 +201,7 @@ export class Session {
       const r = this.remote.get(from); if (r) { r.steer = m.steer; if (r.brain) r.brain.steerAssist = m.steer; } // he is known from onPeers first
     }
     else if (m.t === 'want') this.edit(() => L.want(this.lobby, from, m.slot));
-    else if (m.t === 'restart') this.edit(() => L.vote(this.lobby, from, m.on));
+    else if (m.t === 'restart') { if (m.rep === (this.next ?? this.start)?.rep) this.edit(() => L.vote(this.lobby, from, m.on)); } // a late vote is for a rep gone by
     else this.edit(() => L.setReady(this.lobby, from, m.on));
   }
 
@@ -225,7 +231,7 @@ export class Session {
 
   private swap(play: Play, s: StartMsg) {
     const old = this.play;
-    this.play = play; this.start = s; this.next = null;
+    this.play = play; this.start = s; this.next = null; this.myVote = false;
     this.onStart(s, play); // the shell moves its renderer to the new world before the old one goes
     old?.destroy();
   }
