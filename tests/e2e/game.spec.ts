@@ -368,11 +368,15 @@ test('tuning panel shows the support, speed and strength sliders; HUD shows spee
   await page.keyboard.press('KeyT');
   await expect(page.locator('.menu h1')).toHaveText('Settings');
   await expect(page.getByRole('tab', { name: 'Advanced' })).toHaveAttribute('aria-selected', 'true');
-  for (const label of ['Support: strength', 'Support: carry accel (m/s²)', 'Support: weight share', 'Support: tilt fade start', 'Support: tilt fade end', 'Support: big hit (N·s)', 'Support: tracking stiffness ×', 'Athlete speed ×', 'Muscle strength ×']) {
-    await expect(page.getByRole('slider', { name: label })).toBeVisible();
+  for (const label of ['Support: strength', 'Support: carry accel (m/s²)', 'Support: weight share', 'Support: tilt fade start', 'Support: tilt fade end', 'Support: big hit (N·s)', 'Support: tracking stiffness ×', 'Player speed ×', 'Muscle strength ×', 'Player bone strength ×', 'AI bone strength ×', 'Steer assist', 'Bot QB skill', 'Read time', 'Jump height', 'Two-hand chance', 'Catch reach']) {
+    await expect(page.getByRole('slider', { name: label, exact: true })).toBeVisible();
   }
   await expect(page.getByRole('slider', { name: 'Support: strength' })).toHaveValue('1');
   await expect(page.getByLabel('Exported values')).toHaveValue(/"support"/);
+  for (const key of ['"boneStrength"', '"steerAssist"', '"jump"', '"qb"', '"catching"', '"skill": 0.5']) await expect(page.getByLabel('Exported values')).toHaveValue(new RegExp(key));
+  // a moved slider changes the export at once
+  await page.getByRole('slider', { name: 'Bot QB skill' }).fill('0.9');
+  await expect(page.getByLabel('Exported values')).toHaveValue(/"skill": 0.9/);
   await page.screenshot({ path: 'test-results/07-tuning.png', fullPage: true });
   expect(errors).toEqual([]);
 });
@@ -384,7 +388,8 @@ test('difficulty screen: presets, the independent sliders and hit power, remembe
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.locator('.menu h1')).toHaveText('Settings');
   await expect(page.getByRole('status')).toContainText('Difficulty: Normal');
-  for (const label of ['AI toughness (force needed to tackle the bot)', 'AI juking', 'Player strength', 'Player speed', 'Hit power']) await expect(page.getByRole('slider', { name: label })).toBeVisible();
+  for (const label of ['AI toughness (force needed to tackle the bot)', 'AI juking', 'Player strength', 'Hit power']) await expect(page.getByRole('slider', { name: label })).toBeVisible();
+  for (const label of ['Player speed', 'Steer assist', 'Player bone strength', 'AI bone strength']) await expect(page.getByRole('slider', { name: label, exact: true })).toHaveCount(0); // in the Tuning panel now
   await expect(page.getByRole('slider', { name: 'Hit power' })).toHaveValue('1.5');
   await page.getByRole('button', { name: 'Easy' }).click();
   await expect(page.getByRole('status')).toContainText('Difficulty: Easy');

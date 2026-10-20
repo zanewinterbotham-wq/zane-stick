@@ -5,6 +5,7 @@
 // bots are the football AI layer's brains playing it, the same objects for the whole play (they play after the catch
 // themselves: a receiver carries, a defender tackles or runs an interception back). The human picks his role (that
 // slot is athlete 0); as in the Oklahoma drill the human's side is team 0: a cornerback's offense attacks the other way.
+import { qbSkill, qbTuning } from '../brains/football/qbTuning';
 import { DefensiveBackBrain } from '../brains/football/db';
 import { QBBrain } from '../brains/football/qb';
 import { ReceiverBrain } from '../brains/football/receiver';
@@ -111,7 +112,8 @@ export const PASS_MODE: ModeDef = {
         if (!made[i]) {
           const a = full[i], d = play.cfg.difficulty;
           call.assign[i] = a;
-          made[i] = a.kind === 'pass' ? new QBBrain(r, d, call, i) : a.kind === 'route' ? new ReceiverBrain(r, d, call, i) : new DefensiveBackBrain(r, play.cfg.defense ?? d, call, i);
+          // the QB's own skill and habits (qbTuning.ts), not the carrier's juking setting
+          made[i] = a.kind === 'pass' ? new QBBrain(r, qbSkill(qbTuning(play.cfg.qb).skill), call, i, play.cfg.qb) : a.kind === 'route' ? new ReceiverBrain(r, d, call, i) : new DefensiveBackBrain(r, play.cfg.defense ?? d, call, i);
         }
         return made[i];
       },

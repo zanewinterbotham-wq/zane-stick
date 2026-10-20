@@ -1,5 +1,6 @@
 // Game modes are data: options the menu shows, a setup (who stands where, on which team, with which brain, where the
 // ball starts) and rules (when the play ends, what it scores). Play (play.ts) runs any of them.
+import type { QbTuning } from '../brains/football/qbTuning';
 import type { CatchTuning } from './catching';
 import type { AthleteParams } from '../anatomy/body';
 import type { JumpTuning } from '../anim/jump';
@@ -34,6 +35,8 @@ export interface PlayConfig {
   hitPower?: number;
   /** Catch tuning overrides (catching.ts; absent = the defaults). The same for every athlete. */
   catching?: Partial<CatchTuning>;
+  /** Bot QB tuning (brains/football/qbTuning.ts: skill and habits; absent = the defaults). */
+  qb?: Partial<QbTuning>;
   /** Jump tuning for every athlete (WorldSetup.jump; absent / {} = the defaults). */
   jump?: Partial<JumpTuning>;
   /** Defenders' difficulty (TacklerBrain: the AI tackling setting); absent = difficulty. */

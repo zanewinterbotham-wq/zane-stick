@@ -8,6 +8,7 @@
 // and throws on the run; late with nothing open he throws it away beyond the sideline. He never throws to a covered man
 // unless a rusher is on him. Reads the Perception through a reaction delay (as TacklerBrain); difficulty is only read
 // speed, the precision of his lead, and nerves under pressure. Same Commands as a human (Commands.pass).
+import { qbTuning, type QbTuning } from './qbTuning';
 import { GAIT_SPEED } from '../../control/hand';
 import { neutralCommands, type Commands, type PassCmd } from '../../control/types';
 import { clamp, wrapAngle, type Vec3 } from '../../math';
@@ -62,7 +63,7 @@ const AWAY_OUT = 8, AWAY_DOWN = 6, LATE = 1;
 /** Difficulty: a read takes LOOK + LOOK_K × reaction s; the lead's error is noise × (AIM_0 + AIM_D × distance) m, ×
  *  (1 + NERVES × pressure); each read is misjudged by a gaussian of noise × MISREAD on the openness he throws into
  *  (drawn once per read: a misread is a read, not a flicker). */
-const LOOK = 0.15, LOOK_K = 1.2, AIM_0 = 0.5, AIM_D = 0.04, NERVES = 1.5, MISREAD = 0.5;
+// (the numbers are QbTuning's: qbTuning.ts, tunable; these docs name its knobs look, lookK, aim, aimPerM, nerves, misread)
 /** A run's change (a burst out of a break) is read over RUN_DT s of what he saw (sense.carry): a stride or more, so
  *  the speed's rise and fall within a stride does not read as one. */
 const RUN_DT = 0.3;
@@ -289,9 +290,11 @@ export class QBBrain implements Brain {
   read = 0;
   private misread = NaN;
   lastPass: PassRecord | null = null;
-  constructor(private rng: Rng, private diff: BotDifficulty, private call: PlayCall, private self: number) {
+  private t: QbTuning;
+  constructor(private rng: Rng, private diff: BotDifficulty, private call: PlayCall, private self: number, tuning?: Partial<QbTuning>) {
+    this.t = qbTuning(tuning);
     this.tackler = new TacklerBrain(rng, diff);
-    this.look = LOOK + LOOK_K * diff.reaction;
+    this.look = this.t.look + this.t.lookK * diff.reaction;
   }
 
   think(p: Perception, dt = 1 / 240): Commands {
@@ -344,8 +347,8 @@ export class QBBrain implements Brain {
     // the clock: a read whose time is up is left
     while (this.read < n && el > a.reads[this.read].by) this.next(p);
     const looked = p.time - this.lookFrom >= this.look;
-    if (Number.isNaN(this.misread)) this.misread = this.rng.gauss() * this.diff.noise * MISREAD;
-    const ch = chooseTarget(seen, this.call, this.self, { from: this.read, to: this.read, minOpen: OPEN + this.misread, heat, routes: this.routes });
+    if (Number.isNaN(this.misread)) this.misread = this.rng.gauss() * this.diff.noise * this.t.misread;
+    const ch = chooseTarget(seen, this.call, this.self, { from: this.read, to: this.read, minOpen: this.t.open + this.misread, heat, routes: this.routes });
     if (ch && (looked || ch.read === -1)) return this.pass(p, me, ch, heat, c);
     // a rusher on him: the best man even if covered, else away
     if (heat < FORCED_T) {
@@ -367,7 +370,7 @@ export class QBBrain implements Brain {
   /** Send the throw: the choice's point plus his lead error (difficulty, the distance, and nerves under the rush). */
   private pass(p: Perception, me: AthleteView, ch: ThrowChoice, heat: number, c: Commands): Commands {
     const from = releasePoint(me), pr = clamp(1 - heat / POCKET_T, 0, 1);
-    const sd = ch.kind === 'away' ? 0 : this.diff.noise * (AIM_0 + AIM_D * flat(from, ch.at)) * (1 + NERVES * pr);
+    const sd = ch.kind === 'away' ? 0 : this.diff.noise * (this.t.aim + this.t.aimPerM * flat(from, ch.at)) * (1 + this.t.nerves * pr);
     const cmd: PassCmd = { at: [ch.at[0] + this.rng.gauss() * sd, ch.at[1], ch.at[2] + this.rng.gauss() * sd], loft: ch.loft };
     c.pass = cmd; this.faceTo(me, cmd.at, c);
     this.lastPass = { ...ch, cmd, t: p.time, from };

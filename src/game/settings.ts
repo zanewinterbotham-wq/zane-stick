@@ -1,6 +1,7 @@
 // Player settings, remembered per browser. Storage can be unavailable (school-managed profiles, private
 // windows), so every read and write is guarded and the defaults always work.
 import { catchTuning, type CatchTuning } from '../sim/modes/catching';
+import { qbTuning, type QbTuning } from '../sim/brains/football/qbTuning';
 import { jumpTuning, type JumpTuning } from '../sim/anim/jump';
 import { DEFAULT_SUPPORT, type SupportSettings } from '../sim/anim/types';
 import { cleanPerf, PRESETS, type PerfOverrides, type PresetName } from './presets';
@@ -23,6 +24,7 @@ export interface Settings {
   hitPower: number;              // arcade hit power, 1 = pure physics
   catching: Partial<CatchTuning>; // catch tuning overrides (sim/modes/catching.ts); {} = the defaults
   jump: Partial<JumpTuning>;     // jump tuning knobs over the defaults (Advanced: Jump; {} = the defaults)
+  qb: Partial<QbTuning>;         // bot QB tuning over the defaults (Advanced: Bot QB; {} = the defaults)
   steerAssist: number;           // 0..1: the player's run turns this far toward the ball carrier or a loose ball
   traction: number;              // cleat–turf friction (tuning)
   gains: Record<string, number>; // controller gain overrides (tuning)
@@ -53,7 +55,7 @@ export const GAME_SUPPORT = { ...DEFAULT_SUPPORT, carryAccel: 10.5 };
 const VERSION = 8;
 
 export const DEFAULT_SETTINGS: Settings = {
-  version: VERSION, preset: null, perf: {}, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, catching: {}, jump: {}, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
+  version: VERSION, preset: null, perf: {}, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, catching: {}, jump: {}, qb: {}, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
   slowMo: true, autoCamera: false, sprintToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: skins[0]?.id ?? 'classic', goreLevel: 1, stadium: stadiums[0]?.id ?? 'field' // the owner's picks are first in the lists
 };
 
@@ -100,6 +102,7 @@ export function loadSettings(): Settings {
       s.perf = cleanPerf(s.perf);
       // only known catching knobs, in range (catchTuning clamps), kept as overrides
       s.catching = s.catching && typeof s.catching === 'object' ? Object.fromEntries(Object.entries(catchTuning(s.catching)).filter(([k]) => k in s.catching)) : {};
+      s.qb = s.qb && typeof s.qb === 'object' ? Object.fromEntries(Object.entries(qbTuning(s.qb)).filter(([k]) => k in s.qb)) : {};
       // version 8: the jump knobs; only valid ones are kept (clamped to their ranges), the rest are the defaults
       const jt = jumpTuning(s.jump), jump = Object.fromEntries(Object.keys(jt).filter((k) => typeof s.jump?.[k] === 'number' && Number.isFinite(s.jump[k])).map((k) => [k, jt[k as keyof JumpTuning]]));
       return { ...DEFAULT_SETTINGS, ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support }, jump };

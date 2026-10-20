@@ -1,7 +1,8 @@
 // The Settings screen: one tabbed panel for every setting (title menu and pause menu both open it).
 // To add a setting, add a row to GAMEPLAY_ROWS (or the matching tab builder) and a field to Settings.
 import { CATCH_RANGES, catchTuning, type CatchTuning } from '../sim/modes/catching';
-import { JUMP_DEFAULTS, JUMP_RANGES, type JumpTuning } from '../sim/anim/jump';
+import { JUMP_DEFAULTS, JUMP_RANGES, jumpTuning, type JumpTuning } from '../sim/anim/jump';
+import { QB_RANGES, qbTuning, type QbTuning } from '../sim/brains/football/qbTuning';
 import type { SupportSettings } from '../sim/anim/types';
 import { DEFAULT_GAINS } from '../sim/control/hand';
 import { keyName, keysText, RESERVED, type InputManager } from './input/input';
@@ -57,6 +58,17 @@ export type GameplayRow =
 
 const sec = (v: number) => `${v.toFixed(2)} s`, m = (v: number) => `${v.toFixed(2)} m`;
 /** The Advanced tab's Jump section: [knob, label, description, format]; ranges are JUMP_RANGES. */
+/** The bot QB knobs on the Advanced tab: [field, label, what it does, format]. */
+const QB_ROWS: [keyof QbTuning, string, string, (v: number) => string][] = [
+  ['skill', 'Bot QB skill', 'How fast he reads the field and how precise his reads and leads are (default 50 %; 100 % is elite).', (v) => `${Math.round(v * 100)} %`],
+  ['look', 'Read time', 'The shortest time one read takes, before his reaction time adds to it.', (v) => `${v.toFixed(2)} s`],
+  ['lookK', 'Reaction in reads', 'How much his reaction time adds to each read.', (v) => `${v.toFixed(2)}×`],
+  ['aim', 'Lead error', 'How far off his lead can be at the release (per unit of noise).', (v) => `${v.toFixed(2)} m`],
+  ['aimPerM', 'Lead error per metre', 'Extra lead error for every metre of the throw.', (v) => `${v.toFixed(3)} m`],
+  ['nerves', 'Nerves under pressure', 'How much a defender on him adds to the lead error.', (v) => `${v.toFixed(1)}×`],
+  ['misread', 'Misreads', 'How much he misjudges how open a receiver is.', (v) => `${v.toFixed(2)}×`],
+  ['open', 'How open before he throws', 'How open a receiver must look before he throws to him (lower: riskier throws).', (v) => `${Math.round(v * 100)} %`],
+];
 const JUMP_ROWS: [keyof JumpTuning, string, string, (v: number) => string][] = [
   ['height', 'Jump height', 'Standing take-off strength (higher jumps higher).', x],
   ['runHeight', 'Running jump height', 'One-foot take-off strength off a run.', x],
@@ -78,12 +90,8 @@ export const GAMEPLAY_ROWS: GameplayRow[] = [
   { kind: 'slider', label: 'AI toughness (force needed to tackle the bot)', desc: 'How hard the bot is to knock off balance (its hit, stun and wrap-up thresholds).', min: 0.4, max: 2.5, step: 0.05, get: (s) => s.toughness, set: (s, v) => (s.toughness = v), fmt: x },
   { kind: 'slider', label: 'AI juking', desc: 'How well the bot carrier reads you, times his cuts and bursts away.', min: 0, max: 1, step: 0.05, get: (s) => s.juking, set: (s, v) => (s.juking = v), fmt: pct },
   { kind: 'slider', label: 'AI tackling', desc: 'How quickly bot tacklers read your jukes, how good their pursuit angles are, how hard they are to shake.', min: 0, max: 1, step: 0.05, get: (s) => s.tackling, set: (s, v) => (s.tackling = v), fmt: pct },
-  { kind: 'slider', label: 'Player bone strength', desc: 'How hard a hit it takes to break one of your bones (lower breaks more easily).', min: 0.25, max: 4, step: 0.05, get: (s) => s.boneStrength, set: (s, v) => (s.boneStrength = v), fmt: (v) => `${v.toFixed(2)}x` },
-  { kind: 'slider', label: 'AI bone strength', desc: 'The same for the bots.', min: 0.25, max: 4, step: 0.05, get: (s) => s.aiBoneStrength, set: (s, v) => (s.aiBoneStrength = v), fmt: (v) => `${v.toFixed(2)}x` },
   { kind: 'slider', label: 'Player strength', desc: 'Your muscle strength.', min: 0.5, max: 1.5, step: 0.01, get: (s) => s.strength, set: (s, v) => (s.strength = v), fmt: x },
-  { kind: 'slider', label: 'Player speed', desc: 'How fast your joints can move.', min: 0.7, max: 1.5, step: 0.01, get: (s) => s.speed, set: (s, v) => (s.speed = v), fmt: x },
   { kind: 'slider', label: 'Hit power', desc: 'Above 1 adds an arcade push to whoever a hit drives back (the bot can blow you back too); 1 is pure physics.', min: 1, max: 3, step: 0.1, get: (s) => s.hitPower, set: (s, v) => (s.hitPower = v), fmt: (v) => (v <= 1 ? '1.0 (pure physics)' : `${v.toFixed(1)}×`) },
-  { kind: 'slider', label: 'Steer assist', desc: 'Turns your run part way toward the ball carrier (or a loose ball) when he is near and ahead.', min: 0, max: 1, step: 0.05, get: (s) => s.steerAssist, set: (s, v) => (s.steerAssist = v), fmt: pct },
   { kind: 'toggle', label: 'Big-hit slow motion', desc: 'Slow motion and a short freeze on the hardest hits.', get: (s) => s.slowMo, set: (s, v) => (s.slowMo = v) },
 ];
 
@@ -187,20 +195,10 @@ function gameplayTab({ host, status, reopen }: Ctx) {
     } else rows.append(setRow(r.label, r.desc, onOff(r.label, () => r.get(s), (v) => { r.set(s, v); host.save(); })));
   }
   refresh();
-  // catching (catching.ts): every knob, the same for you and the bots; empty = the defaults
-  const c = () => catchTuning(s.catching), catchRows = el('div', { class: 'set-list' });
-  const drawCatch = () => catchRows.replaceChildren(...CATCH_ROWS.map(([k, label, desc]) => {
-    const [lo, hi] = CATCH_RANGES[k], fmt = k === 'reach' ? (v: number) => `${v.toFixed(2)} m` : pct;
-    const [input, out] = range(label, c()[k], lo, hi, 0.01, (v) => { s.catching = { ...s.catching, [k]: v }; }, fmt, () => host.save());
-    return setRow(label, desc, input, out);
-  }));
-  drawCatch();
-  const resetCatch = el('button', { type: 'button', class: 'item', 'data-sfx': 'ui_back', text: 'Catching: back to the defaults' });
-  resetCatch.addEventListener('click', () => { s.catching = {}; host.save(); drawCatch(); });
-  return [rows, el('h2', { class: 'set-h', text: 'Catching' }), el('p', { class: 'sub', text: 'How easy catching is, for you and the bots alike. A ball comes to your raised hands; the chance is the base chance for the hands times the factors below. Applies from the next rep.' }), catchRows, el('div', { class: 'items' }, resetCatch)];
+  return [rows];
 }
 
-/** The catching knobs on the Gameplay tab: [field, label, what it does]. */
+/** The catching knobs on the Advanced tab: [field, label, what it does]. */
 const CATCH_ROWS: [keyof CatchTuning, string, string][] = [
   ['reach', 'Catch reach', 'How close the ball must come to a raised hand (or between both) to be caught.'],
   ['twoHands', 'Two-hand chance', 'Both hands up (the diamond): the chance before the factors below.'],
@@ -333,7 +331,10 @@ function advancedTab({ host, status, reopen }: Ctx) {
   supportRow('tilt fade end', 'tiltEnd', 0.2, 1.5, 0.01, deg);
   supportRow('big hit (N·s)', 'bigHit', 20, 400, 1, (v) => v.toFixed(0));
   supportRow('tracking stiffness ×', 'tracking', 0.25, 2, 0.01, (v) => v.toFixed(2));
-  row('Athlete speed ×', s.speed, 0.7, 1.5, 0.01, (v) => (s.speed = v), (v) => v.toFixed(2));
+  row('Player speed ×', s.speed, 0.7, 1.5, 0.01, (v) => (s.speed = v), (v) => v.toFixed(2));
+  row('Player bone strength ×', s.boneStrength, 0.25, 4, 0.05, (v) => (s.boneStrength = v), (v) => v.toFixed(2));
+  row('AI bone strength ×', s.aiBoneStrength, 0.25, 4, 0.05, (v) => (s.aiBoneStrength = v), (v) => v.toFixed(2));
+  row('Steer assist', s.steerAssist, 0, 1, 0.05, (v) => (s.steerAssist = v), pct);
   row('Muscle strength ×', s.strength, 0.5, 1.5, 0.01, (v) => (s.strength = v), (v) => v.toFixed(2));
   row('Balance assist (no support)', s.assist, 0, 1, 0.01, (v) => (s.assist = v), pct);
   row('Cleat traction μ', s.traction, 0.5, 1.6, 0.01, (v) => (s.traction = v));
@@ -342,23 +343,49 @@ function advancedTab({ host, status, reopen }: Ctx) {
     row(`Gain: ${k}`, v, d * 0.25, d * 4, d / 100, (g) => (s.gains[k] = g));
   }
   const exp = el('textarea', { readonly: 'true', 'aria-label': 'Exported values' });
-  const update = () => (exp.value = JSON.stringify({ support: sup, speed: PLAYER_BASE.speed * s.speed, strength: PLAYER_BASE.strength * s.strength, assist: s.assist, traction: s.traction, gains: { ...DEFAULT_GAINS, ...s.gains } }, null, 2));
+  // every tweakable on this tab, with the defaults filled in: the JSON to make the new defaults
+  const update = () => (exp.value = JSON.stringify({ support: sup, speed: PLAYER_BASE.speed * s.speed, strength: PLAYER_BASE.strength * s.strength, assist: s.assist, traction: s.traction,
+    boneStrength: s.boneStrength, aiBoneStrength: s.aiBoneStrength, steerAssist: s.steerAssist, gains: { ...DEFAULT_GAINS, ...s.gains },
+    jump: jumpTuning(s.jump), qb: qbTuning(s.qb), catching: catchTuning(s.catching) }, null, 2));
   update();
-  grid.addEventListener('input', update);
   const copy = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Copy values');
   copy.addEventListener('click', () => { void navigator.clipboard?.writeText(exp.value).then(() => host.hud.flash('Copied'), () => { exp.select(); }); });
   const reset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset to defaults');
-  reset.addEventListener('click', () => { s.gains = {}; s.assist = 0.2; s.traction = 1.2; s.support = { ...GAME_SUPPORT }; host.save(); reopen(); });
+  reset.addEventListener('click', () => { s.gains = {}; s.assist = 0.2; s.traction = 1.2; s.support = { ...GAME_SUPPORT }; s.speed = 1; s.boneStrength = 1; s.aiBoneStrength = 1; s.steerAssist = 0.3; host.save(); reopen(); });
   // Jump: one slider per JumpTuning knob over the defaults (s.jump holds only the ones moved)
   const jumpRows = JUMP_ROWS.map(([k, label, desc, fmt]) => {
     const [min, max, step] = JUMP_RANGES[k];
     return setRow(label, desc, ...range(label, s.jump[k] ?? JUMP_DEFAULTS[k], min, max, step, (v) => (s.jump[k] = v), fmt, () => host.save()));
   });
   const jumpReset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset jump to defaults');
-  jumpReset.addEventListener('click', () => { s.jump = {}; host.save(); reopen(); });  return [
-    el('div', { class: 'set-list' }, setRow('Performance overlay', 'Frame rate and physics cost, top right (also the ` key).', onOff('Performance overlay', () => s.overlay, (v) => { s.overlay = v; host.save(); }))),
-    el('h2', { class: 'set-h', text: 'Tuning' }), grid, exp, el('div', { class: 'items' }, copy, reset),
+  jumpReset.addEventListener('click', () => { s.jump = {}; host.save(); reopen(); });
+  // Bot QB: the quarterback's skill and habits (qbTuning.ts; s.qb holds only the knobs moved)
+  const qbRows = QB_ROWS.map(([k, label, desc, fmt]) => {
+    const [min, max, step] = QB_RANGES[k];
+    return setRow(label, desc, ...range(label, qbTuning(s.qb)[k], min, max, step, (v) => (s.qb = { ...s.qb, [k]: v }), fmt, () => host.save()));
+  });
+  const qbReset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset QB to defaults');
+  qbReset.addEventListener('click', () => { s.qb = {}; host.save(); reopen(); });
+  // catching (catching.ts): every knob, the same for you and the bots; empty = the defaults
+  const c = () => catchTuning(s.catching), catchRows = el('div', { class: 'set-list' });
+  const drawCatch = () => catchRows.replaceChildren(...CATCH_ROWS.map(([k, label, desc]) => {
+    const [lo, hi] = CATCH_RANGES[k], fmt = k === 'reach' ? (v: number) => `${v.toFixed(2)} m` : pct;
+    const [input, out] = range(label, c()[k], lo, hi, 0.01, (v) => { s.catching = { ...s.catching, [k]: v }; }, fmt, () => host.save());
+    return setRow(label, desc, input, out);
+  }));
+  drawCatch();
+  const resetCatch = el('button', { type: 'button', class: 'item', 'data-sfx': 'ui_back', text: 'Catching: back to the defaults' });
+  resetCatch.addEventListener('click', () => { s.catching = {}; host.save(); drawCatch(); update(); });
+  const body = el('div', {},
+    el('h2', { class: 'set-h', text: 'Tuning' }), grid,
     el('h2', { class: 'set-h', text: 'Jump' }), el('div', { class: 'set-list' }, ...jumpRows), el('div', { class: 'items' }, jumpReset),
+    el('h2', { class: 'set-h', text: 'Bot QB' }), el('div', { class: 'set-list' }, ...qbRows), el('div', { class: 'items' }, qbReset),
+    el('h2', { class: 'set-h', text: 'Catching' }), el('p', { class: 'sub', text: 'How easy catching is, for you and the bots alike: the base chance for the hands times the factors below.' }), catchRows, el('div', { class: 'items' }, resetCatch));
+  body.addEventListener('input', update); // the export follows every slider on the tab
+  return [
+    el('div', { class: 'set-list' }, setRow('Performance overlay', 'Frame rate and physics cost, top right (also the ` key).', onOff('Performance overlay', () => s.overlay, (v) => { s.overlay = v; host.save(); }))),
+    body, el('div', { class: 'items' }, reset),
+    el('h2', { class: 'set-h', text: 'Export' }), el('p', { class: 'sub', text: 'Every value above: copy it to make them the new defaults.' }), exp, el('div', { class: 'items' }, copy),
   ];
 }
 
