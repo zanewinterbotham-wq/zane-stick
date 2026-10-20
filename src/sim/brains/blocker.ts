@@ -8,11 +8,12 @@
 // in front of the returner (a man already on him, a gunner he lines up over, is jammed at once).
 import { GAIT_SPEED } from '../control/hand';
 import { neutralCommands, type Commands } from '../control/types';
-import { clamp, wrapAngle, type Vec3 } from '../math';
+import { clamp, type Vec3 } from '../math';
 import type { Rng } from '../rng';
 import type { BotDifficulty } from './carrier';
 import { fallTime } from './returner';
-import { predict, turnRate } from './tackler';
+import { Steer } from './steer';
+import { predict } from './tackler';
 import type { AthleteView, Brain, Perception } from './types';
 
 /** Speed of a threat the danger estimate assumes (m/s): his time to the carrier. A threat behind the carrier (along
@@ -33,13 +34,13 @@ const ESCORT = 3;
  *  JAM m of me; the kick is played at CATCH_H m; the run stops on the wall spot at BRAKE m/s². */
 const WALL = 12, ENGAGE = 25, JAM = 5, CATCH_H = 1.2, BRAKE = 4;
 /** A way to go more than a right angle off the run is run at this share of its speed until the turn is made. */
-const FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08, REVERSE = 0.2;
+const FULL = GAIT_SPEED.sprint, REVERSE = 0.2;
 
 export type BlockPhase = 'escort' | 'wall' | 'approach' | 'breakdown' | 'drive';
 
 export class BlockerBrain implements Brain {
   private history: Perception[] = [];
-  private heading = NaN; private mag = 0;
+  private steer = new Steer();
   private aimErr = 0; private aimUntil = 0;
   /** The man I block (athlete index, −1: none) and when to look again. */
   target = -1;
@@ -165,16 +166,6 @@ export class BlockerBrain implements Brain {
   /** Move toward a ground velocity (m/s, world): the heading turns no faster than footing allows at this speed (in
    *  close, contact steps go any way at once), and the magnitude is filtered so the command does not chatter. */
   private run(me: AthleteView, vx: number, vz: number, dt: number, c: Commands, close = false) {
-    let n = Math.hypot(vx, vz);
-    if (Number.isNaN(this.heading)) this.heading = me.heading;
-    if (n > 1e-3) {
-      const d = wrapAngle(Math.atan2(vx, vz) - this.heading), w = (close ? 8 : turnRate(Math.hypot(me.comVel[0], me.comVel[2]))) * dt;
-      this.heading = wrapAngle(this.heading + clamp(d, -w, w));
-      // the way to go is behind me (overran the spot, the man came back past me): pull up first, so I can turn (in
-      // close the contact steps turn at once)
-      if (!close && Math.abs(d) > Math.PI / 2) n *= REVERSE;
-    }
-    this.mag += (Math.min(1, n / FULL) - this.mag) * (1 - Math.exp(-dt / MOVE_TAU));
-    c.move = { x: Math.sin(this.heading) * this.mag, z: Math.cos(this.heading) * this.mag };
+    this.steer.run(me, vx, vz, dt, c, close ? 8 : undefined, false, close ? 1 : REVERSE);
   }
 }

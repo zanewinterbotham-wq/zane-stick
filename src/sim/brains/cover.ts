@@ -6,12 +6,13 @@
 // is only that delay and how far off his lane he runs. Same Commands as a human.
 import { GAIT_SPEED } from '../control/hand';
 import { neutralCommands, type Commands } from '../control/types';
-import { clamp, wrapAngle, type Vec3 } from '../math';
+import { clamp, type Vec3 } from '../math';
 import type { Rng } from '../rng';
 import type { BotDifficulty } from './carrier';
 import { fallTime } from './returner';
 import { blockerInWay, shed, shedSide } from './shed';
-import { predict, TacklerBrain, turnRate } from './tackler';
+import { Steer } from './steer';
+import { predict, TacklerBrain } from './tackler';
 import type { AthleteView, Brain, Perception } from './types';
 
 export type CoverRole = 'lane' | 'contain' | 'safety';
@@ -22,11 +23,11 @@ export interface CoverLane { x: number; role: CoverRole }
  *  OUTSIDE m outside the ball and takes it inside CONTAIN_NEAR; the safety trails DEEP m behind the ball and comes up
  *  inside SAFETY_NEAR. The run is planned to stop on its spot at BRAKE m/s²; the ball is played at CATCH_H m. */
 const FAR = 30, NEAR = 9, OUTSIDE = 3, CONTAIN_NEAR = 5, DEEP = 15, SAFETY_NEAR = 10, BRAKE = 4, CATCH_H = 1.2;
-const FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08;
+const FULL = GAIT_SPEED.sprint;
 
 export class CoverBrain implements Brain {
   private history: Perception[] = [];
-  private heading = NaN; private mag = 0;
+  private steer = new Steer();
   private side: -1 | 1 = 1;
   /** How far off his lane he runs (m): the difficulty's precision. */
   private err: number;
@@ -70,29 +71,15 @@ export class CoverBrain implements Brain {
     if (bl) {
       this.side = shedSide(me, bl, spot, this.side);
       const [vx, vz] = shed(me, bl, spot, this.side, c);
-      this.run(me, vx, vz, dt, c);
+      this.steer.run(me, vx, vz, dt, c, undefined, false, 0.2);
       return c;
     }
     const v = clamp(Math.sqrt(2 * BRAKE * g), 0, FULL);
-    this.run(me, gx / g * v, gz / g * v, dt, c);
+    this.steer.run(me, gx / g * v, gz / g * v, dt, c, undefined, false, 0.2);
     c.gait = v > 6 ? 'sprint' : 'jog';
     c.contactMode = d < 4;
     return c;
   }
 
   private release(p: Perception, dt: number) { this.released = true; return this.tackler.think(p, dt); }
-
-  /** Toward a ground velocity, the heading turning no faster than footing allows (as the blocker's run). */
-  private run(me: AthleteView, vx: number, vz: number, dt: number, c: Commands) {
-    let n = Math.hypot(vx, vz);
-    if (Number.isNaN(this.heading)) this.heading = me.heading;
-    if (n > 1e-3) {
-      const d = wrapAngle(Math.atan2(vx, vz) - this.heading), w = turnRate(Math.hypot(me.comVel[0], me.comVel[2])) * dt;
-      this.heading = wrapAngle(this.heading + clamp(d, -w, w));
-      // the spot is behind me: pull up first, so the turn can be made
-      if (Math.abs(d) > Math.PI / 2) n *= 0.2;
-    }
-    this.mag += (Math.min(1, n / FULL) - this.mag) * (1 - Math.exp(-dt / MOVE_TAU));
-    c.move = { x: Math.sin(this.heading) * this.mag, z: Math.cos(this.heading) * this.mag };
-  }
 }

@@ -9,7 +9,8 @@ import { neutralCommands, type Commands, type Gait } from '../control/types';
 import { HOBBLE } from '../injury';
 import { clamp, wrapAngle } from '../math';
 import type { Rng } from '../rng';
-import { predict, TacklerBrain, turnRate } from './tackler';
+import { turnRate } from './steer';
+import { predict, TacklerBrain } from './tackler';
 import type { AthleteView, Brain, Perception } from './types';
 
 /** reaction: delay before the bot sees a change (s); noise: decision and aim noise; juke: 0..1 skill of a carrier's

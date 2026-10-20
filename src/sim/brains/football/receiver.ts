@@ -16,13 +16,14 @@ import { clamp, wrapAngle, type Vec3 } from '../../math';
 import type { Rng } from '../../rng';
 import { BlockerBrain } from '../blocker';
 import { CarrierBrain, type BotDifficulty } from '../carrier';
+import { Steer } from '../steer';
 import { predict, TacklerBrain } from '../tackler';
 import { leadShoulder, type AthleteView, type Brain, type Perception } from '../types';
 import { ballAt, BREAK_V, handsPoint, inFlight, JUKE_REACH, LAT, meetPoint, opponents, passIsMine, PLANT_ANGLE, rel } from './sense';
 import { optionPath, routePath, type RoutePath } from './routes';
 import type { PlayCall, RouteAssign } from './types';
 
-const FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08;
+const FULL = GAIT_SPEED.sprint;
 /** Path following: a corner counts as reached inside ADVANCE m (or once passed); the run aims LOOK s of speed ahead
  *  along the path (at least LOOK_MIN m), never past the next corner. */
 const ADVANCE = 0.5, LOOK = 0.4, LOOK_MIN = 2.5;
@@ -76,7 +77,7 @@ export class ReceiverBrain implements Brain {
   private history: Perception[] = [];
   private path: RoutePath | null = null;
   private leg = 1;
-  private heading = NaN; private mag = 0;
+  private steer = new Steer();
   private plantUntil = 0; private plantSide: -1 | 1 = 1;
   private optioned = false; private thrown = false; private mine = false; private jumped = false; private dived = false;
   private release: { by: number; side: number; until: number; jabUntil: number } | null = null;
@@ -183,7 +184,7 @@ export class ReceiverBrain implements Brain {
       if (Math.abs(turn) > PLANT_ANGLE && sp > 1) {
         this.plantSide = turn > 0 ? 1 : -1; this.plantUntil = p.time + PLANT_HOLD;
         // the plant takes the turn (the run was throttled for it); a sharper one than it can take is pivoted
-        this.heading = wrapAngle(this.heading + turn);
+        this.steer.heading = wrapAngle(this.steer.heading + turn);
       }
     }
     c.gait = 'sprint';
@@ -283,9 +284,9 @@ export class ReceiverBrain implements Brain {
     // a way to the ball well off his run: plant and cut onto it (the most one plant takes at this speed, as a
     // carrier's juke), once the last cut is over; slow, he simply turns
     if (off && sp > BREAK_V && p.time >= this.plantUntil + PLANT_GAP) {
-      const turn = wrapAngle(Math.atan2(dx, dz) - this.heading), jump = clamp(JUKE_REACH / sp, PLANT_ANGLE, 1.3);
+      const turn = wrapAngle(Math.atan2(dx, dz) - this.steer.heading), jump = clamp(JUKE_REACH / sp, PLANT_ANGLE, 1.3);
       this.plantSide = turn > 0 ? 1 : -1; this.plantUntil = p.time + PLANT_HOLD;
-      this.heading = wrapAngle(this.heading + clamp(turn, -jump, jump));
+      this.steer.heading = wrapAngle(this.steer.heading + clamp(turn, -jump, jump));
     }
     if (p.time < this.plantUntil) c.plantCut = this.plantSide;
     this.run(me, dx / d * v, dz / d * v, dt, c, sp <= BREAK_V);
@@ -328,13 +329,6 @@ export class ReceiverBrain implements Brain {
   /** Toward a ground velocity: the heading turns no faster than footing allows at this speed (pivoting at once when
    *  `pivot`), the magnitude filtered so the command does not chatter. */
   private run(me: AthleteView, vx: number, vz: number, dt: number, c: Commands, pivot = false) {
-    const n = Math.hypot(vx, vz);
-    if (Number.isNaN(this.heading)) this.heading = me.heading;
-    if (n > 1e-3) {
-      const d = wrapAngle(Math.atan2(vx, vz) - this.heading), w = (pivot ? 8 : Math.min(6, LAT / Math.max(1, Math.hypot(me.comVel[0], me.comVel[2])))) * dt;
-      this.heading = wrapAngle(this.heading + clamp(d, -w, w));
-    }
-    this.mag += (Math.min(1, n / FULL) - this.mag) * (1 - Math.exp(-dt / MOVE_TAU));
-    c.move = { x: Math.sin(this.heading) * this.mag, z: Math.cos(this.heading) * this.mag };
+    this.steer.run(me, vx, vz, dt, c, pivot ? 8 : Math.min(6, LAT / Math.max(1, Math.hypot(me.comVel[0], me.comVel[2]))));
   }
 }
