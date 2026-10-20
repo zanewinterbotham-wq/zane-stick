@@ -135,6 +135,7 @@ export class Play {
     const team = 'holder' in b0 ? ps.players[holder].team : b0.impetus;
     const setup: WorldSetup = {
       physics: cfg.physics, seed: cfg.seed + rep, assist: cfg.assist, traction: cfg.traction, hitPower: cfg.hitPower,
+      jump: cfg.jump,
       field: { halfWidth: r.halfWidth, goalZ: r.goal[team], dirZ: attackDir(team) },
       athletes: ps.players.map((s, i) => ({
         params: s.params ?? (fixed[i] ? cfg.human : cfg.bot), pos: [s.pos[0], 0, s.pos[1]], yaw: s.yaw ?? (s.team === 0 ? 0 : Math.PI), team: s.team,

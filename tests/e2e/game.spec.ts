@@ -138,7 +138,8 @@ test('Space jumps: a physics take-off, through the air and back down on his feet
   await page.waitForTimeout(100);
   expect((await latest(page)).held).toContain('jump');
   await page.keyboard.up('Space');
-  await expect.poll(jump, { intervals: [20] }).toBe('flight');
+  // snappy: in the air soon after the press (0.37 s of game time standing; the poll allows for a slow software GPU)
+  await expect.poll(jump, { intervals: [20], timeout: 2_000 }).toBe('flight');
   await page.waitForTimeout(250); // about the top of the flight
   await page.screenshot({ path: 'test-results/02-jump.png' });
   await expect.poll(jump, { timeout: 5_000 }).toBe('none');

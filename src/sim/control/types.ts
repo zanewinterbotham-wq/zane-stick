@@ -5,6 +5,7 @@ import type { MuscleSet, MuscleTargets } from '../muscles';
 import type { Vec3 } from '../math';
 import type { RootTarget, SupportState } from '../anim/types';
 import type { Hurt } from '../injury';
+import type { JumpTuning } from '../anim/jump';
 
 export type Gait = 'walk' | 'jog' | 'sprint';
 
@@ -80,6 +81,8 @@ export interface BodyView {
   hurt?: Hurt;
   /** A throw the world is playing (World.throwing): time into the motion (s), where it goes and the throwing hand. */
   throwing?: { t: number; at: Vec3; hand: 0 | 1 };
+  /** Jump tuning (the world's, the same for every athlete); absent = JUMP_DEFAULTS. */
+  jump?: JumpTuning;
 }
 
 /** Body state + commands in, muscle targets out, every physics step. A learned policy implements the same. */

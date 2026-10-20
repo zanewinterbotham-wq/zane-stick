@@ -60,3 +60,13 @@ it('version 7: the throw key gives way to a saved rebind that holds it; the vaul
   const s = loadSettings() as ReturnType<typeof loadSettings> & { throwScheme?: string };
   expect([s.bindings, s.throwScheme]).toEqual([{ dive: ['KeyF'], armL: ['KeyV', 'Mouse0'], throw: [] }, undefined]);
 });
+
+it('version 8: the jump knobs start at the defaults ({}); saved knobs are kept, clamped, and junk dropped', () => {
+  store.set('zane-stick-settings-v1', JSON.stringify({ version: 7 }));
+  expect(loadSettings().jump).toEqual({});
+  store.set('zane-stick-settings-v1', JSON.stringify({ version: 8, jump: { height: 1.4, dip: 9, air: 'x', bogus: 2 } }));
+  expect(loadSettings().jump).toEqual({ height: 1.4, dip: 0.4 });
+  const s = loadSettings(); s.jump.charge = 0.5; saveSettings(s);
+  expect(loadSettings().jump).toEqual({ height: 1.4, dip: 0.4, charge: 0.5 });
+  expect(loadSettings().jump).not.toBe(loadSettings().jump);
+});

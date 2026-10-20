@@ -2,6 +2,7 @@
 // ball starts) and rules (when the play ends, what it scores). Play (play.ts) runs any of them.
 import type { CatchTuning } from './catching';
 import type { AthleteParams } from '../anatomy/body';
+import type { JumpTuning } from '../anim/jump';
 import type { SupportSettings } from '../anim/types';
 import type { BotDifficulty } from '../brains/carrier';
 import type { Brain } from '../brains/types';
@@ -33,6 +34,8 @@ export interface PlayConfig {
   hitPower?: number;
   /** Catch tuning overrides (catching.ts; absent = the defaults). The same for every athlete. */
   catching?: Partial<CatchTuning>;
+  /** Jump tuning for every athlete (WorldSetup.jump; absent / {} = the defaults). */
+  jump?: Partial<JumpTuning>;
   /** Defenders' difficulty (TacklerBrain: the AI tackling setting); absent = difficulty. */
   defense?: BotDifficulty;
   /** Bone strength of the human and of every bot (AthleteSetup.boneStrength; 1 = the measured tolerances). */

@@ -10,6 +10,7 @@ import type { AthleteState, LinkRef, PhysicsEngine, PhysicsScene, PropDesc, Solv
 import { Rng } from './rng';
 import { InjuryState, type InjuryEvent } from './injury';
 import { weightSupport, type SupportSettings, type SupportState } from './anim/types';
+import { jumpTuning, RUN_TAKEOFF, type JumpTuning } from './anim/jump';
 import { THROW, throwError, throwVelocity, type PassRecord } from './throw';
 
 /** Physics precision of a scene (a quality preset's, set only between reps). The solver options and `lod` are the
@@ -41,7 +42,9 @@ export interface WorldSetup { physics: PhysicsSettings; athletes: AthleteSetup[]
   support?: SupportSettings;
   /** Arcade hit power (owner decision 2026-10-18): 1 / absent = pure physics; above 1 the athlete a hit drives back
    *  gets (hitPower − 1) × the contact force he receives on top (World.applyHitPower). */
-  hitPower?: number }
+  hitPower?: number;
+  /** Jump tuning (owner request 2026-10-19), the same for every athlete; absent / {} = JUMP_DEFAULTS. */
+  jump?: Partial<JumpTuning> }
 
 /** Balance assist timing [design §6.4]. */
 const ASSIST_FADE_OUT = 0.15, ASSIST_STABLE_TIME = 0.3, ASSIST_FADE_IN = 0.3;
@@ -169,11 +172,14 @@ export class World {
   passAllowed?: (i: number, cmd: PassCmd) => boolean;
   onPass?: (rec: PassRecord) => void;
   lastPass: PassRecord | null = null;
+  /** setup.jump over the defaults, validated. */
+  readonly jump: JumpTuning;
 
   private constructor(readonly scene: PhysicsScene, readonly setup: WorldSetup) {
     this.rng = new Rng(setup.seed);
     this.assist = setup.assist;
     this.ballIndex = setup.props?.findIndex((p) => p.name === 'ball') ?? -1;
+    this.jump = jumpTuning(setup.jump);
   }
 
   static async create(engine: PhysicsEngine, setup: WorldSetup): Promise<World> {
@@ -205,7 +211,7 @@ export class World {
   view(a: Athlete): BodyView {
     const th = a.throwing;
     return { plan: a.plan, muscles: a.muscles, state: this.scene.athletes[a.index].state, dt: this.dt, time: this.time, feet: a.feet, playerContact: a.playerContact, support: this.supported(a) ? a.support : undefined,
-      grips: [a.grips[0].active && (a.grips[0].target?.athlete ?? -1) >= 0, a.grips[1].active && (a.grips[1].target?.athlete ?? -1) >= 0], reachTo: a.reachTo, hurt: a.injury,
+      grips: [a.grips[0].active && (a.grips[0].target?.athlete ?? -1) >= 0, a.grips[1].active && (a.grips[1].target?.athlete ?? -1) >= 0], reachTo: a.reachTo, hurt: a.injury, jump: this.jump,
       ...(th && { throwing: { t: th.t, at: th.cmd.at, hand: th.hand } }) };
   }
 
@@ -280,14 +286,24 @@ export class World {
     // dive flight is ballistic: no support of any kind, so momentum is the take-off's and the body lands
     if (r.dive === 'flight') return;
     const s = this.scene.athletes[a.index].state, m = a.mass, k = S.strength, pi = a.segIndex.get('pelvis')!;
-    const c = a.playerContact || r.jump === 'flight' ? 0 : sup.carry * k;
+    const J = this.jump, air = r.jump === 'flight';
+    const c = a.playerContact || (air && J.air <= 0) ? 0 : air ? k : sup.carry * k;
     // dive or jump take-off: the carry stands in for the push off the turf, so it needs a foot on it
-    const launch = (r.dive === 'launch' || r.jump === 'launch') && (a.feet[0].touching || a.feet[1].touching);
+    // (a running jump's push spans a real one-foot stance from the foot's touchdown: RUN_TAKEOFF; the animator ends it)
+    const launch = (r.dive === 'launch' || r.jump === 'launch') && (a.feet[0].touching || a.feet[1].touching
+      || (r.jump === 'launch' && a.airT < RUN_TAKEOFF.stance && Math.hypot(s.comVel[0], s.comVel[2]) > RUN_TAKEOFF.from));
     // jump flight is ballistic too (no carry, and weightSupport gives no lift); only the posture's attitude torque stays,
-    // the same as through a running stride's flight
+    // the same as through a running stride's flight. The jump tuning's air control (0 = off) is the one exception: a
+    // horizontal carry toward the move direction, at most J.air, off contact only.
     if (c > 0 && launch) {
-      const f: Vec3 = [0, 1, 2].map((j) => m * SUP.launchKv * (r.vel[j] - s.comVel[j])) as Vec3, n = Math.hypot(...f), lim = m * (r.jump === 'launch' ? lerp(SUP.jump[0], SUP.jump[1], clamp(Math.hypot(s.comVel[0], s.comVel[2]) - 2.5, 0, 1)) : SUP.launch);
+      const f: Vec3 = [0, 1, 2].map((j) => m * SUP.launchKv * (r.vel[j] - s.comVel[j])) as Vec3, n = Math.hypot(...f);
+      const lim = m * (r.jump === 'launch' ? r.power * lerp(SUP.jump[0], SUP.jump[1], clamp(Math.hypot(s.comVel[0], s.comVel[2]) - 2.5, 0, 1)) : SUP.launch);
       a.carryForce = f.map((x) => x * c * (n > lim ? lim / n : 1)) as Vec3;
+    } else if (c > 0 && air) {
+      let fx = m * SUP.kv * (r.vel[0] - s.comVel[0]), fz = m * SUP.kv * (r.vel[2] - s.comVel[2]);
+      const n = Math.hypot(fx, fz), lim = m * J.air;
+      if (n > lim) { fx *= lim / n; fz *= lim / n; }
+      a.carryForce = [fx * c, 0, fz * c];
     } else if (c > 0) {
       // a hip-thrust lunge is a take-off too: the carry stands in for the explosive push off the turf (along the turf,
       // where the pads point once projected on it: never down into it, and the rise is the legs' own)

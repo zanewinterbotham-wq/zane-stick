@@ -17,6 +17,9 @@ export interface RootTarget {
   dive: 'none' | 'load' | 'launch' | 'flight';
   /** Jump stage, as for a dive: 'launch' = the take-off push (y included), 'flight' = ballistic until the feet land. */
   jump: 'none' | 'load' | 'launch' | 'flight';
+  /** A jump take-off's strength: × the world's launch cap and the legs' push (JumpTuning height or runHeight, × a
+   *  charged jump's share; 1 = the default jump). */
+  power: number;
   /** Hip-thrust level 0..1: the legs drive the body up, so the posture support leaves the weight to them. */
   thrust: number;
   /** Thorax yaw relative to the heading (rad, + left): a near-shoulder strike turns the trunk, the pelvis keeps heading. */
@@ -55,7 +58,7 @@ export interface Animator {
 
 export const newFrame = (n: number): AnimFrame => ({
   q: new Float64Array(n), qd: new Float64Array(n), gain: new Float64Array(n).fill(1),
-  root: { vel: [0, 0, 0], height: 1, heading: 0, pitch: 0, roll: 0, dive: 'none', jump: 'none', thrust: 0, twist: 0, bank: 0 },
+  root: { vel: [0, 0, 0], height: 1, heading: 0, pitch: 0, roll: 0, dive: 'none', jump: 'none', power: 1, thrust: 0, twist: 0, bank: 0 },
   planted: [true, true], phase: 0, clip: 'idle',
 });
 

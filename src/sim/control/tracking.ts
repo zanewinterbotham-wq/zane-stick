@@ -213,7 +213,7 @@ export class TrackingController implements MotorController {
     // a hip thrust may push up to its full strength (the muscles' limits cap it) and drives forward as well.
     const pi = this.pelvisSeg, dh = f.root.height - s.segPos[3 * pi + 1], vy = s.segVel[3 * pi + 1];
     // A jump's take-off is the exception: the legs extend as hard as they can, however fast the body already rises.
-    const Fy = f.root.jump === 'launch' ? JUMP_PUSH * this.mass * G / stance.length
+    const Fy = f.root.jump === 'launch' ? JUMP_PUSH * f.root.power * this.mass * G / stance.length
       : legShare * this.mass * G / Math.max(0.3, this.grounded) / stance.length * clamp(1 + 10 * Math.min(dh, 0.15) - (1.5 + 2.5 * th) * vy, 0, 2 + th);
     const Fh = th * (this.thrustT < THRUST_DRIVE.time ? THRUST_DRIVE.burst : THRUST_DRIVE.held) * this.mass * G / stance.length;
     const F: Vec3 = [Fh * Math.sin(f.root.heading), Fy, Fh * Math.cos(f.root.heading)];

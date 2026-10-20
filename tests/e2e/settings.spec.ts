@@ -56,8 +56,13 @@ test('settings: title menu has Settings and no skin button; every tab opens, a v
   await tab(page, 'Advanced');
   await page.screenshot({ path: 'test-results/settings-advanced.png' });
   await page.getByRole('button', { name: 'Performance overlay: On' }).click();
+  // the Jump section: each knob moved is stored on its own over the defaults
+  await page.getByRole('slider', { name: 'Jump height', exact: true }).fill('1.5');
+  await page.getByRole('slider', { name: 'Charge time' }).fill('0.5');
+  await page.getByRole('heading', { name: 'Jump' }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'test-results/settings-advanced-jump.png' });
 
-  expect(await stored(page)).toMatchObject({ hitPower: 2.5, sprintToggle: true, camera: 'helmet', preset: 'high', perf: { shadowMap: 1024 }, effortShading: false, mute: true, goreLevel: 3, overlay: true });
+  expect(await stored(page)).toMatchObject({ jump: { height: 1.5, charge: 0.5 }, hitPower: 2.5, sprintToggle: true, camera: 'helmet', preset: 'high', perf: { shadowMap: 1024 }, effortShading: false, mute: true, goreLevel: 3, overlay: true });
 
   // a reload keeps all of it
   await page.reload();
@@ -77,6 +82,11 @@ test('settings: title menu has Settings and no skin button; every tab opens, a v
   await expect(page.getByRole('button', { name: 'Gore: High' })).toHaveAttribute('aria-pressed', 'true');
   await tab(page, 'Advanced');
   await expect(page.getByRole('button', { name: 'Performance overlay: On' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('slider', { name: 'Jump height', exact: true })).toHaveValue('1.5');
+  await page.getByRole('button', { name: 'Reset jump to defaults' }).click();
+  await expect(page.getByRole('slider', { name: 'Jump height', exact: true })).toHaveValue('1');
+  await expect(page.getByRole('slider', { name: 'Charge time' })).toHaveValue('0');
+  expect((await stored(page)).jump).toEqual({});
   await page.keyboard.press('Escape');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK');
   expect(errors).toEqual([]);
