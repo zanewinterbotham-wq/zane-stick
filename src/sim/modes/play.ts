@@ -97,6 +97,8 @@ export class Play {
   private kicked = false;
   /** A forward pass has been thrown this play (one per play, NFL). */
   private forward = false;
+  /** Per passer: whether the throw passOk last let him start goes forward (decided once, at the windup). */
+  private windup = new Map<number, boolean>();
   private clear = false;
   /** The holder: time on the turf (s), time since he last left it (s), last opponent contact (world s), and whether
    *  a dead ball in his own end zone would be a touchback (he got it there from the opponents and has not left). */
@@ -273,9 +275,10 @@ export class Play {
    *  scrimmage where the mode has one (a mode without one allows it from anywhere). */
   passOk(i: number, cmd?: PassCmd): boolean {
     if (this.ended) return false;
-    if (cmd && !this.isForward(i, cmd.at)) return true;
-    const los = this.mode.los;
-    return !this.forward && (los === undefined || (los - this.ballPos()[2]) * attackDir(this.team(i)) >= 0);
+    if (cmd && !this.isForward(i, cmd.at)) { this.windup.set(i, false); return true; }
+    const los = this.mode.los, ok = !this.forward && (los === undefined || (los - this.ballPos()[2]) * attackDir(this.team(i)) >= 0);
+    if (ok) this.windup.set(i, true);
+    return ok;
   }
   /** A throw toward `at` goes forward: toward the goal athlete i's team attacks, past where the ball is. */
   private isForward(i: number, at: Vec3) { return (at[2] - this.ballPos()[2]) * attackDir(this.team(i)) > 0; }
@@ -284,8 +287,9 @@ export class Play {
    *  it has been clear of him. */
   private passed(rec: PassRecord) {
     this.lastPass = rec;
-    // a lateral is a live ball like a fumble (no incompletion), but caught or picked up it is fielded, not recovered
-    if (!this.isForward(rec.athlete, rec.at)) { this.ballLoose(this.team(rec.athlete)); this.fumbler = rec.athlete; return; }
+    // a lateral is a live ball like a fumble (no incompletion), but caught or picked up it is fielded, not recovered;
+    // as judged when the throw started (the release point is the hand, off the tucked ball it was judged from)
+    if (!(this.windup.get(rec.athlete) ?? this.isForward(rec.athlete, rec.at))) { this.ballLoose(this.team(rec.athlete)); this.fumbler = rec.athlete; return; }
     this.forward = true;
     this.passer = rec.athlete; this.pass = 'air';
     this.fumbler = rec.athlete; this.clear = false; this.kicked = false; this.muffed.clear(); this.impetus = this.team(rec.athlete);

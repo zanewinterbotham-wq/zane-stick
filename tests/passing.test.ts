@@ -138,6 +138,19 @@ describe('forward pass rules', () => {
     play.destroy();
   });
 
+  it('lateral or forward is decided once, as the throw starts, not again from the hand at the release', async () => {
+    // near-sideways throws from a standing QB: the release point (the throwing hand, plus the clearance along the
+    // flight) is up to ~0.9 m off the tucked ball the windup judged from, so the two used to disagree both ways
+    for (const [dx, dz, pass] of [[-8, -0.2, 'none'], [8, 0.4, 'air']] as const) {
+      let play: Play | null = null;
+      play = await passPlay({ route: 'go' }, thrower(0.6, (p) => { const b = p.ballPos(); return { at: [b[0] + dx, 1.2, b[2] + dz], loft: 0.3 }; }, () => play));
+      while (!play.lastPass && play.repTime < 2) play.step();
+      expect(play.lastPass).not.toBeNull();
+      expect(play.pass).toBe(pass); // 'none': a lateral, a live ball; 'air': the play's forward pass
+      play.destroy();
+    }
+  });
+
   it('caught by the defense is an interception (his to run back), never a fumble recovery', async () => {
     // thrown at the cornerback (a second player, standing with his hands up to the ball): the catch rule decides, so a
     // few reps, of which at least one is picked off
