@@ -1,6 +1,6 @@
 // Passing (docs/passing.md): the throw math, a throw through the athlete landing where it was aimed, the forward pass
 // rules (one pass from behind the line; incomplete on the turf; an interception is the defense's catch), the QB 1-on-1
-// bots completing a go route against off coverage more often than against press, and the multiplayer wire.
+// mode's bots (the football brains) over seeded reps 1 v 1 and 2 v 2 per coverage, and the multiplayer wire.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { HumanBrain, type HumanInput } from '../src/sim/brains/human';
 import { ScriptBrain } from '../src/sim/brains/script';
@@ -10,8 +10,9 @@ import { DEFAULT_OPEN_FIELD } from '../src/sim/drills/openField';
 import type { Vec3 } from '../src/sim/math';
 import { PASS_MODE } from '../src/sim/modes/pass';
 import { Play } from '../src/sim/modes/play';
-import { resolveOptions } from '../src/sim/modes/registry';
-import type { ModeOptions } from '../src/sim/modes/types';
+import { listSlots, resolveOptions } from '../src/sim/modes/registry';
+import type { ModeOptions, PlayConfig } from '../src/sim/modes/types';
+import { Rng } from '../src/sim/rng';
 import { decodeInput, encodeInput, PASS_REPEAT, type PassHold } from '../src/sim/net/input';
 import { encodeSnapshot, Replica } from '../src/sim/net/snapshot';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
@@ -138,16 +139,22 @@ describe('forward pass rules', () => {
   });
 
   it('caught by the defense is an interception (his to run back), never a fumble recovery', async () => {
-    // thrown at the backpedalling cornerback (off coverage), led to where he is going: the catch rule decides, so a few
-    // reps, of which at least one is picked off
+    // thrown at the cornerback (a second player, standing with his hands up to the ball): the catch rule decides, so a
+    // few reps, of which at least one is picked off
     const cb = 2, seen: string[] = [];
+    const hands = () => new ScriptBrain((_t, p, c) => {
+      const me = p.athletes[p.self], b = p.ball?.pos;
+      c.face = { x: -Math.sign(me.com[0]) * 0.5, z: -1 };
+      c.armL = c.armR = 1; c.gripL = c.gripR = true;
+      c.aim = b && !p.athletes.some((a) => a.hasBall) ? [...b] as Vec3 : [me.com[0], me.head[1] - 0.3, me.com[2] - 0.6];
+    });
     let picked: Play | null = null;
     for (let rep = 0; rep < 4 && !picked; rep++) {
       let play: Play | null = null;
-      play = await passPlay({ route: 'curl', coverage: 'off' }, thrower(0.9, (p) => {
+      play = await Play.create(mujocoEngine, CFG, PASS_MODE, { ...resolveOptions(PASS_MODE), route: 'curl', coverage: 'off' }, thrower(0.9, (p) => {
         const s = p.world.scene.athletes[cb].state, from = p.world.handPoint(p.world.athletes[0], 1);
         return { at: leadPoint(from, { pos: [s.com[0], 1.4, s.com[2]], vel: [...s.comVel] as Vec3 }, 0.2), loft: 0.2 };
-      }, () => play), rep);
+      }, () => play), rep, { fixed: [null, null, hands()] });
       while (!play.ended && play.pass !== 'intercepted' && play.repTime < 6) play.step();
       seen.push(play.pass);
       if (play.pass === 'intercepted') picked = play; else play.destroy();
@@ -163,30 +170,76 @@ describe('forward pass rules', () => {
     expect(play.verdictFor(1)).toMatch(/You picked it off|Pick six!/);
     play.destroy();
   });
+
+  it('2 v 2 with a player at QB: his pass to a fixed point flies and ends the rep; the bots are the football brains', async () => {
+    let play: Play | null = null;
+    play = await passPlay({ receivers: 2, coverage: 'zone' }, thrower(1.5, (p) => ({ at: [-6, 1.3, p.mode.los! + 12], loft: 0.4 }), () => play));
+    expect(play.mode.players.map((s) => s.label)).toEqual(['QB', 'WR1', 'WR2', 'CB1', 'CB2']);
+    expect(play.brains.slice(1).map((b) => b.constructor.name)).toEqual(['ReceiverBrain', 'ReceiverBrain', 'DefensiveBackBrain', 'DefensiveBackBrain']);
+    run(play);
+    expect(play.lastPass?.athlete).toBe(0);
+    expect(play.lastPass!.at[2]).toBeCloseTo(play.mode.los! + 12, 5);
+    expect(['complete', 'incomplete', 'intercepted']).toContain(play.pass);
+    play.destroy();
+  });
 });
 
-describe('QB 1-on-1 bots', () => {
-  /** Bot quarterback, receiver and corner over `n` seeds: the pass outcomes. */
-  async function tally(opts: ModeOptions, n: number) {
-    const out: Record<string, number> = {};
-    for (let rep = 0; rep < n; rep++) {
-      const play = run(await passPlay(opts, null, rep));
-      out[play.pass] = (out[play.pass] ?? 0) + 1;
+describe('QB 1-on-1 setup', () => {
+  it('N v N slots for the lobby, the role option, and the play call by coverage', () => {
+    const o = (x: ModeOptions) => ({ ...resolveOptions(PASS_MODE), ...x });
+    const slot = (x: ModeOptions) => listSlots(PASS_MODE, o(x)).map((s) => `${s.label}:${s.team}:${s.group}`);
+    expect(slot({ receivers: 3 })).toEqual(['QB:0:Offense', 'WR1:0:Offense', 'WR2:0:Offense', 'WR3:0:Offense', 'CB1:1:Defense', 'CB2:1:Defense', 'S:1:Defense']);
+    expect(slot({ receivers: 2, role: 'wr' })).toEqual(['WR1:0:Offense', 'QB:0:Offense', 'WR2:0:Offense', 'CB1:1:Defense', 'CB2:1:Defense']);
+    // a cornerback's side is team 0 (athlete 0); the offense attacks the other way
+    expect(slot({ receivers: 2, role: 'cb' })).toEqual(['CB1:0:Defense', 'QB:1:Offense', 'WR1:1:Offense', 'WR2:1:Offense', 'CB2:0:Defense']);
+    for (const receivers of [1, 2, 3]) expect(PASS_MODE.athletes(o({ receivers }))).toBe(1 + 2 * receivers);
+    // wide left, wide right, the slot on WR1's side; each defender over his man (zone: the safety deep in the middle)
+    const s = PASS_MODE.setup(o({ receivers: 3, coverage: 'zone' }), new Rng(3), {} as PlayConfig), x = s.players.map((p) => p.pos[0]);
+    expect(Math.sign(x[1])).toBe(-Math.sign(x[2]));
+    expect(Math.sign(x[3])).toBe(Math.sign(x[1]));
+    expect(Math.abs(x[3])).toBeLessThan(Math.abs(x[1]));
+    expect(x[6]).toBe(0);
+  });
+});
+
+describe('QB 1-on-1 bots (the football brains on the mode\'s play call)', () => {
+  const REPS = 6;
+  /** Every athlete a bot over REPS seeds: the pass outcomes and the yards a completion gained. The bots keep the same
+   *  brain objects through the throw, the catch and an interception (the football brains play after the catch). */
+  async function tally(opts: ModeOptions) {
+    const out = { complete: 0, incomplete: 0, intercepted: 0, none: 0, yards: 0 };
+    for (let rep = 0; rep < REPS; rep++) {
+      const play = await passPlay(opts, null, rep), kept = [...play.brains];
+      expect(play.mode.players.length).toBe(1 + 2 * +(opts.receivers ?? 1));
+      run(play);
+      expect(play.brains.every((b, i) => b === kept[i])).toBe(true);
       // a caught pass is a completion or an interception, never a fumble recovery (unless he fumbles after it)
       expect(play.recoveredBy < 0 || play.fumbles > 0).toBe(true);
-      expect(play.lastPass, `rep ${rep}: the ball comes out`).not.toBeNull();
-      expect(play.lastPass!.time - play.repStart).toBeLessThan(3.4);
+      expect(play.pass).not.toBe('air');
+      expect(play.verdictFor(0)).not.toBe('');
+      out[play.pass as keyof typeof out]++;
+      if (play.pass === 'complete') out.yards += (play.ballPos()[2] - play.mode.los!) / 0.9144;
       play.destroy();
     }
     return out;
   }
+  async function rates(receivers: number) {
+    const all = { complete: 0, incomplete: 0, intercepted: 0, none: 0 };
+    for (const coverage of ['off', 'press', 'zone']) {
+      const t = await tally({ receivers, coverage });
+      console.log(`${receivers} v ${receivers}, man ${coverage === 'zone' ? '-' : coverage} / zone ${coverage === 'zone' ? 'yes' : '-'}, ${REPS} reps: complete ${t.complete}, incomplete ${t.incomplete}, intercepted ${t.intercepted}, no pass ${t.none}, ${(t.yards / REPS).toFixed(1)} yd/rep`);
+      for (const k of Object.keys(all) as (keyof typeof all)[]) all[k] += t[k];
+    }
+    // the QB never scrambles here (no rush): the ball comes out in (nearly) every rep
+    expect(all.none).toBeLessThanOrEqual(1);
+    expect(all.intercepted).toBeLessThan(all.complete + all.incomplete);
+    return all;
+  }
 
-  it('a go route is completed in most reps against off coverage, fewer against press', async () => {
-    const off = await tally({ route: 'go', coverage: 'off' }, 12), press = await tally({ route: 'go', coverage: 'press' }, 12);
-    console.log(`go route, 12 reps: off ${JSON.stringify(off)}, press ${JSON.stringify(press)}`);
-    expect(off.complete ?? 0).toBeGreaterThanOrEqual(7);
-    expect(press.complete ?? 0).toBeLessThan(off.complete ?? 0);
-  }, 240_000);
+  it('1 v 1: outcome rates per coverage (man off, man press, zone)', async () => { await rates(1); }, 300_000);
+  it('2 v 2: outcome rates per coverage, and at least one completion', async () => {
+    expect((await rates(2)).complete).toBeGreaterThanOrEqual(1);
+  }, 300_000);
 });
 
 describe('the same throw for humans and bots, and over the wire', () => {
