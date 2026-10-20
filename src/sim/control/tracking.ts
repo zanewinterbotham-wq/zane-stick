@@ -2,17 +2,14 @@
 // support carries the body along the animation's root target. When the support levels drop (player contact,
 // knocked off balance) the targets blend toward the hand-built balance controller, so a hit athlete steps and
 // fights for balance physically; they blend back once the support returns. Everything stays within the muscles.
-import type { BodyPlan } from '../anatomy/body';
+import { totalMass, type BodyPlan } from '../anatomy/body';
 import { DEFAULT_SUPPORT, newFrame, weightSupport, type AnimFrame, type Animator, type RootTarget, type SupportSettings, type SupportState } from '../anim/types';
-import { clamp, cross, dot, type Vec3 } from '../math';
+import { clamp, cross, dot, G, vecAt, type Vec3 } from '../math';
 import { newTargets, type MuscleSet, type MuscleTargets } from '../muscles';
 import { ProceduralAnimator } from '../anim/procedural';
-import { HandController } from './hand';
+import { DT_REF, gravityComp, HandController } from './hand';
 import { neutralCommands, type BodyView, type Commands, type MotorController } from './types';
 
-const G = 9.81;
-/** Same stability reference as the hand controller: gains capped for the slowest preset (240 Hz). */
-const DT_REF = 1 / 240;
 /** Tracking natural frequency (rad/s) with the distal inertia, per body region. */
 const WN = { leg: 35, arm: 20, trunk: 25 };
 /** Without support (world without SupportSettings) the hand controller balances alone. */
@@ -61,8 +58,6 @@ export class TrackingController implements MotorController {
   private isLeg: Uint8Array;
   private chains: number[][];
   private arms: { dofs: number[]; hand: number }[];
-  private carried: number[][];
-  private segMass: Float64Array;
   private pelvisSeg: number;
   private thoraxSeg: number;
   private standH: number;
@@ -83,11 +78,8 @@ export class TrackingController implements MotorController {
     this.frame = newFrame(muscles.n);
     this.handOut = newTargets(muscles.n);
     this.trackOut = newTargets(muscles.n);
-    this.mass = plan.segments.reduce((a, s) => a + s.mass, 0);
+    this.mass = totalMass(plan);
     const S = (n: string) => plan.segments.findIndex((s) => s.name === n);
-    const below = (name: string): number[] => [S(name), ...plan.segments.filter((x) => x.parent === name).flatMap((x) => below(x.name))];
-    this.carried = plan.joints.flatMap((j) => j.dofs.map(() => below(j.child)));
-    this.segMass = Float64Array.from(plan.segments.map((x) => x.mass));
     this.pelvisSeg = S('pelvis');
     this.thoraxSeg = S('thorax') >= 0 ? S('thorax') : S('trunk');
     const region = (n: string) => (/^(hip|knee|ankle|toe)/.test(n) ? 'leg' : /^(sc|shoulder|elbow|wrist)/.test(n) ? 'arm' : 'trunk');
@@ -163,17 +155,17 @@ export class TrackingController implements MotorController {
     // The arms: a thrust, or a low drive, lifts what they push against (up and under); a hand holding an opponent
     // with the arm raised rows him in toward the chest. τ = Jᵀ F at the hand, within the muscles' limits.
     const low = clamp((this.standH - r.height) / LOW_DROP, 0, 1), lift = v.playerContact ? Math.max(r.thrust, dl * low) * THRUST_LIFT : 0;
-    const th = this.vec(v.state.segCom, this.thoraxSeg);
+    const th = vecAt(v.state.segCom, this.thoraxSeg);
     this.arms.forEach((arm, k) => {
-      const p = this.vec(v.state.segCom, arm.hand), F: Vec3 = [0, lift, 0];
+      const p = vecAt(v.state.segCom, arm.hand), F: Vec3 = [0, lift, 0];
       if (v.grips?.[k] && (k === 0 ? cmd.armL : cmd.armR) > 0.3 && !cmd.wrap && r.thrust <= 0.05) {
         const d: Vec3 = [th[0] - p[0], th[1] - p[1], th[2] - p[2]], m = Math.hypot(...d) || 1;
         for (let j = 0; j < 3; j++) F[j] += PULL * this.grip * d[j] / m;
       }
       if (F[0] === 0 && F[1] === 0 && F[2] === 0) return;
       for (const i of arm.dofs) {
-        const a = this.vec(v.state.dofAnchor, i);
-        out.tff[i] += loose * dot(cross(this.vec(v.state.dofAxis, i), [p[0] - a[0], p[1] - a[1], p[2] - a[2]]), F);
+        const a = vecAt(v.state.dofAnchor, i);
+        out.tff[i] += loose * dot(cross(vecAt(v.state.dofAxis, i), [p[0] - a[0], p[1] - a[1], p[2] - a[2]]), F);
       }
     });
     // A broken arm hangs and swings with the body: no muscle force at all, only a little damping (the torn tissue's;
@@ -203,7 +195,7 @@ export class TrackingController implements MotorController {
     const stanceDofs = new Set(stance.flatMap((k) => this.chains[k]));
     // in free fall no joint carries the weight of what hangs from it
     // (nor does a limp, injured body hold its limbs up)
-    if (f.root.dive !== 'flight' && f.root.jump !== 'flight' && !v.support?.out) for (let i = 0; i < ms.n; i++) if (!stanceDofs.has(i)) this.gravityComp(v, i, out);
+    if (f.root.dive !== 'flight' && f.root.jump !== 'flight' && !v.support?.out) for (let i = 0; i < ms.n; i++) if (!stanceDofs.has(i)) gravityComp(s, this.hand.carried, this.hand.segMass, i, out);
     const th = f.root.thrust;
     this.thrustT = th > 0.05 ? this.thrustT + v.dt : 0;
     if (stance.length === 0) return;
@@ -224,9 +216,9 @@ export class TrackingController implements MotorController {
       const an = this.ankle(v, this.chains[k]), cop = v.feet[k].cop;
       const p: Vec3 = th > 0 ? [an[0] + (cop[0] - an[0]) * th, an[1] + (cop[1] - an[1]) * th, an[2] + (cop[2] - an[2]) * th] : an;
       for (const i of this.chains[k]) {
-        const a = this.vec(s.dofAnchor, i);
+        const a = vecAt(s.dofAnchor, i);
         // τ = −Jᵀ F: the leg pushes the turf with −F
-        out.tff[i] += -dot(cross(this.vec(s.dofAxis, i), [p[0] - a[0], p[1] - a[1], p[2] - a[2]]), F);
+        out.tff[i] += -dot(cross(vecAt(s.dofAxis, i), [p[0] - a[0], p[1] - a[1], p[2] - a[2]]), F);
       }
     }
   }
@@ -235,28 +227,18 @@ export class TrackingController implements MotorController {
   private legDrive(v: BodyView, out: MuscleTargets, F: number, heading: number) {
     const s = v.state, feet = [0, 1].filter((k) => v.feet[k].touching);
     if (!feet.length) return;
-    const th = this.vec(s.segCom, this.thoraxSeg), hx = Math.sin(heading), hz = Math.cos(heading);
+    const th = vecAt(s.segCom, this.thoraxSeg), hx = Math.sin(heading), hz = Math.cos(heading);
     for (const k of feet) {
       const an = this.ankle(v, this.chains[k]), d: Vec3 = [th[0] - an[0], th[1] - an[1], th[2] - an[2]];
       const fwd = Math.max(0, d[0] * hx + d[2] * hz), up = Math.max(0, d[1]), n = Math.hypot(fwd, up);
       if (n < 1e-6) continue;
       const f = F / feet.length / n, Fv: Vec3 = [f * fwd * hx, f * up, f * fwd * hz];
       for (const i of this.chains[k]) {
-        const a = this.vec(s.dofAnchor, i);
-        out.tff[i] += -dot(cross(this.vec(s.dofAxis, i), [an[0] - a[0], an[1] - a[1], an[2] - a[2]]), Fv);
+        const a = vecAt(s.dofAnchor, i);
+        out.tff[i] += -dot(cross(vecAt(s.dofAxis, i), [an[0] - a[0], an[1] - a[1], an[2] - a[2]]), Fv);
       }
     }
   }
 
-  /** Feed-forward torque that holds up the weight a dof carries (Coros et al. 2010), as in the hand controller. */
-  private gravityComp(v: BodyView, i: number, out: MuscleTargets) {
-    const s = v.state;
-    let m = 0, cx = 0, cz = 0;
-    for (const k of this.carried[i]) { const mk = this.segMass[k]; m += mk; cx += mk * s.segCom[3 * k]; cz += mk * s.segCom[3 * k + 2]; }
-    const a = this.vec(s.dofAnchor, i), ax = this.vec(s.dofAxis, i);
-    out.tff[i] += -(ax[0] * (cz / m - a[2]) * m * G - ax[2] * (cx / m - a[0]) * m * G);
-  }
-
-  private ankle(v: BodyView, chain: number[]): Vec3 { const i = chain[chain.length - 1]; return this.vec(v.state.dofAnchor, i); }
-  private vec(a: Float64Array, i: number): Vec3 { return [a[3 * i], a[3 * i + 1], a[3 * i + 2]]; }
+  private ankle(v: BodyView, chain: number[]): Vec3 { const i = chain[chain.length - 1]; return vecAt(v.state.dofAnchor, i); }
 }

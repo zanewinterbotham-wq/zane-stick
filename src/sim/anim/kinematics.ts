@@ -3,7 +3,8 @@
 import type { BodyPlan } from '../anatomy/body';
 import { add, qaxis, qmul, qrot, sub, type Quat, type Vec3 } from '../math';
 
-/** Pelvis orientation the animator assumes for a root target (same convention as the controllers). */
+/** Orientation from heading, forward pitch and left roll: the one convention the animator, the hand controller and
+ *  the world's posture support share for pelvis and trunk targets. */
 export const rootQuat = (heading: number, pitch: number, roll: number): Quat =>
   qmul(qaxis([0, 1, 0], heading), qmul(qaxis([1, 0, 0], pitch), qaxis([0, 0, -1], roll)));
 
