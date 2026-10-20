@@ -99,7 +99,7 @@ describe('throwing lane: bullet vs lob', () => {
   const qb: Vec3 = [0, 1.8, -5], at: Vec3 = [0, 1.2, 15];
 
   it('ballVel / ballAt land the ball where and when asked', () => {
-    const v = ballVel(qb, at, 1.3), b = ballAt(qb, v, 1.3);
+    const v = ballVel(qb, at, 1.3), b = ballAt({ pos: qb, vel: v }, 1.3).pos;
     for (let k = 0; k < 3; k++) expect(b[k]).toBeCloseTo(at[k]);
   });
 
@@ -107,11 +107,11 @@ describe('throwing lane: bullet vs lob', () => {
     const p = per([ath(0, 0, -5), ath(0, 0, 15), ath(1, 0.4, 5)]);
     expect(laneClear(p, qb, at, 0)).toBe(false);
     // bullet, 0.8 s for 20 m: 2.3 m high over him, below a jumping DB's hands
-    const vb = ballVel(qb, at, 0.8), hb = ballAt(qb, vb, 0.4)[1];
+    const vb = ballVel(qb, at, 0.8), hb = ballAt({ pos: qb, vel: vb }, 0.4).pos[1];
     expect(hb).toBeLessThan(2.9);
     expect(arcClear(p, qb, at, 0.8, 0)).toBe(false);
     // lob, 2 s: 6.4 m over him
-    expect(ballAt(qb, ballVel(qb, at, 2), 1)[1]).toBeGreaterThan(6);
+    expect(ballAt({ pos: qb, vel: ballVel(qb, at, 2) }, 1).pos[1]).toBeGreaterThan(6);
     expect(arcClear(p, qb, at, 2, 0)).toBe(true);
     // out of the way (2 m off the line) both are clear
     expect(arcClear(per([ath(0, 0, -5), ath(0, 0, 15), ath(1, 2, 5)]), qb, at, 0.8, 0)).toBe(true);

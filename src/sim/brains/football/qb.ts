@@ -16,12 +16,10 @@ import { leadPoint, THROW, throwVelocity } from '../../throw';
 import { CarrierBrain, type BotDifficulty } from '../carrier';
 import { predict, TacklerBrain, turnRate } from '../tackler';
 import type { AthleteView, Brain, Perception } from '../types';
-import { DB_SPEED, interceptTime, openness, opponents, REACH, rel, toWorld } from './sense';
+import { CATCH_H, chaseTime, DB_SPEED, laneOpen, nearestRush, openness, opponents, REACH, releasePoint, rel, sackTime, toWorld, TURN_BACK } from './sense';
 import type { PassAssign, PlayCall } from './types';
 
-const G = 9.81, FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08;
-/** The ball is aimed to arrive at chest height (m), released this far above the head's centre (m). */
-export const CATCH_H = 1.2, RELEASE_UP = 0.15;
+const FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08;
 /** Drop depth behind the QB's start (m) per drop: a 3-step from under centre sets at ~5 yd, a 5-step ~7, a 7-step ~9. */
 export const DROP_DEPTH: Record<PassAssign['drop'], number> = { 0: 0, 3: 3.5, 5: 5.5, 7: 7.5 };
 /** Drop speed (m/s): a back-pedal, and turning and running; it brakes into the set at DROP_BRAKE m/s². Feet set for
@@ -32,21 +30,17 @@ const BACKPEDAL_V = 4.5, TURN_RUN_V = 6, DROP_BRAKE = 5, SET = 0.2;
 const LOFTS: [number, ThrowKind][] = [[0, 'bullet'], [0.45, 'touch'], [0.85, 'lob']], LOFT_COST = 0.08;
 /** Openness he throws into (0..1, sense.openness); the hot route and the checkdown are taken a little tighter. */
 export const OPEN = 0.15, HOT_K = 0.5, CHECK_K = 0.7;
-/** Throwing lane: a defender this far (m) from the ball's ground path, plus how far he can break on it after his
- *  reaction (LANE_REACT s at LANE_BREAK m/s), stops it while it passes below DEF_REACH (m: a defender's raised hands
- *  and a jump). Defenders within LANE_END m of the catch point are the openness's concern, not the lane's. */
-const LANE_R = 0.8, LANE_REACT = 0.3, LANE_BREAK = 5, DEF_REACH = 3.2, LANE_END = 2.5;
 /** Key defender: ahead of the receiver along his run within LEVER m, he has leverage on the route (openness × LEVER_K);
  *  the ball is placed KEY_AWAY m to the side away from him. */
 const LEVER = 3, LEVER_K = 0.5, KEY_AWAY = 0.4;
 /** Back-shoulder: a receiver deeper than depth (m), running downfield faster than run (m/s), a man within tight m on
  *  his hip (not over the top). Both brake at decel m/s² (~0.7 g); the receiver needs turn s more to turn to the ball,
  *  which comes side m to the side away from the man; the man starts braking react s after the receiver. */
-const BS = { depth: 10, run: 5, tight: 2.5, side: 0.8, decel: 7, turn: 0.15, react: 0.3 };
-/** A rusher (an opponent closing on him faster than RUSH_CLOSE m/s, or within RUSH_NEAR m) reaches him in sackTime s.
+const BS = { depth: 10, run: 5, tight: 2.5, side: 0.8, decel: TURN_BACK.decel, turn: 0.15, react: TURN_BACK.react };
+/** A rusher (sense.nearestRush: an opponent closing on him, or near) reaches him in sackTime s.
  *  Below HOT_T the hot route is thrown; below POCKET_T he moves in the pocket; below ESCAPE_T he leaves it (scramble
  *  or roll out); below FORCED_T a rusher is on him: he throws to the best man even if covered, or throws it away. */
-const RUSH_CLOSE = 1.5, RUSH_NEAR = 3, HOT_T = 1.6, POCKET_T = 1.4, ESCAPE_T = 0.8, FORCED_T = 0.35;
+const HOT_T = 1.6, POCKET_T = 1.4, ESCAPE_T = 0.8, FORCED_T = 0.35;
 /** Scramble: his run speed (m/s), a lane is open when nobody meets him before LOS + SCRAMBLE_GAIN m by SCRAMBLE_MARGIN s
  *  (each seeing it late and braking first if running away, as a back-shoulder man: chaseTime); headings tried off
  *  straight downfield (rad). */
@@ -72,39 +66,6 @@ export interface PassRecord extends ThrowChoice { cmd: PassCmd; t: number; from:
 const flat = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[2] - b[2]);
 const passAssign = (call: PlayCall, self: number) => { const a = call.assign[self]; return a && a.kind === 'pass' ? a : null; };
 
-/** Where the ball leaves his hand (m). */
-export const releasePoint = (me: AthleteView): Vec3 => [me.com[0], me.head[1] + RELEASE_UP, me.com[2]];
-
-/** Whether a throw (launch velocity `vel`, flight `time` s, from → at) gets past every standing opponent of `team`:
- *  one near its ground path (with the break he makes on it before it passes) stops it while it is below his reach. A
- *  lob's arc clears underneath defenders. `ignore`: an athlete judged otherwise (the back-shoulder's man). */
-export function laneOpen(p: Perception, from: Vec3, at: Vec3, vel: Vec3, time: number, team: 0 | 1, ignore = -1): boolean {
-  const ax = at[0] - from[0], az = at[2] - from[2], L2 = ax * ax + az * az || 1e-9;
-  return p.athletes.every((o, i) => {
-    if (o.team === team || o.down || i === ignore || flat(o.com, at) < LANE_END) return true;
-    const s = clamp(((o.com[0] - from[0]) * ax + (o.com[2] - from[2]) * az) / L2, 0, 1), t = s * time;
-    const off = Math.hypot(from[0] + ax * s - o.com[0], from[2] + az * s - o.com[2]);
-    const h = from[1] + vel[1] * t - G * t * t / 2;
-    return off > LANE_R + LANE_BREAK * Math.max(0, t - LANE_REACT) || h > DEF_REACH;
-  });
-}
-
-/** Time (s) opponent o needs to reach me if he is rushing me (closing faster than RUSH_CLOSE, or near); else Infinity. */
-function rushTime(me: AthleteView, o: AthleteView): number {
-  if (o.down) return Infinity;
-  const dx = me.com[0] - o.com[0], dz = me.com[2] - o.com[2], d = Math.hypot(dx, dz) || 1e-6;
-  // his own speed at me: dropping away from a rusher does not make him less of one
-  const close = (o.comVel[0] * dx + o.comVel[2] * dz) / d;
-  return close > RUSH_CLOSE || d < RUSH_NEAR ? Math.max(0, d - REACH) / Math.max(close, RUSH_CLOSE) : Infinity;
-}
-
-/** The opponent rushing athlete i soonest (−1: none) and when he gets there (s; Infinity: never). */
-export function nearestRush(p: Perception, i: number): { who: number; t: number } {
-  let who = -1, t = Infinity;
-  for (const j of opponents(p, i)) { const tj = rushTime(p.athletes[i], p.athletes[j]); if (tj < t) { t = tj; who = j; } }
-  return { who, t };
-}
-export const sackTime = (p: Perception, i: number) => nearestRush(p, i).t;
 
 /** The best throw to `target` (any loft whose lane is open, and a back-shoulder ball when it fits), scored by openness
  *  at the ball's arrival less the loft's cost; null if he is down, out of bounds or no lane is open. */
@@ -233,15 +194,6 @@ export function scrambleLane(p: Perception, call: PlayCall, self: number): { x: 
   return null;
 }
 
-/** When opponent o, seeing it BS.react s late, meets a runner leaving `from` at `vel` (s): running away from him (a man
- *  turned downfield with his receiver) he runs on and brakes to a stop first. */
-function chaseTime(o: AthleteView, from: Vec3, vel: Vec3): number {
-  const sp = Math.hypot(o.comVel[0], o.comVel[2]), away = o.comVel[0] * (from[0] - o.com[0]) + o.comVel[2] * (from[2] - o.com[2]) < 0;
-  const run = away ? sp * BS.react + sp * sp / (2 * BS.decel) : 0, t0 = away ? BS.react + sp / BS.decel : BS.react;
-  const start: Vec3 = sp > 0.1 ? [o.com[0] + o.comVel[0] / sp * run, 0, o.com[2] + o.comVel[2] / sp * run] : o.com;
-  const at: Vec3 = [from[0] + vel[0] * t0, 0, from[2] + vel[2] * t0];
-  return t0 + Math.max(0, interceptTime(start, DB_SPEED, at, vel) - REACH / DB_SPEED);
-}
 
 /** Roll out (unit ground direction): toward the sideline away from the nearest rusher, a little back. */
 export function rollOut(p: Perception, call: PlayCall, self: number): { x: number; z: number } {

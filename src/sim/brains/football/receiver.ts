@@ -17,19 +17,19 @@ import { BlockerBrain } from '../blocker';
 import { CarrierBrain, type BotDifficulty } from '../carrier';
 import { predict, TacklerBrain } from '../tackler';
 import { leadShoulder, type AthleteView, type Brain, type Perception } from '../types';
-import { opponents, rel } from './sense';
+import { ballAt, BREAK_V, handsPoint, inFlight, JUKE_REACH, LAT, meetPoint, opponents, passIsMine, PLANT_ANGLE, rel } from './sense';
 import { optionPath, routePath, type RoutePath } from './routes';
 import type { PlayCall, RouteAssign } from './types';
 
-const G = 9.81, FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08;
+const FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08;
 /** Path following: a corner counts as reached inside ADVANCE m (or once passed); the run aims LOOK s of speed ahead
  *  along the path (at least LOOK_MIN m), never past the next corner. */
 const ADVANCE = 0.5, LOOK = 0.4, LOOK_MIN = 2.5;
-/** A break sharper than PLANT_ANGLE rad is a plant cut; one plant takes up to JUKE_REACH / speed rad (the carrier's
- *  juke), so the run throttles down before it to that speed (never below BREAK_V m/s: sharper breaks pivot), braking
- *  at most DECEL m/s² (the last three steps); the command is held PLANT_HOLD s, and the next waits PLANT_GAP s (the
- *  cut lasts 0.45 s). */
-const PLANT_ANGLE = 0.5, JUKE_REACH = 5, BREAK_V = 2.5, DECEL = 4, PLANT_HOLD = 0.12, PLANT_GAP = 0.6;
+/** A break sharper than PLANT_ANGLE rad is a plant cut; one plant takes up to JUKE_REACH / speed rad (sense.ts), so
+ *  the run throttles down before it to that speed (never below BREAK_V m/s: sharper breaks pivot), braking at most
+ *  DECEL m/s² (the last three steps); the command is held PLANT_HOLD s, and the next waits PLANT_GAP s (the cut lasts
+ *  0.45 s). */
+const DECEL = 4, PLANT_HOLD = 0.12, PLANT_GAP = 0.6;
 /** Settling at a route's end: braking (m/s²), and there he faces the QB. */
 const SETTLE_BRAKE = 4;
 /** A run is slowed by asking for at most this much under its speed (m/s): a sudden stop mid-cut tripped him. */
@@ -45,25 +45,19 @@ const PRESS = 2.5, PRESS_SIDE = 1.5, JAB = 0.2, RELEASE_SIDE = 1.2, RELEASE_PAST
 const OPTION_AT = 2, MAN_D = 7, MAN_FOLLOW = 0.4, HOLE = 6;
 /** Team mates closer than SPACE m are kept off (m/s per m inside it): two routes never run into each other. */
 const SPACE = 2.5, SPACE_K = 2;
-/** Sideways acceleration a route's bends are run with (m/s², ~0.8 g: a receiver leans into his line harder than
- *  a pursuer's ~0.36 g turnRate, which bent the legs after a break into wide arcs). */
-const LAT = 8;
-/** The ball: a pass is a loose ball flying faster than PASS_V m/s above PASS_H m. The catch window: from the top of
- *  his reach (+ JUMP_GAIN m with a jump) down to LOW m; hands up HANDS_T s before it arrives (or inside HANDS_D m);
- *  jump JUMP_LEAD s before a ball above his standing reach (running; standing JUMP_STAND); lay out DIVE_T s before
- *  one he cannot get to that will be within DIVE_D m along his run. Look-ahead step (s) and the speed he can still
- *  add (m/s², the sprint start's). Keep a pass mine unless a team mate is MINE m nearer its landing. */
-const PASS_V = 5, PASS_H = 0.3, JUMP_GAIN = 0.4, LOW = 0.4, HANDS_T = 0.6, HANDS_D = 3, JUMP_LEAD = 0.55, JUMP_STAND = 1.0;
+/** The ball (sense.ts: a pass in the air, the catch window, where to meet it): hands up HANDS_T s before it arrives
+ *  (or inside HANDS_D m); jump JUMP_LEAD s before a ball above his standing reach (running; standing JUMP_STAND); lay
+ *  out DIVE_T s before one he cannot get to that will be within DIVE_D m along his run. Keep a pass mine unless a team
+ *  mate is MINE m nearer its landing. */
+const HANDS_T = 0.6, HANDS_D = 3, JUMP_LEAD = 0.55, JUMP_STAND = 1.0;
 /** Highest a ball is taken without stretching: this far above the head's centre (m, the hands in front of the face),
  *  and how long before it arrives he wants to be there (s). */
 const FACE = -0.35, EARLY = 0.15;
 /** The hands' reach above the head's centre on the feet (m: up in front of him; a full overhead stretch, returner.ts
  *  OVERHEAD, is too slow to get to a pass), above which he jumps. */
 const REACH = 0.3;
-/** A high point (or a jump) is taken over a comfortable one this much later (s). */
-const HIGH_FIRST = 0.3;
-/** Shoulders this far below the head's centre (m) and the hand this far from them with the arm raised (m). */
-const SHOULDER = 0.25, ARM_R = 0.6;
+/** Shoulders this far below the head's centre (m). */
+const SHOULDER = 0.25;
 /** The hands take the ball this far in front of the chest (m, along its flight). */
 const HANDS_FWD = 0.5;
 /** Square up to the ball while slower than OPEN_V (m/s), or this long before he meets it (s), unless running on to
@@ -71,69 +65,9 @@ const HANDS_FWD = 0.5;
 const OPEN_T = 0.6, OPEN_V = 3;
 /** A ball met lower than this (m) is laid out for. */
 const KNEE = 0.6;
-const DIVE_T = 0.4, DIVE_D: [number, number] = [0.8, 2.8], STEP = 1 / 60, ACCEL = 6, MINE = 2, CATCH_H = 1.2;
+const DIVE_T = 0.4, DIVE_D: [number, number] = [0.8, 2.8], MINE = 2;
 
 export type ReceiverPhase = 'stance' | 'release' | 'route' | 'settle' | 'ball' | 'carry' | 'block' | 'tackle';
-
-/** Ballistic position and velocity of the ball `t` s on (no drag). */
-export const ballAt = (b: { pos: Vec3; vel: Vec3 }, t: number): { pos: Vec3; vel: Vec3 } =>
-  ({ pos: [b.pos[0] + b.vel[0] * t, b.pos[1] + b.vel[1] * t - G * t * t / 2, b.pos[2] + b.vel[2] * t], vel: [b.vel[0], b.vel[1] - G * t, b.vel[2]] });
-
-/** A pass in the air: loose, flying, above the turf. */
-export const inFlight = (p: Perception) => !!p.ball && !p.athletes.some((a) => a.hasBall) && p.ball.pos[1] > PASS_H && Math.hypot(...p.ball.vel) > PASS_V;
-
-/** Time (s) to cover d m along the ground from v0 m/s along the way (accelerating at ACCEL up to FULL). */
-export function runTime(d: number, v0: number, vmax = FULL): number {
-  if (d <= 0) return 0;
-  const v = clamp(v0, 0, vmax), ta = (vmax - v) / ACCEL, da = (v + vmax) / 2 * ta;
-  return d <= da ? (-v + Math.sqrt(v * v + 2 * ACCEL * d)) / ACCEL : ta + (d - da) / vmax;
-}
-
-/** Where a ball's flight first comes within `r` m (an arm's length) of shoulders at `sh` moving at `v` (ground),
- *  within 1.5 s (`exit`: where it leaves that reach: a ball from behind, dropping in front of him): the arms pointed
- *  there put the hands on its path. Its nearest approach if it never comes that close. */
-export function handsPoint(b: { pos: Vec3; vel: Vec3 }, sh: Vec3, v: readonly number[], exit = false, r = ARM_R): Vec3 {
-  let near: Vec3 = b.pos, nd = Infinity, last: Vec3 | null = null;
-  for (let t = 0; t <= 1.5; t += STEP / 2) {
-    const q = ballAt(b, t).pos, d = Math.hypot(q[0] - sh[0] - v[0] * t, q[1] - sh[1], q[2] - sh[2] - v[2] * t);
-    if (d <= r) { if (!exit) return q; last = q; } else if (last) return last;
-    if (d < nd) { nd = d; near = q; }
-    else if (d > nd + 0.5) break; // going away
-  }
-  return last ?? near;
-}
-
-/** Extra time (s) to turn a run onto the way (dx, dz): what one plant cut cannot take (JUKE_REACH / speed rad) is
- *  bent in at LAT m/s² sideways; nothing standing or slow. */
-export function turnTime(me: AthleteView, dx: number, dz: number): number {
-  const sp = Math.hypot(me.comVel[0], me.comVel[2]), d = Math.hypot(dx, dz);
-  if (sp <= BREAK_V || d < 1e-6) return 0;
-  const th = Math.acos(clamp((me.comVel[0] * dx + me.comVel[2] * dz) / (sp * d), -1, 1));
-  return Math.max(0, th - clamp(JUKE_REACH / sp, PLANT_ANGLE, 1.3)) * sp / LAT;
-}
-
-export interface Meet { at: Vec3; t: number; late: number; jump: boolean }
-/** Where to meet a ball in flight: the earliest point of its flight he can get to (to an arm's length, `arm` m) in
- *  time from `me` at a height the hands take it running (`face`..LOW: the hands at the face or below); else the
- *  earliest within his reach above that (`reach`, hands at full stretch); else the earliest within a jump's `gain`
- *  above it (a high-point: `jump`); else the one he comes nearest to in time (`late` > 0 s: he cannot make it). */
-export function meetPoint(b: { pos: Vec3; vel: Vec3 }, me: AthleteView, face: number, reach: number, gain = JUMP_GAIN, arm = 0.5): Meet | null {
-  let best: Meet | null = null, high: Meet | null = null, top: Meet | null = null;
-  for (let t = STEP; t < 4; t += STEP) {
-    const q = ballAt(b, t).pos;
-    if (q[1] < LOW) break;
-    if (q[1] > reach + gain) continue;
-    const dx = q[0] - me.com[0], dz = q[2] - me.com[2], d = Math.hypot(dx, dz);
-    const v0 = d > 1e-6 ? (me.comVel[0] * dx + me.comVel[2] * dz) / d : 0, late = runTime(d - arm, v0) + turnTime(me, dx, dz) - t, jump = q[1] > reach;
-    // a high point he can get to well before the comfortable one is taken there (he high-points it, before anyone
-    // can undercut it), jumping if need be
-    if (late <= 0 && q[1] <= face) return (high ?? top) && t - (high ?? top)!.t > HIGH_FIRST ? (high ?? top)! : { at: q, t, late, jump };
-    if (late <= 0 && !jump) high ??= { at: q, t, late, jump };
-    if (late <= 0) top ??= { at: q, t, late, jump };
-    if (!best || late < best.late) best = { at: q, t, late, jump };
-  }
-  return high ?? top ?? best;
-}
 
 export class ReceiverBrain implements Brain {
   private history: Perception[] = [];
@@ -316,14 +250,9 @@ export class ReceiverBrain implements Brain {
     c.gait = v > JOG_MAX ? 'sprint' : 'jog';
   }
 
-  /** The pass is mine: no team mate is nearer where it comes down (kept unless one is MINE m nearer; ties to the
-   *  lower index, the same rule on every receiver's view). */
+  /** The pass is mine (sense.passIsMine: no team mate nearer where it comes down; kept unless one is MINE m nearer). */
   private isMine(seen: Perception, b: { pos: Vec3; vel: Vec3 }, me: AthleteView) {
-    const disc = b.vel[1] * b.vel[1] + 2 * G * (b.pos[1] - CATCH_H), t = disc < 0 ? 0 : (b.vel[1] + Math.sqrt(disc)) / G;
-    const lx = b.pos[0] + b.vel[0] * t, lz = b.pos[2] + b.vel[2] * t, d = (a: AthleteView) => Math.hypot(a.com[0] - lx, a.com[2] - lz);
-    const dm = d(me);
-    this.mine = seen.athletes.every((a, i) => i === this.self || a.team !== me.team || a.down || (this.mine ? d(a) + MINE > dm : d(a) > dm || (d(a) === dm && i > this.self)));
-    return this.mine;
+    return (this.mine = passIsMine(seen, b, this.self, this.mine ? MINE : 0, me.com));
   }
 
   /** Attack the ball: run to meet it at the earliest point he can, both hands up to it, jump for a high one, lay

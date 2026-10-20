@@ -4,7 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import type { AthleteView, Perception } from '../src/sim/brains/types';
 import type { PlayCall, Read } from '../src/sim/brains/football/types';
-import { bestThrow, chooseTarget, laneOpen, pocketStep, releasePoint, sackTime, scrambleLane, throwAway } from '../src/sim/brains/football/qb';
+import { bestThrow, chooseTarget, pocketStep, scrambleLane, throwAway } from '../src/sim/brains/football/qb';
+import { laneOpen, releasePoint, sackTime } from '../src/sim/brains/football/sense';
 import { leadPoint, THROW, throwVelocity } from '../src/sim/throw';
 const ARM_SPEED = THROW.vmax;
 import type { Vec3 } from '../src/sim/math';

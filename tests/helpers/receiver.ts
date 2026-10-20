@@ -1,6 +1,7 @@
 // Headless pass scenarios for the receiver brain: a QB standing with the ball (athlete 0, scripted), receivers on
 // route assignments (ReceiverBrain) and defenders given scripted brains, under the shared play rules (the catch rule).
-import { ballAt, ReceiverBrain } from '../../src/sim/brains/football/receiver';
+import { ReceiverBrain } from '../../src/sim/brains/football/receiver';
+import { ballAt } from '../../src/sim/brains/football/sense';
 import type { Assignment, PlayCall, PlayFrame, RouteAssign } from '../../src/sim/brains/football/types';
 import { ScriptBrain } from '../../src/sim/brains/script';
 import type { Brain } from '../../src/sim/brains/types';

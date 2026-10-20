@@ -5,7 +5,8 @@
 // one the ball is not thrown to blocks. Physics stays stable throughout. Numbers are printed.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { DIFFICULTY } from '../src/sim/brains/carrier';
-import { ReceiverBrain, runTime } from '../src/sim/brains/football/receiver';
+import { ReceiverBrain } from '../src/sim/brains/football/receiver';
+import { runTime } from '../src/sim/brains/football/sense';
 import { ROUTES } from '../src/sim/brains/football/routes';
 import type { RouteKind } from '../src/sim/brains/football/types';
 import { ScriptBrain } from '../src/sim/brains/script';
