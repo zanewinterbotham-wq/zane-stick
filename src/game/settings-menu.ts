@@ -10,7 +10,7 @@ import { PERF_KNOBS, PRESET_ORDER, PRESETS, type Preset, type PresetName } from 
 import { GORE_LEVELS } from './render/effects';
 import type { GameRenderer } from './render/renderer';
 import { DEFAULT_SETTINGS, DIFFICULTY_PRESETS, PLAYER_BASE, difficultyOf, type Settings } from './settings';
-import { el, type Layer } from './ui';
+import { el, range, type Layer } from './ui';
 
 /** What the screen needs from the running game (the App in main.ts implements it). */
 export interface SettingsHost {
@@ -94,14 +94,6 @@ export const GAMEPLAY_ROWS: GameplayRow[] = [
   { kind: 'slider', label: 'Hit power', desc: 'Above 1 adds an arcade push to whoever a hit drives back (the bot can blow you back too); 1 is pure physics.', min: 1, max: 3, step: 0.1, get: (s) => s.hitPower, set: (s, v) => (s.hitPower = v), fmt: (v) => (v <= 1 ? '1.0 (pure physics)' : `${v.toFixed(1)}×`) },
   { kind: 'toggle', label: 'Big-hit slow motion', desc: 'Slow motion and a short freeze on the hardest hits.', get: (s) => s.slowMo, set: (s, v) => (s.slowMo = v) },
 ];
-
-/** A range input with a live value readout; `set` runs on every edit. */
-function range(label: string, value: number, min: number, max: number, step: number, set: (v: number) => void, fmt: (v: number) => string, changed: () => void) {
-  const out = el('span', { class: 'mono', text: fmt(value) });
-  const r = el('input', { type: 'range', min: String(min), max: String(max), step: String(step), value: String(value), 'aria-label': label });
-  r.addEventListener('input', () => { const v = +r.value; out.textContent = fmt(v); set(v); changed(); });
-  return [r, out] as const;
-}
 
 /** A settings row: title and description on the left, the control on the right. */
 const setRow = (label: string, desc: string, ...controls: HTMLElement[]) =>

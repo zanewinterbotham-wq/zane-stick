@@ -4,7 +4,7 @@
 import { MODES, resolveOptions, SLOW_ATHLETES } from '../sim/modes/registry';
 import type { ModeDef, ModeOptions, OptionDesc } from '../sim/modes/types';
 import type { Settings } from './settings';
-import { el } from './ui';
+import { el, range } from './ui';
 
 export interface ModeHooks {
   /** Put a screen on the menu layer. */
@@ -72,9 +72,8 @@ export function control(d: OptionDesc, o: ModeOptions, changed: () => void): HTM
   const label = el('label', { text: d.label });
   if (d.kind === 'range') {
     const fmt = (v: number) => `${v}${d.unit ? ' ' + d.unit : ''}`;
-    const out = el('span', { class: 'mono', text: fmt(o[d.id] as number) });
-    const r = el('input', { type: 'range', min: String(d.min), max: String(d.max), step: String(d.step), value: String(o[d.id]), 'aria-label': d.label, 'data-option': d.id });
-    r.addEventListener('input', () => { o[d.id] = +r.value; out.textContent = fmt(+r.value); changed(); });
+    const [r, out] = range(d.label, o[d.id] as number, d.min, d.max, d.step, (v) => (o[d.id] = v), fmt, changed);
+    r.dataset.option = d.id;
     return [label, r, out];
   }
   if (d.kind === 'toggle') {
