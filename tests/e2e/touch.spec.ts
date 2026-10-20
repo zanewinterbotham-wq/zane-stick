@@ -30,6 +30,12 @@ test('touch buttons press keys, the stick moves, a moved button stays moved', as
   await ptr(page, '.tstick', 'pointerup');
   expect(await keys(page)).not.toContain('KeyW');
 
+  // the pause button opens the pause menu, and the controls hide under it; Resume brings them back
+  await ptr(page, '.tbtn[data-id="pause"]', 'pointerdown'); await ptr(page, '.tbtn[data-id="pause"]', 'pointerup');
+  await expect(page.locator('.touch')).toBeHidden();
+  await page.getByRole('button', { name: /^Resume/ }).click();
+  await expect(page.locator('.touch')).toBeVisible();
+
   // edit the layout: drag Jump to the middle, then it is there after a reload
   await page.locator('.tbtn.small', { hasText: '✎' }).dispatchEvent('pointerdown');
   await ptr(page, '.tbtn[data-id="jump"]', 'pointerdown');
@@ -39,6 +45,7 @@ test('touch buttons press keys, the stick moves, a moved button stays moved', as
   });
   expect(await keys(page)).not.toContain('Space'); // editing never presses
   await page.reload();
+  await startMode(page, /^Ball Carrier/);
   await expect(page.locator('.tbtn[data-id="jump"]')).toHaveCSS('left', '422px');
   expect(errors).toEqual([]);
 });

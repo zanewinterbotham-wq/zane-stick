@@ -233,8 +233,13 @@ table.controls .bind:hover { background: #2c4431; }
 .countdown { position: fixed; top: 38%; left: 50%; transform: translate(-50%, -50%); font-size: 120px; font-weight: 800; color: var(--accent); text-shadow: 0 4px 18px #000; pointer-events: none; }
 /* touch controls (input/touch.ts): under the menus, over the field */
 #view { touch-action: none; }
-.touch { position: fixed; inset: 0; z-index: 5; pointer-events: none; user-select: none; -webkit-user-select: none; }
-.tbtn, .tstick { position: fixed; pointer-events: auto; touch-action: none; transform: translate(-50%, -50%); display: grid; place-items: center; }
+.touch { position: fixed; z-index: 5; pointer-events: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  inset: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.touch[hidden] { display: none; }
+html, body { overscroll-behavior: none; }
+.trotate { display: none; }
+@media (orientation: portrait) { .trotate { display: grid; place-items: center; position: absolute; inset: 0; pointer-events: auto; background: rgba(5, 12, 7, 0.85); color: #fff; font: 600 18px system-ui, sans-serif; text-align: center; padding: 24px; } }
+.tbtn, .tstick { position: absolute; pointer-events: auto; touch-action: none; transform: translate(-50%, -50%); display: grid; place-items: center; }
 .tbtn { width: 62px; height: 62px; border-radius: 50%; background: rgba(10, 20, 14, 0.45); border: 2px solid rgba(255, 255, 255, 0.5); color: #fff; font: 600 13px system-ui, sans-serif; }
 .tbtn.small { width: auto; height: 36px; padding: 0 12px; border-radius: 18px; }
 .tbtn.on { background: rgba(255, 255, 255, 0.4); }
