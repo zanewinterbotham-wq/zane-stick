@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { carrierComesToYou, seed, watchErrors } from './helpers';
 
 const skins: string[] = [...JSON.parse(readFileSync('src/game/skins.json', 'utf8')).map((s: { id: string }) => s.id), 'classic'];
 const shapes = ['closed', 'grunt', 'scream', 'moan', 'exhale'];
@@ -11,14 +12,6 @@ type Mouth = { mesh: Mesh; driver: { force: { shape: string; level: number } | n
 type Brows = { mesh: Mesh; driver: { force: { angry: number; sad: number } | null; pose: { angry: number; sad: number }; target: { angry: number; sad: number } } };
 type Cam = { position: { set: (x: number, y: number, z: number) => void }; fov: number; lookAt: (x: number, y: number, z: number) => void; updateProjectionMatrix: () => void };
 type Zs = { world: unknown; renderer: { athletes: { mouth: Mouth | null; brows: Brows | null }[]; camera: Cam; render: (w: unknown) => void } };
-
-function watchErrors(page: Page) {
-  const errors: string[] = [];
-  // (the physics engine's loader reports a slow wasm start as an error line under a busy machine: not a fault)
-  page.on('console', (m) => { if (m.type() === 'error' && !/still waiting on run dependencies|dependency: wasm|end of list/.test(m.text())) errors.push(m.text()); });
-  page.on('pageerror', (e) => errors.push(e.message));
-  return errors;
-}
 
 /** Square-on view (along the mouth's own forward axis) of athlete 0's face, held in a mouth shape and a mood. `at` is
  *  where to look: the mouth, or the middle of the face between brows and mouth. */
@@ -77,7 +70,7 @@ type App = { audio: { play: (cat: string, loud: number, pos: undefined, athlete:
 
 test('a voice sound on an athlete moves that athlete\'s mouth, then it relaxes; the helmet camera hides your own', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false }, mute: true })));
+  await seed(page, { mute: true });
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await page.keyboard.press('Enter');
@@ -104,7 +97,7 @@ test('a voice sound on an athlete moves that athlete\'s mouth, then it relaxes; 
 
 test('the athletes\' brows follow the game: closing on the carrier makes the tackler angry', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false }, mute: true })));
+  await seed(page, { mute: true });
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await page.keyboard.press('Enter');
@@ -113,14 +106,7 @@ test('the athletes\' brows follow the game: closing on the carrier makes the tac
   const mood = (i: number) => page.evaluate((i) => (window as unknown as { __app: { renderer: Zs['renderer'] } }).__app.renderer.athletes[i].brows!.driver.pose, i);
   expect((await mood(1)).angry).toBeLessThan(0.05);
   // the carrier walks into the human, who sprints at him: angry before contact
-  await page.evaluate(() => {
-    type V = [number, number, number];
-    const d = (window as unknown as { __app: { drill: { carrier: number; human: number; brains: { think: unknown }[]; world: { athletes: { cmd: Record<string, unknown> }[] } } } }).__app.drill;
-    d.brains[d.carrier] = { think: (p: { athletes: { com: V }[] }) => {
-      const me = p.athletes[d.carrier].com, h = p.athletes[d.human].com, dx = h[0] - me[0], dz = h[2] - me[2], n = Math.hypot(dx, dz) || 1;
-      return { ...d.world.athletes[d.carrier].cmd, move: { x: dx / n, z: dz / n }, face: null, gait: 'jog', carry: 2, dive: false, thrustHips: false };
-    } };
-  });
+  await carrierComesToYou(page);
   // sample the moods every 30 ms: the angry spell before the contact is short next to a slow software-GL frame
   await page.evaluate(() => {
     const w = window as unknown as { __app: { renderer: Zs['renderer'] }; __max: number[] };

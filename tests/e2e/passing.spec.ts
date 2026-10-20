@@ -1,19 +1,17 @@
 // The QB throw control in the page (docs/passing.md: the placement reticle; the other schemes are vaulted): the HUD panel
-// and meter while he holds the ball, the pass reaching the human input (following the passer), the help and Settings
-// rows, and in QB 1-on-1 the arc keeping the throw's loft through the throwing motion.
+// and meter while he holds the ball, the pass reaching the human input (following the passer), the help row, and in
+// QB 1-on-1 the arc keeping the throw's loft through the throwing motion. (The Settings → Controls rows: game.spec.)
 import { expect, test, type Page } from '@playwright/test';
+import { seed, startMode, watchErrors } from './helpers';
 
 type Aim = { aid: { arc?: { loft: number }; meter?: number } } | null;
 type App = { __app: { aim: Aim; human: { latest: { pass?: unknown } | null; think: (...a: unknown[]) => unknown } } };
 
 async function start(page: Page, mode: RegExp, settings: Record<string, unknown> = {}) {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  await page.addInitScript((x) => { if (!localStorage.getItem('zane-stick-settings-v1')) localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false }, mute: true, ...x })); }, settings);
+  const errors = watchErrors(page);
+  await seed(page, { mute: true, ...settings }, 'ifEmpty');
   await page.goto('/');
-  await page.getByRole('button', { name: /^Play/ }).click({ timeout: 60_000 });
-  await page.getByRole('button', { name: mode }).click();
-  await page.getByRole('button', { name: 'Start' }).click();
+  await startMode(page, mode);
   await expect(page.locator('.passhud')).toBeVisible({ timeout: 60_000 });
   return errors;
 }
@@ -41,17 +39,6 @@ test('placement reticle: the panel, the hold meter, and the pass on the human in
   const pass = await page.waitForFunction(() => (window as unknown as { __saw?: unknown }).__saw ?? null, null, { timeout: 5000 }).then((h) => h.jsonValue() as Promise<{ at: number[]; loft: number; follow?: boolean }>);
   expect(pass.at).toHaveLength(3); expect(pass.loft).toBeGreaterThan(0.3); expect(pass.follow).toBe(true);
   expect(errors).toEqual([]);
-});
-
-test('Settings → Controls lists the throw key and no scheme choice', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })));
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Settings', exact: true }).click({ timeout: 60_000 });
-  await page.getByRole('tab', { name: 'Controls' }).click();
-  await expect(page.locator('tr[data-action="throw"] .keys-cell')).toHaveText('F');
-  await expect(page.locator('tr[data-action="scheme"]')).toHaveCount(0);
-  await expect(page.getByText('QB throw scheme')).toHaveCount(0);
-  await page.screenshot({ path: 'test-results/passing-settings.png', fullPage: true });
 });
 
 test('QB 1-on-1: the reticle draws, and after the release the arc keeps the held loft through the throwing motion', async ({ page }) => {

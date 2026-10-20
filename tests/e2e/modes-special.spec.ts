@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { seed, watchErrors } from './helpers';
 
 // The special-teams modes start from the Play menu with their options, put four athletes on the field by default,
 // and the kick goes up. Screenshots: test-results/4x-<mode>.png.
@@ -11,9 +12,8 @@ const SPECIAL: [string, string, string[]][] = [
 ];
 
 SPECIAL.forEach(([id, title, options], k) => test(`special teams: ${id} starts with its options and kicks`, async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false }, mute: true })));
+  const errors = watchErrors(page);
+  await seed(page, { mute: true });
   await page.goto('/');
   await page.getByRole('button', { name: /^Play/ }).click({ timeout: 60_000 });
   await page.locator(`.mode-card[data-mode=${id}]`).click();

@@ -1,6 +1,7 @@
 // The hip thrust in the real renderer (owner request 2026-10-18): side views of a thrust into a standing opponent from
 // pads fully down, half down and upright, before, at and after contact. Screenshots in test-results/thrust-*.png.
 import { expect, test } from '@playwright/test';
+import { watchErrors } from './helpers';
 
 type Zs = { __zs: {
   advance(s: number): number;
@@ -10,9 +11,7 @@ type Zs = { __zs: {
 
 for (const torso of [1, 0.6, 0]) {
   test(`thrust from pads ${torso}: side views through the hit`, async ({ page }) => {
-    const errors: string[] = [];
-    page.on('console', (m) => { if (m.type() === 'error' && !/still waiting on run dependencies|dependency: wasm|end of list/.test(m.text())) errors.push(m.text()); });
-    page.on('pageerror', (e) => errors.push(e.message));
+    const errors = watchErrors(page);
     await page.goto(`/?scenario=thrust&torso=${torso}&gfx=high`);
     await page.waitForFunction(() => (window as unknown as Zs).__zs);
     // set (before the press), the drive, first contact, through it and after

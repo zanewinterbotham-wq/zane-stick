@@ -1,19 +1,13 @@
 // The quality ladder in the real page: the lowest level plays (overlay names it) and the physics Worker mode runs a
 // rep off the page's thread, the athlete moving under the player's keys.
 import { expect, test, type Page } from '@playwright/test';
-
-function watchErrors(page: Page) {
-  const errors: string[] = [];
-  page.on('console', (m) => { if (m.type() === 'error' && !/still waiting on run dependencies|dependency: wasm|end of list/.test(m.text())) errors.push(m.text()); });
-  page.on('pageerror', (e) => errors.push(e.message));
-  return errors;
-}
+import { seed, watchErrors } from './helpers';
 
 type App = { __app: { sim: { play: unknown } | null; drill: { world: { time: number; scene: { athletes: { state: { com: number[] } }[] } } } } };
 const com = (page: Page) => page.evaluate(() => [...(window as unknown as App).__app.drill.world.scene.athletes[0].state.com]);
 
 async function play(page: Page, settings: object) {
-  await page.addInitScript((s) => localStorage.setItem('zane-stick-settings-v1', JSON.stringify(s)), settings);
+  await seed(page, { perf: undefined, ...settings }); // no perf unless given: each level's own Worker default
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await page.keyboard.press('Enter');

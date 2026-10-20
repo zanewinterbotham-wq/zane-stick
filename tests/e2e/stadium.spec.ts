@@ -1,14 +1,8 @@
 import { readFileSync } from 'node:fs';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { seed, watchErrors } from './helpers';
 
 const stadiums: { id: string; label: string }[] = JSON.parse(readFileSync('src/game/stadiums.json', 'utf8'));
-
-function watchErrors(page: Page) {
-  const errors: string[] = [];
-  page.on('console', (m) => { if ((m.type() === 'error' && !/still waiting on run dependencies|dependency: wasm|end of list/.test(m.text())) || (m.type() === 'warning' && /stadium/.test(m.text()))) errors.push(m.text()); });
-  page.on('pageerror', (e) => errors.push(e.message));
-  return errors;
-}
 
 type Zs = {
   advance: (s: number) => number;
@@ -18,8 +12,8 @@ type Zs = {
 
 for (const s of [...stadiums, { id: 'field', label: 'Open Field' }]) {
   test(`stadium ${s.id}: chase camera in the drill and a wide shot`, async ({ page }) => {
-    const errors = watchErrors(page);
-    await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })));
+    const errors = watchErrors(page, /stadium/);
+    await seed(page);
     await page.goto(`/?stadium=${s.id}`);
     await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
     await page.keyboard.press('Enter');
@@ -44,8 +38,8 @@ for (const s of [...stadiums, { id: 'field', label: 'Open Field' }]) {
 }
 
 test('the inventory lists skins and stadiums; equipping a stadium is remembered and shows on the next rep', async ({ page }) => {
-  const errors = watchErrors(page);
-  await page.addInitScript(() => { if (!localStorage.getItem('zane-stick-settings-v1')) localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })); });
+  const errors = watchErrors(page, /stadium/);
+  await seed(page, {}, 'ifEmpty');
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await page.getByRole('button', { name: /^Inventory/ }).click();

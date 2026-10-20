@@ -1,14 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { carrierComesToYou, seed, watchErrors } from './helpers';
 
 const skins: { id: string; label: string }[] = JSON.parse(readFileSync('src/game/skins.json', 'utf8'));
-
-function watchErrors(page: Page) {
-  const errors: string[] = [];
-  page.on('console', (m) => { if ((m.type() === 'error' && !/still waiting on run dependencies|dependency: wasm|end of list/.test(m.text())) || (m.type() === 'warning' && /skin/.test(m.text()))) errors.push(m.text()); });
-  page.on('pageerror', (e) => errors.push(e.message));
-  return errors;
-}
 
 type App = { renderer: { skin: { id: string }; athletes: { parts: unknown[] }[] } };
 const skinState = (page: Page) => page.evaluate(() => {
@@ -16,22 +10,9 @@ const skinState = (page: Page) => page.evaluate(() => {
   return { id: r.skin.id, parts: r.athletes.map((a) => a.parts.length) };
 });
 
-
-/** The AI carrier now dodges a straight run, so these UI tests have him walk into the human instead. */
-async function carrierComesToYou(page: import('@playwright/test').Page) {
-  await page.evaluate(() => {
-    type V = [number, number, number];
-    const d = (window as unknown as { __app: { drill: { carrier: number; human: number; brains: { think: unknown }[]; world: { athletes: { cmd: Record<string, unknown> }[] } } } }).__app.drill;
-    d.brains[d.carrier] = { think: (p: { athletes: { com: V }[] }) => {
-      const me = p.athletes[d.carrier].com, h = p.athletes[d.human].com, dx = h[0] - me[0], dz = h[2] - me[2], n = Math.hypot(dx, dz) || 1;
-      return { ...d.world.athletes[d.carrier].cmd, move: { x: dx / n, z: dz / n }, face: null, gait: 'jog', carry: 2, dive: false, thrustHips: false };
-    } };
-  });
-}
-
 test('the default skin (the owner pick, Rubber Hose) dresses both athletes; standing and tackling', async ({ page }) => {
-  const errors = watchErrors(page);
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })));
+  const errors = watchErrors(page, /skin/);
+  await seed(page);
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await expect(page.getByRole('button', { name: /Skin:/ })).toHaveCount(0); // skins are chosen in the Inventory
@@ -75,7 +56,7 @@ type Zs = {
 };
 for (const s of [...skins.map((k) => k.id), 'classic']) {
   test(`skin ${s}: sprinting athlete`, async ({ page }) => {
-    const errors = watchErrors(page);
+    const errors = watchErrors(page, /skin/);
     // side view at standard detail, then a close front three-quarter view at minimum detail (fused segments)
     for (const [detail, file] of [['standard', 'sprint'], ['minimum', 'sprint-close']]) {
       await page.goto(`/?scenario=sprint&skin=${s}&cam=side&gfx=high&detail=${detail}`);
