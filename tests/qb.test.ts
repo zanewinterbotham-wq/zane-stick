@@ -4,7 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import type { AthleteView, Perception } from '../src/sim/brains/types';
 import type { PlayCall, Read } from '../src/sim/brains/football/types';
-import { bestThrow, chooseTarget, pocketStep, scrambleLane, throwAway } from '../src/sim/brains/football/qb';
+import { alongRoute, bestThrow, chooseTarget, pocketStep, scrambleLane, throwAway } from '../src/sim/brains/football/qb';
+import { routePath } from '../src/sim/brains/football/routes';
 import { laneOpen, releasePoint, sackTime } from '../src/sim/brains/football/sense';
 import { leadPoint, THROW, throwVelocity } from '../src/sim/throw';
 const ARM_SPEED = THROW.vmax;
@@ -43,6 +44,22 @@ describe('throw ballistics', () => {
       const at = leadPoint(from, target, loft), T = THROW.release + throwVelocity(from, at, loft).time;
       expect(Math.hypot(target.pos[0] + target.vel[0] * T - at[0], target.pos[2] + target.vel[2] * T - at[2])).toBeLessThan(0.01);
     }
+  });
+});
+
+describe('the lead on a route (a throw on timing)', () => {
+  const F = { los: 0, dir: 1 as const, halfWidth: HW, snapTime: 0 };
+  it('alongRoute: through the break of an in, to the end of a curl and no further; off his path, none', () => {
+    const inn = routePath({ kind: 'route', route: 'in' }, [-12, 1, -0.5], F), b = inn.pts[inn.brk];
+    // 3 m short of the break at 8 m/s: 1.5 s on he has planted and gone across, toward the middle, at the break's depth
+    const r = ath(0, -12, b[2] - 3, [0, 0, 8]), at = alongRoute(inn, r, 1.5)!;
+    console.log(`in: break at (${b[0].toFixed(1)}, ${b[2].toFixed(1)}), led to (${at[0].toFixed(1)}, ${at[2].toFixed(1)}); on his velocity (${r.com[0].toFixed(1)}, ${(r.com[2] + 12).toFixed(1)})`);
+    expect(at[0]).toBeGreaterThan(b[0] + 3);
+    expect(Math.abs(at[2] - b[2])).toBeLessThan(0.5);
+    const curl = routePath({ kind: 'route', route: 'curl' }, [12, 1, -0.5], F), end = curl.pts[curl.pts.length - 1];
+    const c = alongRoute(curl, ath(0, 12, 6, [0, 0, 8]), 4)!;
+    expect(Math.hypot(c[0] - end[0], c[2] - end[2])).toBeLessThan(0.05);
+    expect(alongRoute(curl, ath(0, 5, 6, [0, 0, 8]), 1)).toBe(null);
   });
 });
 
