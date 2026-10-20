@@ -4,7 +4,6 @@
 import { describe, expect, it } from 'vitest';
 import { DIFFICULTY, type BotDifficulty } from '../src/sim/brains/carrier';
 import type { PlayCall } from '../src/sim/brains/football/types';
-import { opennessLed, readCoverage } from '../src/sim/brains/football/sense';
 import { ScriptBrain } from '../src/sim/brains/script';
 import type { Perception } from '../src/sim/brains/types';
 import type { Commands } from '../src/sim/control/types';
@@ -60,12 +59,7 @@ describe('field builder', () => {
     expect(f.world.athletes.map((a) => a.setup.team)).toEqual([1, 1, 1, 0, 0]);
     // depth 6 downfield of z = 10 for an offense going −z is z = 4
     expect(f.world.scene.athletes[3].state.com[2]).toBeCloseTo(4, 0);
-    // the QB's read of the coverage over the first second after the snap (physics data, not a synthetic film)
-    const film: Perception[] = [];
-    const s = f.run(3, { each: (g) => { if (g.t > 0.3 && g.t <= 1.3) film.push(g.perception(0)); } });
-    const end = s.at(-1)!, reads = [3, 4].map((d) => readCoverage(film, d)), p = f.perception(0);
-    console.log(`field 2v2 reads: ${reads.map((r) => `${r.kind} on ${r.target} (fit ${r.fit.toFixed(2)})`).join(', ')}; openness led 1 s: ${[1, 2].map((i) => opennessLed(p, i, 1).toFixed(2)).join(' / ')}`);
-    expect(reads).toMatchObject([{ kind: 'man', target: 1 }, { kind: 'man', target: 2 }]);
+    const end = f.run(3).at(-1)!;
     console.log(`field 2v2: WR depths ${end.pos[1].depth.toFixed(1)} / ${end.pos[2].depth.toFixed(1)} m, separations ${end.sep[1].toFixed(1)} / ${end.sep[2].toFixed(1)} m, CB x ${end.pos[3].x.toFixed(1)} / ${end.pos[4].x.toFixed(1)}, instabilities ${f.instabilities()}`);
     expect(end.pos[1].depth).toBeGreaterThan(15); expect(end.pos[2].depth).toBeGreaterThan(15);
     // each corner stays on his own man's side of the field

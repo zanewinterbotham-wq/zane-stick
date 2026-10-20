@@ -70,11 +70,12 @@ AI layer that later runs 11 on 11 (later phases), so they take their job as data
   ReceiverBrain, DefensiveBackBrain; one object per athlete for the whole play). Options: your role, receivers 1–3
   (WR1–3 vs CB1/CB2/S), concept (none / smash / flood / mesh / verts) or WR1's route, coverage man off / man press /
   zone. The QB leads along the route from the play call (release delay counted) and does not scramble (no rush yet).
-- Shared football sense (openness, throw window, lanes, pursuit, zone spots, man/zone read, the ball's flight, the
-  'pass is mine' rule) lives in `src/sim/brains/football/sense.ts`.
+- Shared football sense (openness, reach and chase times, the throwing lane, the ball's flight and landing, the
+  'pass is mine' rule) lives in `src/sim/brains/football/sense.ts`; each brain keeps its own reaction-delay history,
+  zone landmarks are the DB's (`zoneLandmark`), the man/zone read the receiver's (`option`).
 - Throwing in every mode (NFL): laterals any time (a live ball, fielded not recovered), one forward pass a play.
 - Weak spots: completion rates are low-ish (drops at the edge of the hands, hard throws), interceptions rare without a
-  pass rush, two zone-landmark tables (sense.zoneSpot and the DB's zoneLandmark).
+  pass rush.
 
 ## Shell: the QB throw control
 

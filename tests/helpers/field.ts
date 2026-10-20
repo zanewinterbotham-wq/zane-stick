@@ -3,7 +3,7 @@
 // tucked in one athlete's hands, and step/run helpers that record positions and separation. Built on Play (the
 // shared rules, the ball tuck, catching) with a small test mode, so whatever a brain does here it does in a mode.
 import { DIFFICULTY, type BotDifficulty } from '../../src/sim/brains/carrier';
-import { rel, separation, toWorld } from '../../src/sim/brains/football/sense';
+import { opponents, rel, toWorld } from '../../src/sim/brains/football/sense';
 import type { Assignment, PlayCall } from '../../src/sim/brains/football/types';
 import { ScriptBrain } from '../../src/sim/brains/script';
 import type { Brain, Perception } from '../../src/sim/brains/types';
@@ -17,6 +17,13 @@ import { mujocoEngine } from '../../src/sim/physics/mujoco';
 import type { Rng } from '../../src/sim/rng';
 import type { PhysicsSettings, World } from '../../src/sim/world';
 import { STD } from './scenario';
+
+/** Distance (m, along the ground) from athlete i to the nearest standing opponent. */
+function separation(p: Perception, i: number): number {
+  let d = Infinity;
+  for (const j of opponents(p, i)) if (!p.athletes[j].down) d = Math.min(d, Math.hypot(p.athletes[i].com[0] - p.athletes[j].com[0], p.athletes[i].com[2] - p.athletes[j].com[2]));
+  return d;
+}
 
 /** A football brain's constructor shape (docs/passing.md): `(...a) => new QbBrain(...a)`. */
 export type BrainFactory = (rng: Rng, diff: BotDifficulty, call: PlayCall, self: number) => Brain;
