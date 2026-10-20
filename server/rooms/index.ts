@@ -30,20 +30,19 @@ function refuse(code: number): Response {
 export async function routeRoom(req: Request, rooms: DONamespace): Promise<Response> {
   const url = new URL(req.url);
   const seg = url.pathname.replace(/^\/api\/room\/?/, '').split('/')[0];
-  const name = encodeURIComponent(cleanName(url.searchParams.get('name') ?? ''));
   if (!seg) return json(200, { ok: true });
   if (seg === 'new') {
     if (!isUpgrade(req)) return json(426, { error: 'websocket required' });
     for (let i = 0; i < 8; i++) { // a DO per code: a taken code answers 409, so draw again
       const code = makeCode(rand);
-      const res = await rooms.get(rooms.idFromName(code)).fetch(new Request(`https://room/${code}/create?name=${name}`, req));
+      const res = await rooms.get(rooms.idFromName(code)).fetch(new Request(`https://room/${code}/create${url.search}`, req));
       if (res.status !== 409) return res;
     }
     return json(503, { error: 'no free room code' });
   }
-  const code = normCode(decodeURIComponent(seg));
+  const code = normCode(seg); // a client sends a normCode'd code, which needs no decoding
   if (!code) return json(404, { error: 'room not found' });
-  return rooms.get(rooms.idFromName(code)).fetch(new Request(`https://room/${code}/join?name=${name}`, req));
+  return rooms.get(rooms.idFromName(code)).fetch(new Request(`https://room/${code}/join${url.search}`, req));
 }
 
 type Peer = WirePeer;

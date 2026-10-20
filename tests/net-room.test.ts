@@ -167,6 +167,7 @@ describe('room server over the relay path', () => {
     await expect(joinRoom('nope', 'X', SERVER)).rejects.toThrow('no-room');
     expect((await routeRoom(new Request(`${SERVER}/api/room/${host.code}`), ns)).status).toBe(410);
     expect((await routeRoom(new Request(`${SERVER}/api/room/ZZZZZ`), ns)).status).toBe(404);
+    expect((await routeRoom(new Request(`${SERVER}/api/room/%E0%A4%A`), ns)).status).toBe(404); // a bad escape: 404, not a throw
     expect((await routeRoom(new Request(`${SERVER}/api/room`), ns)).status).toBe(200);
   });
 
