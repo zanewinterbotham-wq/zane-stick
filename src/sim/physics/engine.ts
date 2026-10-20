@@ -61,7 +61,8 @@ export interface PhysicsScene {
   /** Magnitude of the constraint force holding the grip last step (N). */
   gripForce(athlete: number, hand: 0 | 1): number;
   /** Torque each dof's range-of-motion limit carried last step (N·m, ≥ 0; plan dof order): the load the joint's
-   *  passive structures (ligaments, capsule, bone stops) took. Injuries are judged on it. */
+   *  passive structures (ligaments, capsule, bone stops) took. Injuries are judged on it. The array is reused: read
+   *  it before the next step. */
   limitTorques(athlete: number): Float64Array;
   /** An injury only (a joint broken mid-rep): change one dof's range of motion (rad). */
   setJointRange(athlete: number, dof: number, lo: number, hi: number): void;

@@ -2,7 +2,7 @@
 import loadMujoco from '@mujoco/mujoco';
 import { CONTACT, TURF } from '../anatomy/equipment';
 import { selfCollisionExcludes } from '../anatomy/collision';
-import type { GeomPlan, SegmentPlan } from '../anatomy/body';
+import type { BodyPlan, GeomPlan, SegmentPlan } from '../anatomy/body';
 import { add, qaxis, qconj, qlog, qmul, qrot, sub, type Quat, type Vec3 } from '../math';
 import type { AthleteState, ContactReport, LinkRef, PhysicsEngine, PhysicsScene, SceneDesc } from './engine';
 
@@ -33,6 +33,9 @@ function contactLayout(list: Any): NonNullable<typeof CON> {
   return lay;
 }
 
+/** The segment a hand's grip holds by: the hand, or the forearm where the detail level fuses the two. */
+const handOf = (P: BodyPlan, sx: string) => (P.segments.some((x) => x.name === 'hand' + sx) ? 'hand' : 'forearm') + sx;
+
 const f = (v: readonly number[]) => v.map((x) => +x.toFixed(7)).join(' ');
 
 export const mujocoEngine: PhysicsEngine = {
@@ -62,8 +65,10 @@ class MujocoScene implements PhysicsScene {
   private geomLink: LinkRef[] = [];
   private propBody: number[] = [];
   private gripEq: number[][] = [];        // athlete → hand → equality id
+  private handBody: number[][] = [];      // athlete → hand → MuJoCo body the grip holds by
   private cache: ContactReport[] | null = null;
-  private limits: Float64Array[] | null = null;
+  /** Limit torques per athlete, refilled on the first read after a step. */
+  private limits: Float64Array[] = []; private limitsStale = true;
   /** MuJoCo joint id → [athlete, dof]. */
   private jointDof = new Map<number, [number, number]>();
   private forceBuf: Any;
@@ -109,7 +114,7 @@ class MujocoScene implements PhysicsScene {
       };
       xml += body(kids(null)[0]);
       for (const [s1, s2] of selfCollisionExcludes(P)) excludes.push(`<exclude body1="a${ai}_${s1}" body2="a${ai}_${s2}"/>`);
-      for (const sx of ["L", "R"]) { const h = (P.segments.some((x) => x.name === "hand" + sx) ? "hand" : "forearm") + sx; equalities.push(`<connect name="a${ai}_grip_${sx}" body1="a${ai}_${h}" body2="world" anchor="0 0 0" active="false" solref="0.025 1"/>`); }
+      for (const sx of ["L", "R"]) { const h = handOf(P, sx); equalities.push(`<connect name="a${ai}_grip_${sx}" body1="a${ai}_${h}" body2="world" anchor="0 0 0" active="false" solref="0.025 1"/>`); }
     });
     desc.props.forEach((p, pi) => {
       const quat = p.quat ? ` quat="${f([p.quat[3], p.quat[0], p.quat[1], p.quat[2]])}"` : '';
@@ -137,6 +142,7 @@ class MujocoScene implements PhysicsScene {
       this.passiveDamp.push(Float64Array.from(jids.map((j) => m.dof_damping[m.jnt_dofadr[j]])));
       this.rootBody.push(this.segBody[ai][P.segments.findIndex((s) => s.parent === null)]);
       this.gripEq.push(['L', 'R'].map((sx) => id('mjOBJ_EQUALITY', `a${ai}_grip_${sx}`)));
+      this.handBody.push(['L', 'R'].map((sx) => id('mjOBJ_BODY', `a${ai}_${handOf(P, sx)}`)));
       const nSeg = P.segments.length, nDof = jids.length;
       const state: AthleteState = {
         q: new Float64Array(nDof), qd: new Float64Array(nDof),
@@ -146,6 +152,7 @@ class MujocoScene implements PhysicsScene {
       };
       this.athletes.push({ plan: P, nDof, state });
     });
+    this.limits = this.athletes.map((a) => new Float64Array(a.nDof));
     this.propBody = desc.props.map((p, pi) => (p.mass > 0 ? id('mjOBJ_BODY', `prop${pi}`) : -1));
     // geom → link table for contact reports
     const bodyLink = new Map<number, LinkRef>();
@@ -192,7 +199,7 @@ class MujocoScene implements PhysicsScene {
     this.views(); // WASM memory can grow, which detaches old typed-array views
     this.xfrc.fill(0);
     this.qfrc.fill(0);
-    this.cache = null; this.limits = null;
+    this.cache = null; this.limitsStale = true;
     this.read();
   }
 
@@ -310,37 +317,35 @@ class MujocoScene implements PhysicsScene {
   }
 
   gripOn(ai: number, hand: 0 | 1, target: LinkRef, pointWorld: Vec3, timeconst: number) {
-    const e = this.gripEq[ai][hand], m = this.m, d = this.d;
-    const hb = this.segBody[ai][this.handSeg(ai, hand)];
+    const e = this.gripEq[ai][hand], m = this.m;
+    this.views();
+    const { xpos, xquat } = this.v, hb = this.handBody[ai][hand];
     const tb = target.athlete >= 0 ? this.segBody[target.athlete][target.seg] : target.seg >= 0 ? Math.max(0, this.propBody[target.seg]) : 0; // static props live on the world body
     m.eq_obj2id[e] = tb;
     const local = (b: number): Vec3 => {
-      const q: Quat = [d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3], d.xquat[4 * b]];
-      return qrot([-q[0], -q[1], -q[2], q[3]], sub(pointWorld, [d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]]));
+      const q: Quat = [xquat[4 * b + 1], xquat[4 * b + 2], xquat[4 * b + 3], xquat[4 * b]];
+      return qrot([-q[0], -q[1], -q[2], q[3]], sub(pointWorld, [xpos[3 * b], xpos[3 * b + 1], xpos[3 * b + 2]]));
     };
     const a1 = local(hb), a2 = local(tb), ed = m.eq_data, o = e * mj.mjNEQDATA;
     for (let k = 0; k < 3; k++) { ed[o + k] = a1[k]; ed[o + 3 + k] = a2[k]; }
     m.eq_solref[2 * e] = Math.max(timeconst, 2 * this.dt);
-    d.eq_active[e] = 1;
+    this.d.eq_active[e] = 1;
   }
   gripOff(ai: number, hand: 0 | 1) { this.d.eq_active[this.gripEq[ai][hand]] = 0; }
   gripActive(ai: number, hand: 0 | 1) { return this.d.eq_active[this.gripEq[ai][hand]] === 1; }
   gripForce(ai: number, hand: 0 | 1) {
     const d = this.d, e = this.gripEq[ai][hand], EQ = mj.mjtConstraint.mjCNSTR_EQUALITY.value;
+    const type = d.efc_type, id = d.efc_id, force = d.efc_force; // each read is a new view: once, as in limitTorques
     let s = 0;
-    for (let i = 0; i < d.nefc; i++) if (d.efc_type[i] === EQ && d.efc_id[i] === e) s += d.efc_force[i] ** 2;
+    for (let i = 0, n = d.nefc; i < n; i++) if (type[i] === EQ && id[i] === e) s += force[i] ** 2;
     return Math.sqrt(s);
-  }
-  private handSeg(ai: number, hand: 0 | 1) {
-    const segs = this.athletes[ai].plan.segments;
-    const want = hand === 0 ? ['handL', 'forearmL'] : ['handR', 'forearmR'];
-    return segs.findIndex((s) => s.name === want[0]) >= 0 ? segs.findIndex((s) => s.name === want[0]) : segs.findIndex((s) => s.name === want[1]);
   }
 
   limitTorques(ai: number) {
-    if (!this.limits) {
+    if (this.limitsStale) {
       const d = this.d, LIM = mj.mjtConstraint.mjCNSTR_LIMIT_JOINT.value, type = d.efc_type, id = d.efc_id, force = d.efc_force;
-      this.limits = this.athletes.map((a) => new Float64Array(a.nDof));
+      this.limitsStale = false;
+      for (const l of this.limits) l.fill(0);
       for (let i = 0, n = d.nefc; i < n; i++) {
         if (type[i] !== LIM) continue;
         const k = this.jointDof.get(id[i]);
@@ -354,8 +359,9 @@ class MujocoScene implements PhysicsScene {
     r[2 * j] = lo; r[2 * j + 1] = hi;
   }
   propPose(pi: number) {
-    const b = this.propBody[pi], d = this.d;
-    return { pos: [d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]] as Vec3, quat: [d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3], d.xquat[4 * b]] as Quat };
+    this.views();
+    const b = this.propBody[pi], { xpos, xquat } = this.v;
+    return { pos: [xpos[3 * b], xpos[3 * b + 1], xpos[3 * b + 2]] as Vec3, quat: [xquat[4 * b + 1], xquat[4 * b + 2], xquat[4 * b + 3], xquat[4 * b]] as Quat };
   }
   setInitialVelocity(ai: number, vel: Vec3) {
     const m = this.m, b = this.rootBody[ai], va = m.jnt_dofadr[m.body_jntadr[b]], qv = this.d.qvel;
@@ -391,8 +397,9 @@ class MujocoScene implements PhysicsScene {
     this.read();
   }
   propVel(pi: number): Vec3 {
-    const b = this.propBody[pi], d = this.d, cv = d.cvel, sc = d.subtree_com;
-    const px = d.xipos[3 * b] - sc[3 * b], py = d.xipos[3 * b + 1] - sc[3 * b + 1], pz = d.xipos[3 * b + 2] - sc[3 * b + 2];
+    this.views();
+    const b = this.propBody[pi], { cvel: cv, subtree_com: sc, xipos } = this.v;
+    const px = xipos[3 * b] - sc[3 * b], py = xipos[3 * b + 1] - sc[3 * b + 1], pz = xipos[3 * b + 2] - sc[3 * b + 2];
     return [cv[6 * b + 3] + cv[6 * b + 1] * pz - cv[6 * b + 2] * py, cv[6 * b + 4] + cv[6 * b + 2] * px - cv[6 * b] * pz, cv[6 * b + 5] + cv[6 * b] * py - cv[6 * b + 1] * px];
   }
   readQ(out: Float32Array | Float64Array) { this.views(); out.set(this.v.qpos); }
@@ -403,7 +410,7 @@ class MujocoScene implements PhysicsScene {
     for (let i = 0; i < this.nv; i++) qvel[i] = qd ? qd[i] : 0;
     mj.mj_forward(this.m, this.d);
     this.views();
-    this.cache = null; this.limits = null;
+    this.cache = null; this.limitsStale = true;
     this.read();
   }
   diffQ(q0: ArrayLike<number>, q1: ArrayLike<number>, dt: number, out: Float64Array) {
