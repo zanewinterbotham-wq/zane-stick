@@ -7,9 +7,9 @@ import { DEFAULT_OPEN_FIELD } from '../src/sim/drills/openField';
 import { listSlots, modeById } from '../src/sim/modes/registry';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
 import { createLoopbackRoom } from '../src/net/loopback';
-import { defaultServer, PAGES_SERVER } from '../src/net/room';
+import { defaultServer, PAGES_SERVER, type NetRoom, type PeerInfo } from '../src/net/room';
 import * as L from '../src/game/net/lobby';
-import { Session } from '../src/game/net/session';
+import { Session, SNAP_HZ } from '../src/game/net/session';
 import { STD } from './helpers/scenario';
 
 beforeAll(() => mujocoEngine.init());
@@ -189,6 +189,23 @@ describe('a host and two guests over a loopback room (headless)', () => {
     host.close(); await flush();
     expect(ann.closed).toBe('host-left');
   }, 120_000);
+});
+
+describe('guest input over the relay', () => {
+  it('goes at most SNAP_HZ times a second, a throw or a button change at once; a direct link sends every frame', () => {
+    const sent: unknown[] = [];
+    let via: PeerInfo['via'] = 'relay', clock = 0;
+    const room: NetRoom = { code: 'X', selfId: 'g', isHost: false, peers: () => [{ id: 'h', name: 'H', host: true, via, rtt: 0 }], send() {}, broadcast: (d) => void sent.push(d), onMessage() {}, onPeers() {}, onClose() {}, kick() {}, close() {} };
+    const g = new Session(room, mujocoEngine, 'G', { mode: 'tackle', options: {}, steer: 0 }, () => clock);
+    const second = (o: Partial<HumanInput> = {}) => { sent.length = 0; for (let f = 0; f < 144; f++) { clock += 1 / 144; g.sendInput(input(o)); } return sent.length; };
+    const n = second();
+    expect(n).toBeLessThanOrEqual(SNAP_HZ); expect(n).toBeGreaterThan(SNAP_HZ / 2);
+    sent.length = 0;
+    g.sendInput(input({ pass: { at: [1, 1, 10], loft: 0.5 } })); g.sendInput(input({ held: new Set(['jump']) })); g.sendInput(input());
+    expect(sent.length).toBe(3); // the throw, the press, the release
+    via = 'rtc';
+    expect(second()).toBe(144);
+  });
 });
 
 describe('joining while the host builds a rep (headless)', () => {

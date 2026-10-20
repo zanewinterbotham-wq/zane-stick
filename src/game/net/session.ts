@@ -169,8 +169,16 @@ export class Session {
   }
 
   // ------------------------------------------------------------------ game (guest)
-  /** Guest: the local input, every render frame (the host's HumanBrain for him reads the newest). */
-  sendInput(i: HumanInput) { if (!this.isHost) this.room.broadcast(encodeInput(i, ++this.seq, this.passHold), false); }
+  /** Guest: the local input, every render frame (the host's HumanBrain for him reads the newest). Over the relay, where
+   *  every message bills the room server, at most SNAP_HZ a second, but a throw or a button change goes at once. */
+  sendInput(i: HumanInput) {
+    if (this.isHost) return;
+    const t = this.clock(), held = [...i.held].join();
+    if (this.room.peers().find((p) => p.host)?.via !== 'rtc' && !i.pass && held === this.inputHeld && t - this.inputAt < 1 / SNAP_HZ) return;
+    this.inputAt = t; this.inputHeld = held;
+    this.room.broadcast(encodeInput(i, ++this.seq, this.passHold), false);
+  }
+  private inputAt = -Infinity; private inputHeld = '';
   /** A guest's last throw, repeated in the next few inputs (a lost packet must not lose it). */
   private passHold: PassHold = { pass: null, until: -1 };
 
