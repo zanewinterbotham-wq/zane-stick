@@ -3,6 +3,7 @@
 // laid out; a broken arm's hand never catches, and a muff bounces off and stays loose. The same rule for every athlete;
 // one over a hand that is not raised bounces off. The human's raised hands go to a ball flying at him or dropping on
 // him, and a dive lays him out to one beyond his reach. Scripted, headless and deterministic (seeded).
+import type { CatchTuning } from '../src/sim/modes/catching';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { HumanBrain, type HumanInput } from '../src/sim/brains/human';
 import { ScriptBrain } from '../src/sim/brains/script';
@@ -19,7 +20,10 @@ const G = 9.81;
 const script = (fn: (t: number, c: Commands) => void) => new ScriptBrain((t, _p, c) => fn(t, c));
 const still = () => script(() => {});
 const input = (o: Partial<HumanInput> = {}): HumanInput => ({ move: { x: 0, y: 0 }, torso: 0, sprint: 0, armL: 0, armR: 0, held: new Set(), cameraYaw: 0, aimPitch: 0, ...o });
-async function drill(human: Brain, seed = 1) { return OpenFieldDrill.create(mujocoEngine, { ...DEFAULT_OPEN_FIELD, physics: STD, seed }, human, 0); }
+/** The first catch rule's numbers (2026-10-18): these tests check each factor's logic against them; the easier
+ *  defaults (catching.ts DEFAULT_CATCHING) have their own test below. */
+const FIRST_RULE = { reach: 0.3, twoHands: 0.95, oneHand: 0.55, body: 0.3, edge: 0.5, hard: 0.6, moving: 0.85, air: 0.85, contact: 0.4, blind: 0.3 };
+async function drill(human: Brain, seed = 1, catching: Partial<CatchTuning> = FIRST_RULE) { return OpenFieldDrill.create(mujocoEngine, { ...DEFAULT_OPEN_FIELD, physics: STD, seed, catching }, human, 0); }
 function run(d: OpenFieldDrill, seconds: number, each?: () => boolean | void) {
   const end = d.repTime + seconds;
   while (d.repTime < end && !d.ended) { d.step(); if (each?.()) break; }
@@ -135,8 +139,8 @@ describe('catching', () => {
 /** One soft throw (8 m/s, the top of its arc) at a catcher standing ready, world seed `seed`: both arms raised and the
  *  ball through the middle of his hands, or the right arm only and the ball at that hand. `prep` runs first (on the
  *  drill, before he settles). The try and whether he holds the ball. */
-async function trial(seed: number, arms: 'both' | 'right', prep?: (d: OpenFieldDrill) => void) {
-  const d = await drill(script((_t, c) => { c.armR = 1; c.gripR = true; if (arms === 'both') { c.armL = 1; c.gripL = true; } }), seed);
+async function trial(seed: number, arms: 'both' | 'right', prep?: (d: OpenFieldDrill) => void, catching?: Partial<CatchTuning>) {
+  const d = await drill(script((_t, c) => { c.armR = 1; c.gripR = true; if (arms === 'both') { c.armL = 1; c.gripL = true; } }), seed, catching);
   prep?.(d);
   run(d, 0.6);
   const l = hand(d, 0), r = hand(d, 1), at: Vec3 = arms === 'both' ? [(l[0] + r[0]) / 2, (l[1] + r[1]) / 2, (l[2] + r[2]) / 2] : r;
@@ -146,9 +150,9 @@ async function trial(seed: number, arms: 'both' | 'right', prep?: (d: OpenFieldD
   d.destroy();
   return out;
 }
-async function trials(n: number, arms: 'both' | 'right', prep?: (d: OpenFieldDrill) => void) {
+async function trials(n: number, arms: 'both' | 'right', prep?: (d: OpenFieldDrill) => void, catching?: Partial<CatchTuning>) {
   const out = [];
-  for (let k = 1; k <= n; k++) out.push(await trial(k, arms, prep));
+  for (let k = 1; k <= n; k++) out.push(await trial(k, arms, prep, catching));
   return out;
 }
 /** An opponent in contact with the human every step (written over the world's contact read, before the play reads it). */
@@ -171,6 +175,17 @@ describe('catch chance', () => {
     expect(n(one)).toBeLessThan(n(both) - 3);
     expect(hit.every((x) => x.try!.factors.contact < 1)).toBe(true);
     expect(n(hit) / 12).toBeLessThan(n(both) / 20 - 0.3);
+  });
+
+  it('the easier defaults (owner 2026-10-19): both hands always, one hand and in contact mostly; the settings still bite', async () => {
+    const both = await trials(20, 'both', undefined, {}), one = await trials(20, 'right', undefined, {}), hit = await trials(12, 'both', inContact, {});
+    const n = (xs: { caught: boolean }[]) => xs.filter((x) => x.caught).length;
+    const hard = await trials(12, 'right', undefined, { oneHand: 0.3 });
+    console.log(`defaults: both hands ${n(both)}/20, one hand ${n(one)}/20, in contact ${n(hit)}/12; one hand at 0.3: ${n(hard)}/12`);
+    expect(n(both)).toBeGreaterThanOrEqual(19);
+    expect(n(one)).toBeGreaterThanOrEqual(14);
+    expect(n(hit)).toBeGreaterThanOrEqual(6);
+    expect(n(hard) / 12).toBeLessThan(n(one) / 20 - 0.2); // a knob turned down makes it harder
   });
 
   it('the hand of a broken arm never catches', async () => {

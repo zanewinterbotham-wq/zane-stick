@@ -14,6 +14,7 @@
 // A ball knocked loose stays live: any athlete recovers it by touching it with his trunk (diving on it) or with a
 // raised hand (picking it up, or catching it), then attacks his own way. A ball in the air is caught by chance
 // (catchTry); one that is muffed bounces off him physically and stays loose.
+import { catchTuning, type CatchTuning } from './catching';
 import { BALL, BALL_TURF } from '../anatomy/equipment';
 import { BlockerBrain } from '../brains/blocker';
 import { CarrierBrain } from '../brains/carrier';
@@ -44,10 +45,6 @@ export const PASS_STATES: readonly PassState[] = ['none', 'air', 'complete', 'in
 
 /** Segments that recover a loose ball: the trunk ('trunk' is the minimum body's fused one). */
 const TORSO = /^(pelvis|lumbar|thorax|trunk)$/;
-/** Catching (owner decision 2026-10-18): a raised hand this close to the loose ball (m, hand surface to ball tip), or
- *  two raised hands with the ball this close to the line between them, catch it (or pick it up): a game reach, the
- *  same for every athlete, standing in for fingers the hand model lacks and a catcher's last-instant adjustments. */
-const CATCH_REACH = 0.3;
 /** Catch chance (owner decision 2026-10-18, an arcade rule like the hand snap; every number a game-design assumption,
  *  not a measurement): base chance by the hands the ball comes to [trunk only, one hand, both hands: the diamond];
  *  how far (m) its path may pass from the hand (or the line between both) and still meet the hands squarely;
@@ -57,8 +54,8 @@ const CATCH_REACH = 0.3;
  *  turf); touching or held by an opponent; the gaze factor for a ball he does not look at (head forward vs the ball,
  *  full from cos 0.5, least from cos -0.2); and the factor at full knock and at full stun. A ball off the turf this
  *  recently (s) is picked up, not caught. */
-const CATCH = { base: [0.3, 0.55, 0.95], centre: 0.1, soft: 20, hard: 35, hardF: 0.6, run: [4, 9], runF: 0.85, air: 0.85, contact: 0.4,
-  flight: 0.1, layout: Math.SQRT1_2, blind: 0.3, look: [0.5, -0.2], knock: 0.5, stun: 0.4, turf: 0.05 };
+// the tunable numbers (base chances, reach and the factors) are CatchTuning (catching.ts, PlayConfig.catching)
+const CATCH = { centre: 0.1, soft: 20, hard: 35, run: [4, 9], flight: 0.1, layout: Math.SQRT1_2, look: [0.5, -0.2], knock: 0.5, stun: 0.4, turf: 0.05 };
 /** The last catch decided: who, when (world s), the chance, the factors it is the product of, and whether he held it. */
 export interface CatchTry { athlete: number; time: number; chance: number; factors: Record<string, number>; caught: boolean }
 /** Off the turf this long counts as up (s): a body lying on the turf flickers out of contact for a few steps. */
@@ -107,6 +104,8 @@ export class Play {
   private readonly ballRef = { athlete: -1, seg: this.ball };
   /** The last catch attempt (HUD, tests). */
   lastCatch: CatchTry | null = null;
+  /** The catch numbers this play (catching.ts: the defaults with the config's overrides). */
+  private catching!: CatchTuning;
   /** This play's forward pass (docs/passing.md): its state, the passer (−1: none yet) and the throw. */
   pass: PassState = 'none';
   passer = -1;
@@ -119,7 +118,9 @@ export class Play {
   /** `brains`: what each athlete thinks with; the world's brains delegate here, so the play can swap a bot's. */
   /** `human`: the local player's athlete (−1: none); `fixed[i]`: athlete i's brain is a player's, never a bot's. */
   private constructor(public world: World, readonly cfg: PlayConfig, readonly mode: PlaySetup, readonly rules: Rules, readonly brains: Brain[], readonly rng: Rng, readonly options: ModeOptions,
-    readonly human: number, private readonly fixed: (Brain | null)[]) {}
+    readonly human: number, private readonly fixed: (Brain | null)[]) {
+    this.catching = catchTuning(cfg.catching);
+  }
 
   static async create(engine: PhysicsEngine, cfg: PlayConfig, def: ModeDef, options: ModeOptions, humanBrain: Brain | null, rep = 0, seats: Seats = {}): Promise<Play> {
     const rng = new Rng(cfg.seed * 7919 + rep * 104729);
@@ -294,7 +295,7 @@ export class Play {
   private incomplete() { this.pass = 'incomplete'; this.end('incomplete'); }
 
   /** Loose ball: the first athlete to get it recovers it, with a trunk touching it (diving on it) or a raised hand
-   *  (not on a broken arm) that touches it or is within CATCH_REACH of it (picking it up, or catching it in the air:
+   *  (not on a broken arm) that touches it or is within the catch reach (CatchTuning.reach) of it (picking it up, or catching it in the air:
    *  by chance, catchTry). */
   private loose() {
     const w = this.world, bp = this.ballPos(), tip = BALL.length / 2;
@@ -312,17 +313,17 @@ export class Play {
     w.athletes.forEach((a, i) => {
       const hp = [w.handPoint(a, 0), w.handPoint(a, 1)];
       // both hands up: a ball between them is in the catch too
-      const both = ok(i, 0) && ok(i, 1) && segDist(bp, hp[0], hp[1]) - tip < CATCH_REACH;
+      const reach = this.catching.reach, both = ok(i, 0) && ok(i, 1) && segDist(bp, hp[0], hp[1]) - tip < reach;
       const gap = hp.map((p, h) => Math.hypot(p[0] - bp[0], p[1] - bp[1], p[2] - bp[2]) - a.handGeoms[h].half - tip);
       const hands = ([0, 1] as const).filter((h) => {
         // grips form after the physics step, so one formed on the ball this step has not pulled on it yet
         const held = w.gripping(i, this.ballRef) === h;
         if (held) w.releaseGrip(i, h);
-        return ok(i, h) && (both || gap[h] < CATCH_REACH || held);
+        return ok(i, h) && (both || gap[h] < reach || held);
       });
       // the other raised hand close by joins the catch (the diamond: the ball reaches one hand a moment before both)
       const o = 1 - (hands[0] ?? 0) as 0 | 1;
-      if (hands.length === 1 && ok(i, o) && gap[o] < 2 * CATCH_REACH) hands.push(o);
+      if (hands.length === 1 && ok(i, o) && gap[o] < 2 * reach) hands.push(o);
       for (const h of hands) add(i, h);
     });
     for (const c of w.scene.contacts()) for (const [p, o] of [[c.a, c.b], [c.b, c.a]] as const) {
@@ -354,7 +355,7 @@ export class Play {
 
   /** Catching (owner decision 2026-10-18): whether athlete i holds a ball in the air that has come to `hands` (none:
    *  his trunk), decided once as it comes, with the world's seeded RNG. The chance is the base for the hands times
-   *  factors (CATCH): how centred it comes (full if it meets the hands squarely, half at the edge of CATCH_REACH),
+   *  factors (CATCH): how centred it comes (full if it meets the hands squarely, CatchTuning.edge at the edge of the reach),
    *  how fast it comes at them, his own speed, being in the air or on the turf, an opponent touching or holding him,
    *  whether he looks at it, and his knock and stun. The same rule for every athlete. */
   private catchTry(i: number, hands: ReadonlySet<0 | 1>): boolean {
@@ -375,14 +376,14 @@ export class Play {
     const d = [bp[0] - s.segPos[3 * hi], bp[1] - s.segPos[3 * hi + 1], bp[2] - s.segPos[3 * hi + 2]], dn = Math.hypot(d[0], d[1], d[2]) || 1;
     // a ball high above him is one he looks up at: the head's tilt is not modelled, so steep elevation counts as seen
     const look = Math.max((fwd[0] * d[0] + fwd[2] * d[2]) / ((Math.hypot(fwd[0], fwd[2]) || 1) * (Math.hypot(d[0], d[2]) || 1e-9)), 2 * d[1] / dn - 1);
-    const C = CATCH, f: Record<string, number> = {
-      hands: C.base[Math.min(hs.length, 2)],
-      centred: hs.length ? 1 - 0.5 * clamp((miss - C.centre) / (CATCH_REACH - C.centre), 0, 1) ** 2 : 1,
-      speed: 1 - (1 - C.hardF) * clamp((speed - C.soft) / (C.hard - C.soft), 0, 1),
-      running: 1 - (1 - C.runF) * clamp((Math.hypot(s.comVel[0], s.comVel[2]) - C.run[0]) / (C.run[1] - C.run[0]), 0, 1),
-      air: a.airT > C.flight || a.downBy || up[1] < C.layout ? C.air : 1, // off the turf longer than a stride's flight (a jump), or laid out
-      contact: a.touching.some((k) => this.team(k) !== a.setup.team) || a.heldT > 0 ? C.contact : 1,
-      look: C.blind + (1 - C.blind) * clamp((look - C.look[1]) / (C.look[0] - C.look[1]), 0, 1),
+    const C = CATCH, T = this.catching, f: Record<string, number> = {
+      hands: [T.body, T.oneHand, T.twoHands][Math.min(hs.length, 2)],
+      centred: hs.length ? 1 - (1 - T.edge) * clamp((miss - C.centre) / Math.max(1e-3, T.reach - C.centre), 0, 1) ** 2 : 1,
+      speed: 1 - (1 - T.hard) * clamp((speed - C.soft) / (C.hard - C.soft), 0, 1),
+      running: 1 - (1 - T.moving) * clamp((Math.hypot(s.comVel[0], s.comVel[2]) - C.run[0]) / (C.run[1] - C.run[0]), 0, 1),
+      air: a.airT > C.flight || a.downBy || up[1] < C.layout ? T.air : 1, // off the turf longer than a stride's flight (a jump), or laid out
+      contact: a.touching.some((k) => this.team(k) !== a.setup.team) || a.heldT > 0 ? T.contact : 1,
+      look: T.blind + (1 - T.blind) * clamp((look - C.look[1]) / (C.look[0] - C.look[1]), 0, 1),
       knock: (1 - C.knock * a.knock) * (1 - C.stun * a.stun) * (a.injury.out ? 0 : 1),
     };
     const chance = Object.values(f).reduce((x, y) => x * y, 1), caught = w.rng.next() < chance;

@@ -3,6 +3,7 @@
 // the option read (man / zone), playing a launched ball with both hands (back to it, up for it; the lay-out decision
 // from a Perception), running after the catch, and two receivers with two defenders: their routes keep apart and the
 // one the ball is not thrown to blocks. Physics stays stable throughout. Numbers are printed.
+import { DEFAULT_CATCHING } from '../src/sim/modes/catching';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { DIFFICULTY } from '../src/sim/brains/carrier';
 import { ReceiverBrain } from '../src/sim/brains/football/receiver';
@@ -161,9 +162,9 @@ describe('ReceiverBrain playing the ball', () => {
       xs.push({ r, seed, ...x });
       x.play.destroy();
     }
-    const tries = xs.filter((x) => x.t?.athlete === 1), both = tries.filter((x) => x.t!.factors.hands === 0.95), caught = xs.filter((x) => x.caught);
+    const tries = xs.filter((x) => x.t?.athlete === 1), both = tries.filter((x) => x.t!.factors.hands === DEFAULT_CATCHING.twoHands), caught = xs.filter((x) => x.caught);
     console.log('led throws (out, in, slant x 3 seeds): tries', tries.length, '/', xs.length, ', both hands', both.length, ', caught', caught.length,
-      '\n  ', xs.map((x) => `${x.r}#${x.seed} ${x.t ? `${x.t.factors.hands === 0.95 ? 'both' : x.t.factors.hands === 0.55 ? 'one' : 'body'} ${x.t.chance.toFixed(2)} ${x.caught ? 'CAUGHT' : 'drop'}` : 'no try'}${x.caught ? `, ran on ${x.gain.toFixed(1)} m (${x.phases.slice(-1)})` : ''}`).join('; '));
+      '\n  ', xs.map((x) => `${x.r}#${x.seed} ${x.t ? `${x.t.factors.hands === DEFAULT_CATCHING.twoHands ? 'both' : x.t.factors.hands === DEFAULT_CATCHING.oneHand ? 'one' : 'body'} ${x.t.chance.toFixed(2)} ${x.caught ? 'CAUGHT' : 'drop'}` : 'no try'}${x.caught ? `, ran on ${x.gain.toFixed(1)} m (${x.phases.slice(-1)})` : ''}`).join('; '));
     expect(tries.length).toBeGreaterThanOrEqual(7);
     expect(both.length).toBeGreaterThanOrEqual(5);
     expect(caught.length).toBeGreaterThanOrEqual(4);

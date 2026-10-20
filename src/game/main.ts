@@ -133,13 +133,12 @@ class App {
   /** Worker mode (the level's Physics thread): the Worker running single-player reps (multiplayer never uses it). */
   sim: SimClient | null = null;
   private noWorker = false;
-  /** QB throw schemes (docs/passing.md): the active one, the throw on its way to the sim, whether the local player can
-   *  throw this frame, the aim aids to draw, and Left click's state (it throws in the QB mode). */
+  /** The throw control (docs/passing.md: the placement reticle), the throw on its way to the sim, whether the local
+   *  player can throw this frame, and the aim aids to draw. Only the Throw key throws. */
   passer = new Passer();
   private pass: { cmd: PassCmd; until: number } | null = null;
   private throwing = false;
   private aim: { aid: Aid; from: Vec3 } | null = null;
-  private lmb = false;
 
   async boot() {
     this.input.capture = false;
@@ -418,7 +417,7 @@ class App {
   playConfig(): PlayConfig {
     const p = this.preset, s = this.settings;
     return {
-      physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), defense: tacklerSkill(s.tackling), toughness: s.toughness, hitPower: s.hitPower, boneStrength: s.boneStrength, aiBoneStrength: s.aiBoneStrength, carrierGait: DEFAULT_OPEN_FIELD.carrierGait, activeBots: p.activeBots,
+      physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), defense: tacklerSkill(s.tackling), toughness: s.toughness, hitPower: s.hitPower, catching: s.catching, boneStrength: s.boneStrength, aiBoneStrength: s.aiBoneStrength, carrierGait: DEFAULT_OPEN_FIELD.carrierGait, activeBots: p.activeBots,
       human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, bot: DEFAULT_OPEN_FIELD.carrier, traction: s.traction, gains: s.gains,
       support: { ...GAME_SUPPORT, ...s.support },
     };
@@ -516,7 +515,7 @@ class App {
       ['Side shuffle (toggle)', t('shiftLock')],
       ...(this.settings.autoCamera ? [] : [['Look', 'Mouse'] as [string, string]]),
       ...(this.throwing ? [ // only while he holds the ball: the QB throw controls
-        ['Throw (hold for more loft)', this.mode.id === 'pass' ? `${t('throw')} / Left click` : t('throw')]] as [string, string][] : []),
+        ['Throw (hold for more loft)', t('throw')]] as [string, string][] : []),
     ];
   }
 
@@ -725,22 +724,13 @@ class App {
     if (loud > 0.1) this.cam.addShake(0.04 * loud * loud);
   }
 
-  /** The QB throw controls this frame: whether they apply (he holds the ball), the scheme keys, Left click (in the QB
-   *  mode it throws instead of raising the left arm), the scheme's pass and aim aids. Returns the pass for the input
-   *  (a throw stays on it PASS_HOLD ms). */
+  /** The throw control this frame: whether it applies (he holds the ball), the pass and the aim aids. Only the Throw
+   *  key throws (Left click stays the left arm, so a catch never starts a throw). Returns the pass for the input (a
+   *  throw stays on it PASS_HOLD ms). */
   passFrame(f: InputFrame, now: number): PassCmd | null {
     const d = this.drill!, w = d.world, r = this.renderer;
     const was = this.throwing;
     this.throwing = canThrow(w, d.human) && !d.ended && !!r;
-    if (this.mode.id === 'pass' && this.throwing && f.device === 'keyboard') {
-      const down = this.input.keys.has('Mouse0'), kb = this.input.bindings.keyboard;
-      if (down) {
-        f.held.add('throw');
-        if (!this.lmb) f.pressed.add('throw');
-        if (!(kb.armL ?? []).some((c) => c !== 'Mouse0' && this.input.keys.has(c))) { f.armL = 0; f.held.delete('armL'); }
-      }
-      this.lmb = down;
-    } else this.lmb = false;
     if (!this.throwing) {
       if (was) this.passer.reset();
       this.aim = null; this.hud.setPass(null);

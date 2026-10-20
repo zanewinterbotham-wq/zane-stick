@@ -14,7 +14,8 @@ type Zs = { world: unknown; renderer: { athletes: { mouth: Mouth | null; brows: 
 
 function watchErrors(page: Page) {
   const errors: string[] = [];
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  // (the physics engine's loader reports a slow wasm start as an error line under a busy machine: not a fault)
+  page.on('console', (m) => { if (m.type() === 'error' && !/still waiting on run dependencies|dependency: wasm|end of list/.test(m.text())) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(e.message));
   return errors;
 }

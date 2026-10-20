@@ -1,5 +1,6 @@
 // The Settings screen: one tabbed panel for every setting (title menu and pause menu both open it).
 // To add a setting, add a row to GAMEPLAY_ROWS (or the matching tab builder) and a field to Settings.
+import { CATCH_RANGES, catchTuning, type CatchTuning } from '../sim/modes/catching';
 import type { SupportSettings } from '../sim/anim/types';
 import { DEFAULT_GAINS } from '../sim/control/hand';
 import { keyName, keysText, RESERVED, type InputManager } from './input/input';
@@ -39,7 +40,7 @@ const REBIND: [string, string, string][] = [
   ['torsoDown', 'Lower the pads: torso down and hips low (also scroll up)', 'D-pad down / LT'],
   ['torsoUp', 'Raise the pads: torso up and hips high (also scroll down)', 'D-pad up'],
   ['shiftLock', 'Side shuffle on / off: face the camera way, A / D shuffle', 'L3 (stick click)'],
-  ['throw', 'QB: throw where the ring is; hold longer for more loft (in QB 1-on-1 Left click also throws while you hold the ball)', 'Y'],
+  ['throw', 'Throw where the ring is; hold longer for more loft (only this key throws: Left click stays the left arm)', 'Y'],
   ['reset', 'Reset rep', 'Start (tap)'], ['tuning', 'Tuning panel', 'menu'], ['overlay', 'Performance overlay', 'menu'],
 ];
 /** Controls that are not rebindable. */
@@ -166,8 +167,32 @@ function gameplayTab({ host, status, reopen }: Ctx) {
     } else rows.append(setRow(r.label, r.desc, onOff(r.label, () => r.get(s), (v) => { r.set(s, v); host.save(); })));
   }
   refresh();
-  return [rows];
+  // catching (catching.ts): every knob, the same for you and the bots; empty = the defaults
+  const c = () => catchTuning(s.catching), catchRows = el('div', { class: 'set-list' });
+  const drawCatch = () => catchRows.replaceChildren(...CATCH_ROWS.map(([k, label, desc]) => {
+    const [lo, hi] = CATCH_RANGES[k], fmt = k === 'reach' ? (v: number) => `${v.toFixed(2)} m` : pct;
+    const [input, out] = range(label, c()[k], lo, hi, 0.01, (v) => { s.catching = { ...s.catching, [k]: v }; }, fmt, () => host.save());
+    return setRow(label, desc, input, out);
+  }));
+  drawCatch();
+  const resetCatch = el('button', { type: 'button', class: 'item', 'data-sfx': 'ui_back', text: 'Catching: back to the defaults' });
+  resetCatch.addEventListener('click', () => { s.catching = {}; host.save(); drawCatch(); });
+  return [rows, el('h2', { class: 'set-h', text: 'Catching' }), el('p', { class: 'sub', text: 'How easy catching is, for you and the bots alike. A ball comes to your raised hands; the chance is the base chance for the hands times the factors below. Applies from the next rep.' }), catchRows, el('div', { class: 'items' }, resetCatch)];
 }
+
+/** The catching knobs on the Gameplay tab: [field, label, what it does]. */
+const CATCH_ROWS: [keyof CatchTuning, string, string][] = [
+  ['reach', 'Catch reach', 'How close the ball must come to a raised hand (or between both) to be caught.'],
+  ['twoHands', 'Two-hand chance', 'Both hands up (the diamond): the chance before the factors below.'],
+  ['oneHand', 'One-hand chance', 'One hand up.'],
+  ['body', 'Body catch chance', 'The ball hits the chest or stomach with no hand to it.'],
+  ['edge', 'Off-centre catches', 'A ball at the very edge of the reach (100% = no harder than one into the hands).'],
+  ['hard', 'Hard throws', 'A very hard throw (100% = as easy as a soft one).'],
+  ['moving', 'Catching at full speed', 'Running flat out (100% = as easy as standing).'],
+  ['air', 'Catching in the air', 'Jumping or diving for it.'],
+  ['contact', 'Catching in contact', 'With a defender on you.'],
+  ['blind', 'Not looking at the ball', 'A ball you are not looking at (100% = no harder).'],
+];
 
 function controlsTab({ host, status, reopen }: Ctx) {
   const s = host.settings;
