@@ -16,6 +16,7 @@ import type { Vec3 } from '../src/sim/math';
 import type { Play } from '../src/sim/modes/play';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
 import { Rng } from '../src/sim/rng';
+import { leadPoint, throwVelocity } from '../src/sim/throw';
 import { launch, lead, LOS, manDefender, passPlay, route, type Spec } from './helpers/receiver';
 
 beforeAll(() => mujocoEngine.init());
@@ -188,6 +189,30 @@ describe('ReceiverBrain playing the ball', () => {
     expect(short.t!.time).toBeGreaterThan(0); // reached it in the air
     expect(high.jump).toBe(true);
     for (const x of [short, high]) { expect(x.play.world.scene.stats().instabilities).toBe(0); x.play.destroy(); }
+  }, 240_000);
+
+  it('over the shoulder: eyes on a deep ball in the air (go, post), caught at the normal chance', async () => {
+    // the real throw's arc (throw.ts, loft 0.6) from where launch lets go, led onto his run. Before the eyes followed
+    // the ball (Commands.look) and he ran on under it in stride: 1 try in 8, gaze factor 0.3, none caught
+    const deep: Throw = (p) => {
+      const q = com(p, 0), s = p.world.scene.athletes[1].state, from: Vec3 = [q[0], 2, q[2] + 0.5];
+      const at = leadPoint(from, { pos: [s.com[0], 1.3, s.com[2]], vel: [s.comVel[0], 0, s.comVel[2]] }, 0.6, 0);
+      return { at, T: throwVelocity(from, at, 0.6).time };
+    };
+    const xs = [];
+    for (const r of ['go', 'post'] as RouteKind[]) for (const seed of [1, 2, 3, 4]) {
+      // alone deep (the catch rule, not a defender, decides): a lofted ball led ~1.9 s, coming down over his shoulder
+      // the post is thrown once he is on its angle (a lead on the stem's velocity would miss the break)
+      const x = await pass(r, r === 'post' ? 3 : 2.2, seed, { specs: [{ team: 0, pos: [-15, LOS], assign: route(r) }], throwAt: deep });
+      xs.push({ r, seed, ...x });
+      expect(x.play.world.scene.stats().instabilities).toBe(0);
+      x.play.destroy();
+    }
+    const tries = xs.filter((x) => x.t?.athlete === 1), caught = xs.filter((x) => x.caught), look = tries.map((x) => x.t!.factors.look);
+    console.log(`deep balls (go, post x 4 seeds): tries ${tries.length} / ${xs.length}, caught ${caught.length}; look factor ${look.map((v) => v.toFixed(2)).join(' ')}; chance ${tries.map((x) => x.t!.chance.toFixed(2)).join(' ')}`);
+    expect(tries.length).toBeGreaterThanOrEqual(6);
+    for (const v of look) expect(v).toBeGreaterThan(0.9);
+    expect(caught.length).toBeGreaterThanOrEqual(3);
   }, 240_000);
 });
 

@@ -4,7 +4,8 @@
 // as a carrier's juke), and keeps his room to the sideline. An option route breaks at its depth by the coverage: away
 // from a man defender's leverage, or settles in the hole of a zone. When a pass comes down near him (he is the nearest
 // of his team to it) he attacks the earliest point of its flight he can reach in time (back to the ball against an
-// undercut), raises both hands (the diamond) to where it passes, high-points it with a jump and lays out for one
+// undercut; a ball from behind in stride, over the shoulder), his eyes on it all the way (Commands.look), raises both
+// hands (the diamond) to where it passes, high-points it with a jump and lays out for one
 // falling short. With the ball he is a carrier (CarrierBrain); a pass to a team mate, or a team mate with the ball,
 // he blocks for (BlockerBrain); the defense's ball he tackles (TacklerBrain). He reads the field (the defenders, the
 // ball) through his reaction delay like every bot; difficulty is that delay and his precision. Same Commands as a
@@ -56,6 +57,8 @@ const FACE = -0.35, EARLY = 0.15;
 /** The hands' reach above the head's centre on the feet (m: up in front of him; a full overhead stretch, returner.ts
  *  OVERHEAD, is too slow to get to a pass), above which he jumps. */
 const REACH = 0.3;
+/** The eyes lead the ball this much (s: the head's turn follows a look in ~0.08 s, anim/procedural.ts LOOK). */
+const LOOK_LEAD = 0.1;
 /** Shoulders this far below the head's centre (m). */
 const SHOULDER = 0.25;
 /** The hands take the ball this far in front of the chest (m, along its flight). */
@@ -260,6 +263,9 @@ export class ReceiverBrain implements Brain {
   private playBall(p: Perception, me: AthleteView, b: { pos: Vec3; vel: Vec3 }, dt: number): Commands {
     this.phase = 'ball';
     const c = neutralCommands(), sp = Math.hypot(me.comVel[0], me.comVel[2]);
+    // eyes on it all the way in (the trunk and neck turn to it: the catch rule's gaze reads the head), over the shoulder
+    // on a deep ball while the legs run on: on where it will be LOOK_LEAD s on, the turn's lag
+    c.look = ballAt(b, LOOK_LEAD).pos;
     const reach = me.head[1] + REACH, m = meetPoint(b, me, me.head[1] + FACE, reach);
     // nothing left to play (it is about to hit the turf): run on, easing off
     if (!m) { this.run(me, me.comVel[0] * 0.8, me.comVel[2] * 0.8, dt, c); c.gait = sp > JOG_MAX ? 'sprint' : 'jog'; return c; }
@@ -268,9 +274,11 @@ export class ReceiverBrain implements Brain {
     const bv = ballAt(b, m.t).vel, bh = Math.hypot(bv[0], bv[2]) || 1, k = Math.min(1, m.t);
     const tx = m.at[0] - bv[0] / bh * HANDS_FWD + this.err[0] * k, tz = m.at[2] - bv[2] / bh * HANDS_FWD + this.err[1] * k;
     const dx = tx - me.com[0], dz = tz - me.com[2], d = Math.hypot(dx, dz) || 1e-6;
-    // there EARLY s before it (set, the hands waiting) and no sooner (a run on to the spot keeps its speed); late: flat out
+    // a ball from behind him on his run (over the shoulder) is caught in stride, getting there with it; else he is there
+    // EARLY s before it (set, the hands waiting) and no sooner (a run on to the spot keeps its speed); late: flat out
     // (braking no harder than a stride allows: the command never drops more than EASE m/s under his speed)
-    const v = m.late > 0 ? FULL : Math.max(d < 0.2 ? 0 : clamp(d / Math.max(m.t - EARLY, 0.05), 1, FULL), sp - EASE);
+    const over = sp > OPEN_V && b.vel[0] * me.comVel[0] + b.vel[2] * me.comVel[2] > 0;
+    const v = m.late > 0 ? FULL : Math.max(d < 0.2 ? 0 : clamp(d / Math.max(m.t - (over ? 0 : EARLY), 0.05), 1, FULL), sp - EASE);
     const off = sp > 1 && (me.comVel[0] * dx + me.comVel[2] * dz) / (sp * d) < Math.cos(0.6);
     // a way to the ball well off his run: plant and cut onto it (the most one plant takes at this speed, as a
     // carrier's juke), once the last cut is over; slow, he simply turns
@@ -281,19 +289,20 @@ export class ReceiverBrain implements Brain {
     }
     if (p.time < this.plantUntil) c.plantCut = this.plantSide;
     this.run(me, dx / d * v, dz / d * v, dt, c, sp <= BREAK_V);
-    c.gait = v > JOG_MAX ? 'sprint' : 'jog';
+    // running on under it he stays in his sprint stride (a jog's command is a share of the jog's speed, far below his)
+    c.gait = v > JOG_MAX || over ? 'sprint' : 'jog';
     const bd = Math.hypot(b.pos[0] - me.com[0], b.pos[1] - me.head[1], b.pos[2] - me.com[2]);
     // set (slow) or with the ball not coming down ahead of his run, he squares up to it (it comes into his hands from
     // in front); running on under it (over the shoulder) it drops into hands held out in front, where it leaves their
     // reach
     const hx = b.pos[0] - me.com[0], hz = b.pos[2] - me.com[2], hd = Math.hypot(hx, hz) || 1;
     const ahead = sp > OPEN_V && (dx * me.comVel[0] + dz * me.comVel[2]) / sp > 0.3;
-    if (!ahead && (sp < OPEN_V || m.t < OPEN_T)) c.face = { x: hx / hd, z: hz / hd };
+    if (!ahead && !over && (sp < OPEN_V || m.t < OPEN_T)) c.face = { x: hx / hd, z: hz / hd };
     if (m.t < HANDS_T || bd < HANDS_D) {
       // the arms point at where the ball's flight comes within an arm's length of his shoulders (as he moves on), so
       // the hands are on its path when it gets there
       c.armL = c.armR = 1; c.gripL = c.gripR = true;
-      const a = handsPoint(b, [me.com[0], me.head[1] - SHOULDER, me.com[2]], me.comVel, ahead && (b.vel[0] * me.comVel[0] + b.vel[2] * me.comVel[2]) > 0);
+      const a = handsPoint(b, [me.com[0], me.head[1] - SHOULDER, me.com[2]], me.comVel, over);
       c.aim = [a[0] + this.err[0] * k, a[1], a[2] + this.err[1] * k];
     }
     // high-point it: a ball above his standing reach, jumped for in time to meet it near the top
