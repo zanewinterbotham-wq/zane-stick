@@ -24,9 +24,9 @@ import type { Rng } from '../../rng';
 import { BlockerBrain } from '../blocker';
 import { CarrierBrain, type BotDifficulty } from '../carrier';
 import { catchPoint } from '../returner';
-import { predict, TacklerBrain, turnRate } from '../tackler';
+import { TacklerBrain, turnRate } from '../tackler';
 import type { AthleteView, Brain, Perception } from '../types';
-import { ballAt, ballSpot, inFlight, passIsMine, REACH, rel, toWorld } from './sense';
+import { ACC_DT, ballAt, ballSpot, carry, inFlight, passIsMine, REACH, rel, toWorld } from './sense';
 import type { ManAssign, PlayCall, PlayFrame, ZoneAssign, ZoneKind } from './types';
 
 const FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08;
@@ -58,8 +58,6 @@ const HANDS_T = 0.45, HANDS_D = 2.5, JUMP_H = 2.15, JUMP_T = 0.3, MINE = 2;
 const DIVE_D: [number, number] = [0.4, 2], DIVE_T = 0.35;
 /** Plant and cut when the wanted direction is PLANT_ANGLE rad off a run faster than PLANT_RUN m/s (as TacklerBrain). */
 const PLANT_ANGLE = 0.6, PLANT_RUN = 2.5, PLANT_HOLD = 0.1, PLANT_GAP = 0.6, TURN_MAX = 6;
-/** A receiver's acceleration is read over ACC_DT s and believed up to ACC_MAX m/s² (a sprint start's ~6). */
-const ACC_DT = 0.1, ACC_MAX = 7;
 /** Below this ground speed (m/s) the wanted direction is taken at once. */
 const SNAP_V = 2;
 
@@ -142,13 +140,8 @@ export class DefensiveBackBrain implements Brain {
   /** Athlete i as seen, carried on `age` s with the velocity and acceleration seen (the eye reads a burst off the line
    *  as well as a steady run; a change of either is what the reaction delay answers). */
   private track(seen: Perception, i: number, age: number): AthleteView {
-    const a = seen.athletes[i], o = this.past[0]?.athletes[i], dt = o ? seen.time - this.past[0].time : 0;
-    if (!o || dt < 1e-3) return predict(a, age);
-    let ax = (a.comVel[0] - o.comVel[0]) / dt, az = (a.comVel[2] - o.comVel[2]) / dt;
-    const n = Math.hypot(ax, az);
-    if (n > ACC_MAX) { ax *= ACC_MAX / n; az *= ACC_MAX / n; }
-    const v: Vec3 = [a.comVel[0] + ax * age, a.comVel[1], a.comVel[2] + az * age], f = (x: Vec3): Vec3 => [x[0] + a.comVel[0] * age + ax * age * age / 2, x[1], x[2] + a.comVel[2] * age + az * age * age / 2];
-    return { ...a, com: f(a.com), pelvis: f(a.pelvis), head: f(a.head), comVel: v };
+    const o = this.past[0];
+    return carry(seen.athletes[i], o?.athletes[i], o ? seen.time - o.time : 0, age);
   }
 
   /** Inside (toward the ball) from a receiver at world x `rx`: ±1 along x. */

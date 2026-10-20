@@ -393,6 +393,22 @@ export function chaseTime(o: AthleteView, from: Vec3, vel: Vec3): number {
   return t0 + Math.max(0, interceptTime(start, DB_SPEED, at, vel) - REACH / DB_SPEED);
 }
 
+/** An athlete's acceleration is read over ACC_DT s of what was seen, and believed up to ACC_MAX m/s² (a sprint
+ *  start's ~6). */
+export const ACC_DT = 0.1;
+const ACC_MAX = 7;
+/** Athlete `a` as seen, carried on `age` s with the velocity and the acceleration seen (`before`: him `dt` s earlier;
+ *  without it, the velocity only, as predict): the eye reads a burst off the line or out of a break as well as a
+ *  steady run; a change of either is what the reaction delay answers. */
+export function carry(a: AthleteView, before: AthleteView | undefined, dt: number, age: number): AthleteView {
+  if (!before || dt < 1e-3) return predict(a, age);
+  let ax = (a.comVel[0] - before.comVel[0]) / dt, az = (a.comVel[2] - before.comVel[2]) / dt;
+  const n = Math.hypot(ax, az);
+  if (n > ACC_MAX) { ax *= ACC_MAX / n; az *= ACC_MAX / n; }
+  const v: Vec3 = [a.comVel[0] + ax * age, a.comVel[1], a.comVel[2] + az * age], f = (x: Vec3): Vec3 => [x[0] + a.comVel[0] * age + ax * age * age / 2, x[1], x[2] + a.comVel[2] * age + az * age * age / 2];
+  return { ...a, com: f(a.com), pelvis: f(a.pelvis), head: f(a.head), comVel: v };
+}
+
 /** What a brain sees: the Perception as it was `reaction` s ago, every other athlete carried on at his seen velocity
  *  to now (TacklerBrain's predict: the delay is the time to answer a change, not a lag on steady motion) and the ball
  *  too (on a ballistic arc when it is loose, never below the turf), and himself as he is now. Feed it every step. */

@@ -16,7 +16,8 @@ import { leadPoint, THROW, throwVelocity } from '../../throw';
 import { CarrierBrain, type BotDifficulty } from '../carrier';
 import { predict, TacklerBrain, turnRate } from '../tackler';
 import type { AthleteView, Brain, Perception } from '../types';
-import { CATCH_H, chaseTime, DB_SPEED, laneOpen, nearestRush, openness, opponents, REACH, releasePoint, rel, sackTime, toWorld, TURN_BACK } from './sense';
+import { ballAt, BREAK_V, carry, CATCH_H, chaseTime, JUKE_REACH, PLANT_ANGLE, DB_SPEED, laneOpen, nearestRush, openness, opponents, REACH, releasePoint, rel, sackTime, toWorld, TURN_BACK } from './sense';
+import { routePath, type RoutePath } from './routes';
 import type { PassAssign, PlayCall } from './types';
 
 const FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08;
@@ -28,11 +29,19 @@ const BACKPEDAL_V = 4.5, TURN_RUN_V = 6, DROP_BRAKE = 5, SET = 0.2;
 /** Loft per window: a bullet, touch, a lob; each unit of loft costs LOFT_COST of openness (a softer ball hangs, and
  *  is harder to place). */
 const LOFTS: [number, ThrowKind][] = [[0, 'bullet'], [0.45, 'touch'], [0.85, 'lob']], LOFT_COST = 0.08;
-/** Openness he throws into (0..1, sense.openness); the hot route and the checkdown are taken a little tighter. */
-export const OPEN = 0.15, HOT_K = 0.5, CHECK_K = 0.7;
+/** Openness he throws into (0..1, sense.openness: s of margin over the quickest defender); the hot route and the
+ *  checkdown are taken a little tighter. Measured on the whole-play tests (tests/qb-plays.test.ts, 2 v 2, 4 sweeps of 48
+ *  plays at OPEN 0..0.3, every bot at easy/normal/hard): of 17 throws under 0.3 none was completed (one picked off);
+ *  0.3–0.6 17 % and over 0.6 37 % were. */
+export const OPEN = 0.3, HOT_K = 0.5, CHECK_K = 0.7;
 /** Key defender: ahead of the receiver along his run within LEVER m, he has leverage on the route (openness × LEVER_K);
  *  the ball is placed KEY_AWAY m to the side away from him. */
 const LEVER = 3, LEVER_K = 0.5, KEY_AWAY = 0.4;
+/** The longest pass he throws (m along the ground, ~55 yd: NFL passes of 50+ air yards are about 1 % of attempts;
+ *  assumption, a deep ball's practical range, not the arm's 74 m). */
+const MAX_THROW = 50;
+/** A lead is settled when the receiver's spot at the ball's arrival is within LEAD_TOL m of where it is thrown. */
+const LEAD_TOL = 0.5;
 /** Back-shoulder: a receiver deeper than depth (m), running downfield faster than run (m/s), a man within tight m on
  *  his hip (not over the top). Both brake at decel m/s² (~0.7 g); the receiver needs turn s more to turn to the ball,
  *  which comes side m to the side away from the man; the man starts braking react s after the receiver. */
@@ -51,8 +60,12 @@ const POCKET_LOS = 2, POCKET_V = 2.5, ROLL_V = 6;
  *  read's time he throws it away. */
 const AWAY_OUT = 8, AWAY_DOWN = 6, LATE = 1;
 /** Difficulty: a read takes LOOK + LOOK_K × reaction s; the lead's error is noise × (AIM_0 + AIM_D × distance) m, ×
- *  (1 + NERVES × pressure); a misread shifts openness by noise × MISREAD. */
-const LOOK = 0.15, LOOK_K = 1.2, AIM_0 = 0.5, AIM_D = 0.04, NERVES = 1.5, MISREAD = 0.15;
+ *  (1 + NERVES × pressure); each read is misjudged by a gaussian of noise × MISREAD on the openness he throws into
+ *  (drawn once per read: a misread is a read, not a flicker). */
+const LOOK = 0.15, LOOK_K = 1.2, AIM_0 = 0.5, AIM_D = 0.04, NERVES = 1.5, MISREAD = 0.5;
+/** A run's change (a burst out of a break) is read over RUN_DT s of what he saw (sense.carry): a stride or more, so
+ *  the speed's rise and fall within a stride does not read as one. */
+const RUN_DT = 0.3;
 
 export type ThrowKind = 'bullet' | 'touch' | 'lob' | 'back-shoulder' | 'away';
 /** A throw decision: the receiver (−1 thrown away), where and how high, its openness, the time from the decision to
@@ -66,10 +79,57 @@ export interface PassRecord extends ThrowChoice { cmd: PassCmd; t: number; from:
 const flat = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[2] - b[2]);
 const passAssign = (call: PlayCall, self: number) => { const a = call.assign[self]; return a && a.kind === 'pass' ? a : null; };
 
+/** The route paths a QB knows (routes.ts, drawn from where each receiver lined up at the snap), by athlete index. */
+export type KnownRoutes = readonly (RoutePath | null | undefined)[];
+/** A receiver more than OFF_ROUTE m off his drawn path is adjusting (a release, an option read): led on his velocity. */
+const OFF_ROUTE = 2;
+/** Which leg he is on: the nearest, with ALIGN m added per unit of (1 − cos) between his run and the leg. */
+const ALIGN = 2;
+/** How a receiver runs his route (ReceiverBrain's plan, fitted to it: the route tree run by the bot receiver, 22 runs,
+ *  predicted 0.8–1.6 s ahead from 0.5–2.9 s after the snap: RMS 0.59 m off where he got to, vs 3.83 m for a lead on
+ *  his velocity): he picks up at RUN_A m/s² on the stem and RUN_A2 out of a break, to FULL; brakes at RUN_DECEL m/s² for
+ *  a plant at a corner sharper than PLANT_ANGLE, taken at JUKE_REACH / turn m/s (at least BREAK_V) and costing
+ *  PLANT_T s (the cut's settle). Stepped STEP_T s. */
+const RUN_A = 5, RUN_A2 = 4, RUN_DECEL = 4, PLANT_T = 0.3, STEP_T = 0.05;
+/** Where a receiver on route `path` will be `t` s on (a throw on timing: to the spot the route takes him, not where
+ *  his run was heading, so a break or a curl after the throw is led): from the nearest point of it to him, run as he
+ *  runs it, stopped at a settling route's end. Null when he is off it (OFF_ROUTE). */
+export function alongRoute(path: RoutePath, r: AthleteView, t: number): Vec3 | null {
+  const P = path.pts, sp = Math.hypot(r.comVel[0], r.comVel[2]);
+  let k = -1, u = 0, best = Infinity;
+  for (let n = 1; n < P.length; n++) {
+    const a = P[n - 1], b = P[n], sx = b[0] - a[0], sz = b[2] - a[2], L2 = sx * sx + sz * sz || 1e-9;
+    const w = clamp(((r.com[0] - a[0]) * sx + (r.com[2] - a[2]) * sz) / L2, 0, 1), d = Math.hypot(a[0] + sx * w - r.com[0], a[2] + sz * w - r.com[2]);
+    // at a corner the leg he is running along is his (not the next one before he has cut onto it)
+    const cost = d + (sp > 2 ? ALIGN * (1 - (r.comVel[0] * sx + r.comVel[2] * sz) / (sp * Math.sqrt(L2))) : 0);
+    if (d < OFF_ROUTE && cost < best) { best = cost; k = n; u = w; }
+  }
+  if (k < 0) return null;
+  // the plant speed at corner n (Infinity: no plant there)
+  const plantV = (n: number) => {
+    if (n >= P.length - 1) return path.settle ? 0 : Infinity;
+    const a = P[n - 1], b = P[n], c = P[n + 1], turn = Math.abs(wrapAngle(Math.atan2(c[0] - b[0], c[2] - b[2]) - Math.atan2(b[0] - a[0], b[2] - a[2])));
+    return turn > PLANT_ANGLE ? Math.max(BREAK_V, Math.min(FULL, JUKE_REACH / turn)) : Infinity;
+  };
+  let along = u * flat(P[k - 1], P[k]), v = Math.hypot(r.comVel[0], r.comVel[2]), acc = k > path.brk ? RUN_A2 : RUN_A;
+  for (let time = 0; time < t - 1e-9;) {
+    const h = Math.min(STEP_T, t - time), L = flat(P[k - 1], P[k]), left = L - along, vb = plantV(k);
+    const cap = Math.min(FULL, Math.sqrt(Math.min(vb, FULL) ** 2 + 2 * RUN_DECEL * Math.max(0, left)));
+    v = v < cap ? Math.min(cap, v + acc * h) : Math.max(cap, v - RUN_DECEL * h);
+    along += v * h; time += h;
+    if (along >= L) {
+      if (k < P.length - 1) { along -= L; k++; v = Math.min(v, vb); if (vb < Infinity) { time += PLANT_T; acc = RUN_A2; } }
+      else if (path.settle) { along = L; v = 0; }
+    }
+  }
+  const a = P[k - 1], b = P[k], L = flat(a, b) || 1e-9, w = along / L;
+  return [a[0] + (b[0] - a[0]) * w, CATCH_H, a[2] + (b[2] - a[2]) * w];
+}
+
 
 /** The best throw to `target` (any loft whose lane is open, and a back-shoulder ball when it fits), scored by openness
  *  at the ball's arrival less the loft's cost; null if he is down, out of bounds or no lane is open. */
-export function bestThrow(seen: Perception, call: PlayCall, self: number, target: number, read: number, key?: number): ThrowChoice | null {
+export function bestThrow(seen: Perception, call: PlayCall, self: number, target: number, read: number, key?: number, routes?: KnownRoutes): ThrowChoice | null {
   // the ball leaves the hand THROW.release s from now (the throwing motion): everyone is judged where he will be then
   const p: Perception = { ...seen, athletes: seen.athletes.map((a) => predict(a, THROW.release)) };
   const me = p.athletes[self], r = p.athletes[target], f = call.frame;
@@ -87,14 +147,25 @@ export function bestThrow(seen: Perception, call: PlayCall, self: number, target
   let best: ThrowChoice | null = null;
   const consider = (at: Vec3, loft: number, kind: ThrowKind, open0 = (at: Vec3, T: number) => openness(p, target, at, T), ignore = -1) => {
     if (!inBounds(at)) return;
-    const { vel, time } = throwVelocity(from, at, loft);
-    if (!laneOpen(p, from, at, vel, time, me.team, ignore)) return;
+    const { vel, time } = throwVelocity(from, at, loft), end = ballAt({ pos: from, vel }, time).pos;
+    // beyond the arm (it would fall short) or his deep range, or no lane
+    if (flat(from, at) > MAX_THROW || Math.hypot(end[0] - at[0], end[1] - at[1], end[2] - at[2]) > LEAD_TOL || !laneOpen(p, from, at, vel, time, me.team, ignore)) return;
     const open = open0(at, time) * lever - LOFT_COST * loft;
     if (!best || open > best.open) best = { target, at, loft, kind, open, time: THROW.release + time, read };
   };
+  // the lead: on his route if he is on it (where it takes him by the catch, the motion's time included), else on his run
+  const path = routes?.[target], r0 = seen.athletes[target];
+  const lead = (loft: number): Vec3 | null => {
+    let at = path ? alongRoute(path, r0, THROW.release) : null;
+    const where = (T: number) => (at && path ? alongRoute(path, r0, THROW.release + T) : null) ?? [pos[0] + r.comVel[0] * T, CATCH_H, pos[2] + r.comVel[2] * T] as Vec3;
+    at ??= leadPoint(from, { pos, vel: r.comVel }, loft, 0);
+    for (let n = 0; n < 8; n++) at = where(throwVelocity(from, at, loft).time);
+    // a lead that has not settled (a soft ball chasing a receiver as fast as it: beyond the arm) is no throw
+    return flat(where(throwVelocity(from, at, loft).time), at) < LEAD_TOL ? at : null;
+  };
   for (const [loft, kind] of LOFTS) {
-    const at = leadPoint(from, { pos, vel: r.comVel }, loft, 0);
-    consider([at[0] + away[0], at[1], at[2] + away[1]], loft, kind);
+    const at = lead(loft);
+    if (at) consider([at[0] + away[0], at[1], at[2] + away[1]], loft, kind);
   }
   // back-shoulder: a deep receiver with a man on his hip (not over the top). He stops (he knows when) and the ball meets
   // him there, to the side away from the man, who sees it late (BS.react) and runs on past before he can come back.
@@ -117,7 +188,7 @@ export function bestThrow(seen: Perception, call: PlayCall, self: number, target
 
 /** Options for chooseTarget: the reads looked at (from..to, indices into reads; past the last read: the checkdown),
  *  the openness he throws into, and the rush (sackTime, computed if absent). */
-export interface ReadOpts { from?: number; to?: number; minOpen?: number; heat?: number }
+export interface ReadOpts { from?: number; to?: number; minOpen?: number; heat?: number; routes?: KnownRoutes }
 
 /** The throw the QB makes now, or null: under quick pressure the hot route; else the first open read of the
  *  progression from..to (a covered read is skipped); with the progression exhausted, the checkdown. Never a covered
@@ -127,28 +198,28 @@ export function chooseTarget(p: Perception, call: PlayCall, self: number, o: Rea
   if (!a) return null;
   const minOpen = o.minOpen ?? OPEN, heat = o.heat ?? sackTime(p, self), n = a.reads.length;
   if (a.hot !== undefined && heat < HOT_T) {
-    const h = bestThrow(p, call, self, a.hot, -1);
+    const h = bestThrow(p, call, self, a.hot, -1, undefined, o.routes);
     if (h && h.open >= minOpen * HOT_K) return h;
   }
   const from = o.from ?? 0, to = o.to ?? n;
   for (let i = Math.max(0, from); i <= Math.min(to, n - 1); i++) {
-    const t = bestThrow(p, call, self, a.reads[i].target, i, a.reads[i].key);
+    const t = bestThrow(p, call, self, a.reads[i].target, i, a.reads[i].key, o.routes);
     if (t && t.open >= minOpen) return t;
   }
   if (to >= n && a.checkdown !== undefined) {
-    const t = bestThrow(p, call, self, a.checkdown, -2);
+    const t = bestThrow(p, call, self, a.checkdown, -2, undefined, o.routes);
     if (t && t.open >= minOpen * CHECK_K) return t;
   }
   return null;
 }
 
 /** The best throw to anyone on the call (forced: open or not), or null if no lane. */
-export function forcedTarget(p: Perception, call: PlayCall, self: number): ThrowChoice | null {
+export function forcedTarget(p: Perception, call: PlayCall, self: number, routes?: KnownRoutes): ThrowChoice | null {
   const a = passAssign(call, self);
   if (!a) return null;
   let best: ThrowChoice | null = null;
   const ts = [...a.reads.map((r, i) => [r.target, i, r.key] as const), ...(a.hot !== undefined ? [[a.hot, -1, undefined] as const] : []), ...(a.checkdown !== undefined ? [[a.checkdown, -2, undefined] as const] : [])];
-  for (const [t, i, k] of ts) { const c = bestThrow(p, call, self, t, i, k); if (c && (!best || c.open > best.open)) best = c; }
+  for (const [t, i, k] of ts) { const c = bestThrow(p, call, self, t, i, k, routes); if (c && (!best || c.open > best.open)) best = c; }
   return best;
 }
 
@@ -205,14 +276,18 @@ export function rollOut(p: Perception, call: PlayCall, self: number): { x: numbe
 
 export class QBBrain implements Brain {
   private history: Perception[] = [];
+  /** Frames seen before the one seen now (RUN_DT s of them): how the runs are changing. */
+  private past: Perception[] = [];
   private tackler: TacklerBrain;
   private runner: CarrierBrain | null = null;
   private heading = NaN; private mag = 0;
+  private routes: KnownRoutes | null = null;
   private dropSpot: Vec3 | null = null; private setAt = NaN; private lookFrom = NaN;
   private look: number;
   phase: QBPhase = 'pre';
   /** The read his eyes are on (index into reads; reads.length = the checkdown). */
   read = 0;
+  private misread = NaN;
   lastPass: PassRecord | null = null;
   constructor(private rng: Rng, private diff: BotDifficulty, private call: PlayCall, private self: number) {
     this.tackler = new TacklerBrain(rng, diff);
@@ -226,22 +301,26 @@ export class QBBrain implements Brain {
     if (!me.hasBall || !a) return this.tackler.think(p, dt);
     c.carry = 2; c.gait = 'sprint';
     this.history.push(p);
-    while (this.history.length > 1 && p.time - this.history[1].time >= this.diff.reaction) this.history.shift();
+    while (this.history.length > 1 && p.time - this.history[1].time >= this.diff.reaction) this.past.push(this.history.shift()!);
+    while (this.past.length > 1 && this.history[0].time - this.past[1].time >= RUN_DT) this.past.shift();
     if (me.down) return c;
-    const old = this.history[0], age = p.time - old.time;
-    // the field as seen a reaction ago, carried on at what he saw (his own body he knows now)
-    const seen: Perception = { ...p, athletes: old.athletes.map((o, i) => (i === this.self ? me : predict(o, age))), ball: p.ball };
+    const old = this.history[0], age = p.time - old.time, pre = this.past[0], dt0 = pre ? old.time - pre.time : 0;
+    // the field as seen a reaction ago, carried on with the runs he saw (a receiver bursting out of his break is led
+    // at the speed he is getting to); his own body he knows now
+    const seen: Perception = { ...p, athletes: old.athletes.map((o, i) => (i === this.self ? me : carry(o, pre?.athletes[i], dt0, age))), ball: p.ball };
     const el = p.time - f.snapTime, down = { x: 0, z: f.dir };
     if (el < 0) { c.face = down; return c; }
     if (this.phase === 'thrown') { const at = this.lastPass!.cmd.at; this.faceTo(me, at, c); return c; }
     // past the line he can no longer throw: a runner
     if (rel(f, me.com).depth > 0) return this.scramble(p, dt);
     const heat = sackTime(seen, this.self), n = a.reads.length;
+    // at the snap he knows each route from where its receiver lined up (the play call: the same path the receiver runs)
+    this.routes ??= this.call.assign.map((x, i) => (x?.kind === 'route' ? routePath(x, seen.athletes[i].com, f) : null));
     if (this.phase === 'pre') { this.phase = 'drop'; this.dropSpot = toWorld(f, rel(f, me.com).depth - DROP_DEPTH[a.drop], me.com[0]); }
     if (this.phase === 'drop') {
       const s = this.dropSpot!, dx = s[0] - me.com[0], dz = s[2] - me.com[2], d = Math.hypot(dx, dz);
       // quick pressure in the drop: the hot route at once
-      const hot = chooseTarget(seen, this.call, this.self, { from: 0, to: -1, heat });
+      const hot = chooseTarget(seen, this.call, this.self, { from: 0, to: -1, heat, routes: this.routes });
       if (hot) return this.pass(p, me, hot, heat, c);
       if (a.drop === 0 || d < 0.3) { this.phase = 'read'; this.setAt = p.time + (a.drop ? SET : 0); }
       else {
@@ -265,12 +344,12 @@ export class QBBrain implements Brain {
     // the clock: a read whose time is up is left
     while (this.read < n && el > a.reads[this.read].by) this.next(p);
     const looked = p.time - this.lookFrom >= this.look;
-    const misread = this.rng.gauss() * this.diff.noise * MISREAD;
-    const ch = chooseTarget(seen, this.call, this.self, { from: this.read, to: this.read, minOpen: OPEN + misread, heat });
+    if (Number.isNaN(this.misread)) this.misread = this.rng.gauss() * this.diff.noise * MISREAD;
+    const ch = chooseTarget(seen, this.call, this.self, { from: this.read, to: this.read, minOpen: OPEN + this.misread, heat, routes: this.routes });
     if (ch && (looked || ch.read === -1)) return this.pass(p, me, ch, heat, c);
     // a rusher on him: the best man even if covered, else away
     if (heat < FORCED_T) {
-      const fc = forcedTarget(seen, this.call, this.self);
+      const fc = forcedTarget(seen, this.call, this.self, this.routes);
       return this.pass(p, me, fc && fc.open > 0 ? fc : throwAway(seen, this.call, this.self), heat, c);
     }
     if (this.read >= n) {
@@ -283,7 +362,7 @@ export class QBBrain implements Brain {
     return c;
   }
 
-  private next(p: Perception) { this.read++; this.lookFrom = p.time; }
+  private next(p: Perception) { this.read++; this.lookFrom = p.time; this.misread = NaN; }
 
   /** Send the throw: the choice's point plus his lead error (difficulty, the distance, and nerves under the rush). */
   private pass(p: Perception, me: AthleteView, ch: ThrowChoice, heat: number, c: Commands): Commands {

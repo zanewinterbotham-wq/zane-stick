@@ -5,11 +5,11 @@
 // from a man defender's leverage, or settles in the hole of a zone. When a pass comes down near him (he is the nearest
 // of his team to it) he attacks the earliest point of its flight he can reach in time (back to the ball against an
 // undercut; a ball from behind in stride, over the shoulder), his eyes on it all the way (Commands.look), raises both
-// hands (the diamond) to where it passes, high-points it with a jump and lays out for one
-// falling short. With the ball he is a carrier (CarrierBrain); a pass to a team mate, or a team mate with the ball,
-// he blocks for (BlockerBrain); the defense's ball he tackles (TacklerBrain). He reads the field (the defenders, the
-// ball) through his reaction delay like every bot; difficulty is that delay and his precision. Same Commands as a
-// human. Nothing assumes one receiver or one defender: every read goes over the whole Perception.
+// hands (the diamond) to where it passes, high-points it with a jump and lays out for one falling short. With the ball
+// he is a carrier (CarrierBrain); a pass to a team mate, or a team mate with the ball, he blocks for (BlockerBrain);
+// the defense's ball he tackles (TacklerBrain). He reads the field (the defenders, the ball) through his reaction
+// delay like every bot; difficulty is that delay and his precision. Same Commands as a human. Nothing assumes one
+// receiver or one defender: every read goes over the whole Perception.
 import { GAIT_SPEED } from '../../control/hand';
 import { neutralCommands, type Commands } from '../../control/types';
 import { clamp, wrapAngle, type Vec3 } from '../../math';
