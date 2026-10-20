@@ -4,7 +4,6 @@ import { DEFAULT_SUPPORT, type SupportSettings } from '../sim/anim/types';
 import { cleanPerf, PRESETS, type PerfOverrides, type PresetName } from './presets';
 import skins from './skins.json';
 import stadiums from './stadiums.json';
-import { SCHEME_IDS } from './passing/schemes';
 
 export interface Settings {
   preset: PresetName | null;     // null = not chosen yet (run the first-launch benchmark)
@@ -37,7 +36,6 @@ export interface Settings {
   mode?: string;                 // last game mode played (src/sim/modes/registry.ts id)
   modeOptions?: Record<string, Record<string, unknown>>; // each mode's options as last set in the mode menu
   netName?: string;              // multiplayer display name (the room server trims it to 24 characters)
-  throwScheme: string;           // the QB throw scheme (passing/schemes.ts SCHEME_IDS)
 }
 
 /** Owner's tuned baseline for Normal (2026-10-18): the player's strength and speed at 1x, and the carry
@@ -52,7 +50,7 @@ const VERSION = 7;
 
 export const DEFAULT_SETTINGS: Settings = {
   version: VERSION, preset: null, perf: {}, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
-  slowMo: true, autoCamera: false, sprintToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: skins[0]?.id ?? 'classic', goreLevel: 1, stadium: stadiums[0]?.id ?? 'field', throwScheme: 'lock', // the owner's picks are first in the lists
+  slowMo: true, autoCamera: false, sprintToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: skins[0]?.id ?? 'classic', goreLevel: 1, stadium: stadiums[0]?.id ?? 'field' // the owner's picks are first in the lists
 };
 
 /** Difficulty presets: each axis moves on its own (AI toughness, AI juking, the player's strength and speed). */
@@ -90,8 +88,9 @@ export function loadSettings(): Settings {
       // with gives that key up (as a rebind does), so one key never does two things
       if ((s.version ?? 1) < 5 && s.bindings) migrateJumpKeys(s.bindings);
       // version 7: the throw controls' new default keys give way to a saved rebind that holds them
-      if ((s.version ?? 1) < 7 && s.bindings) yieldNewKeys(s.bindings, [['throw', 'KeyF'], ['lob', 'KeyR'], ['target', 'KeyG'], ['scheme', 'KeyV']]);
-      if (!SCHEME_IDS.includes(s.throwScheme)) delete s.throwScheme;
+      if ((s.version ?? 1) < 7 && s.bindings) yieldNewKeys(s.bindings, [['throw', 'KeyF']]);
+      // the throw-scheme choice and its keys are gone: the placement reticle is the only QB control
+      delete s.throwScheme; if (s.bindings) { delete s.bindings.lob; delete s.bindings.target; delete s.bindings.scheme; }
       // version 6: more levels; an unknown one (an edited or newer file) is chosen again by the benchmark
       if (s.preset != null && !(s.preset in PRESETS)) s.preset = null;
       s.perf = cleanPerf(s.perf);

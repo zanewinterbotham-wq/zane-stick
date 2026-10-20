@@ -30,7 +30,7 @@ export function encodeInput(i: HumanInput, seq: number, hold?: PassHold): ArrayB
   v.setUint8(o++, i.shiftLock ? 1 : 0);
   ACTIONS.forEach((a, k) => { if (i.held.has(a)) held |= 1 << k; });
   v.setUint32(o, held >>> 0, true); o += 4;
-  v.setUint8(o++, pass ? 1 : 0);
+  v.setUint8(o++, pass ? (pass.follow ? 3 : 1) : 0); // bit 0: a pass; bit 1: its point follows the passer
   for (const x of pass?.at ?? [0, 0, 0]) { v.setFloat32(o, x, true); o += 4; }
   v.setUint8(o, Math.round(clamp(pass?.loft ?? 0, 0, 1) * 255));
   return buf;
@@ -44,8 +44,9 @@ export function decodeInput(buf: ArrayBuffer): { seq: number; input: HumanInput 
   const f = (k: number, lo: number, hi: number) => { const x = v.getFloat32(6 + 4 * k, true); return Number.isFinite(x) ? clamp(x, lo, hi) : 0; };
   const mask = v.getUint32(39, true), at = [44, 48, 52].map((k) => v.getFloat32(k, true)), B = PASS_BOX;
   // a pass anywhere a ball can go, or none
-  const pass = v.getUint8(43) === 1 && at.every(Number.isFinite) && Math.abs(at[0]) <= B.x && at[1] >= 0 && at[1] <= B.y && Math.abs(at[2]) <= B.z
-    ? { at: at as [number, number, number], loft: v.getUint8(56) / 255 } : null;
+  const flag = v.getUint8(43);
+  const pass = (flag & 1) === 1 && at.every(Number.isFinite) && Math.abs(at[0]) <= B.x && at[1] >= 0 && at[1] <= B.y && Math.abs(at[2]) <= B.z
+    ? { at: at as [number, number, number], loft: v.getUint8(56) / 255, ...(flag & 2 && { follow: true }) } : null;
   return {
     seq: v.getUint32(2, true),
     input: { move: { x: f(0, -1, 1), y: f(1, -1, 1) }, torso: f(2, -1, 1), sprint: f(3, 0, 1), armL: f(4, 0, 1), armR: f(5, 0, 1),

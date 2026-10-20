@@ -1,5 +1,5 @@
-// QB throw schemes (docs/passing.md): simulated input frames → the PassCmd each scheme produces; switching; the flight
-// helpers they aim with.
+// The QB throw control (docs/passing.md: the placement reticle; the other schemes are vaulted): simulated input frames →
+// the PassCmd it produces and its aim aid; the flight helpers it aims with.
 import { describe, expect, it } from 'vitest';
 import type { InputFrame } from '../src/game/input/input';
 import { turfAim } from '../src/game/passing/context';
@@ -44,76 +44,26 @@ describe('throw flight', () => {
   });
 });
 
-describe('throw schemes', () => {
-  it('1 aim & charge: the hold sets the distance along the camera, its elevation the loft', () => {
-    const p = new Passer(); p.select('charge');
-    const pass = hold(p, 0.5, { pitch: 0.4 })!;
-    expect(pass.loft).toBeCloseTo(0.5);
-    expect(pass.at[0]).toBeCloseTo(0, 6); expect(pass.at[2]).toBeCloseTo(30, 0); // 5 m + half of the 50 m span
-    expect(hold(p, 3)!.at[2]).toBeCloseTo(MAX_RANGE, 6); // full charge: the farthest throw
-    expect(hold(p, 0.5, { yaw: Math.PI / 2 })!.at[0]).toBeCloseTo(30, 0); // turned to +X: thrown there
-  });
-  it('2 target lock: a tap is a led bullet, a long hold full touch with more lead', () => {
-    const p = new Passer(); p.select('lock');
-    const bullet = hold(p, 0.1)!, touch = hold(p, 1)!;
-    expect([bullet.loft, touch.loft]).toEqual([0, 1]);
-    expect(bullet.at[2]).toBeGreaterThan(20); expect(touch.at[2]).toBeGreaterThan(bullet.at[2] + 3);
-    expect(bullet.at[0]).toBeCloseTo(0, 6);
-    expect(p.aid(ctx(0)).icon).toEqual([0, CATCH_Y, 20]);
-  });
-  it('2 target lock: the target key cycles the receivers', () => {
-    const p = new Passer(); p.select('lock');
-    const rs = [wr(20), { ...wr(10, 3, 8), index: 2 }];
-    p.update(frame([], ['target']), ctx(0, { receivers: rs }));
-    expect(hold(p, 0.1, { receivers: rs })!.at[0]).toBeCloseTo(8, 6);
-    p.update(frame([], ['target']), ctx(0, { receivers: rs }));
-    expect(hold(p, 0.1, { receivers: rs })!.at[0]).toBeCloseTo(0, 6); // wrapped round
-  });
-  it('3 placement reticle: lands on the turf aim point; the hold time is the loft', () => {
-    const p = new Passer(); p.select('reticle');
-    expect(hold(p, 0.3)).toEqual({ at: [3, CATCH_Y, 25], loft: 0.5 });
-    expect(p.aid(ctx(0)).reticle).toEqual([3, CATCH_Y, 25]);
-  });
-  it('4 bullet / lob buttons: one press each, both led at the locked receiver', () => {
-    const p = new Passer(); p.select('buttons');
-    const b = p.update(frame(['throw'], ['throw']), ctx(0))!, l = p.update(frame(['lob'], ['lob']), ctx(0))!;
-    expect([b.loft, l.loft]).toEqual([0, 0.85]);
-    expect(b.at[2]).toBeGreaterThan(20); expect(l.at[2]).toBeGreaterThan(b.at[2]);
-    expect(p.update(frame(['throw']), ctx(0))).toBeNull(); // held, not pressed again
-  });
-  it('5 flick: a fast flick right throws far right; a slow one shorter; none throws nothing', () => {
-    const p = new Passer(); p.select('flick');
-    const fast = hold(p, 0.3, {}, () => ({ x: 0.06, y: 0 }))!;
-    expect(fast.at[0]).toBeLessThan(-40); expect(Math.abs(fast.at[2])).toBeLessThan(1); // +X is the athlete's left
-    const slow = hold(p, 0.3, {}, () => ({ x: 0, y: -0.015 }))!; // up the screen: straight ahead
-    expect(slow.at[2]).toBeGreaterThan(MAX_RANGE * 0.2); expect(slow.at[2]).toBeLessThan(MAX_RANGE * 0.6);
-    expect(hold(p, 0.3)).toBeNull();
-    expect(p.holdsLook(frame(['throw']))).toBe(true);
-    p.select('lock'); expect(p.holdsLook(frame(['throw']))).toBe(false);
-  });
-  it('6 auto QB: throws to the open man; a bullet when he is open, touch over tight coverage', () => {
-    const p = new Passer(); p.select('auto');
-    const open = { ...wr(25, 9, -6), index: 2 }, covered = wr(15, 1);
-    const pass = p.update(frame(['throw'], ['throw']), ctx(0, { receivers: [covered, open] }))!;
-    expect(pass.at[0]).toBeCloseTo(-6, 6); expect(pass.loft).toBeCloseTo(0.1);
-    expect(p.update(frame(['throw'], ['throw']), ctx(0, { receivers: [covered] }))!.loft).toBeGreaterThan(0.6);
-  });
-});
-
-describe('switching', () => {
-  it('select by id or index, cycle wraps, the label counts from 1, and a switch drops a half-done hold', () => {
+describe('placement reticle (the QB throw control)', () => {
+  it('lands on the turf aim point; the hold time is the loft; the point follows the passer', () => {
     const p = new Passer();
-    expect(p.scheme.id).toBe('lock');
-    expect(p.select('reticle')).toBe(true); expect(p.select('reticle')).toBe(false); expect(p.select('nope')).toBe(false);
-    expect(p.label).toBe('Throw scheme 3/6: Placement reticle');
-    p.select(5); p.cycle(); expect(p.scheme.id).toBe('charge');
-    p.update(frame(['throw'], ['throw']), ctx(0)); // charging
-    p.select('charge'); expect(p.aid(ctx(0.2)).meter).toBeCloseTo(0.2);
-    p.cycle(); p.select('charge');
-    expect(p.aid(ctx(0.2)).meter).toBeUndefined();
+    expect(hold(p, 0.3)).toEqual({ at: [3, CATCH_Y, 25], loft: 0.5, follow: true });
+    expect(p.aid(ctx(0)).reticle).toEqual([3, CATCH_Y, 25]);
+    expect(p.scheme.hint((a) => `<${a}>`)).toContain('<throw>');
   });
-  it('every scheme has a name and a controls hint naming its keys', () => {
-    for (const s of new Passer().schemes) expect(s.hint((a) => `<${a}>`)).toContain('<');
+  it('after the release the arc keeps the throw made (it went flat for a moment) and moves with the passer', () => {
+    const p = new Passer();
+    p.update(frame(['throw'], ['throw']), ctx(0));
+    expect(p.aid(ctx(0.6)).meter).toBeCloseTo(1);
+    const pass = p.update(frame(), ctx(0.6))!;                 // let go: full loft
+    expect(pass.loft).toBeCloseTo(1);
+    // the arm is still throwing: the camera's aim moves on and he runs 3 m to the right
+    const a = p.aid(ctx(0.7, { turf: [9, CATCH_Y, 40], from: [3, 1.8, 0] }));
+    expect(a.arc).toEqual({ at: [6, CATCH_Y, 25], loft: 1 }); // not loft 0, and not the new aim point
+    expect(a.reticle).toEqual([6, CATCH_Y, 25]);
+    expect(a.meter).toBeUndefined();
+    p.reset();                                                 // the ball is out: back to the live aim
+    expect(p.aid(ctx(0.8, { turf: [9, CATCH_Y, 40] })).arc).toEqual({ at: [9, CATCH_Y, 40], loft: 0 });
   });
 });
 

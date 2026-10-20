@@ -8,7 +8,6 @@ import { GORE_LEVELS } from './render/effects';
 import type { GameRenderer } from './render/renderer';
 import { DIFFICULTY_PRESETS, GAME_SUPPORT, PLAYER_BASE, difficultyOf, type Settings } from './settings';
 import { el, type Layer } from './ui';
-import { Passer } from './passing/schemes';
 
 /** What the screen needs from the running game (the App in main.ts implements it). */
 export interface SettingsHost {
@@ -40,14 +39,11 @@ const REBIND: [string, string, string][] = [
   ['torsoDown', 'Lower the pads: torso down and hips low (also scroll up)', 'D-pad down / LT'],
   ['torsoUp', 'Raise the pads: torso up and hips high (also scroll down)', 'D-pad up'],
   ['shiftLock', 'Side shuffle on / off: face the camera way, A / D shuffle', 'L3 (stick click)'],
-  ['throw', 'QB: throw (the active throw scheme decides how; in QB 1-on-1 Left click also throws while you hold the ball)', 'Y'],
-  ['lob', 'QB: lob (the Bullet / lob buttons scheme)', 'D-pad left'],
-  ['target', 'QB: next receiver (the schemes that lock a target)', 'D-pad right'],
-  ['scheme', 'QB: next throw scheme (1–6 pick one)', 'Back / View'],
+  ['throw', 'QB: throw where the ring is; hold longer for more loft (in QB 1-on-1 Left click also throws while you hold the ball)', 'Y'],
   ['reset', 'Reset rep', 'Start (tap)'], ['tuning', 'Tuning panel', 'menu'], ['overlay', 'Performance overlay', 'menu'],
 ];
 /** Controls that are not rebindable. */
-const FIXED: string[][] = [['Pads (torso and hips)', 'Scroll (up = lower the pads)', '—'], ['QB: pick a throw scheme', '1 – 6', '—'], ['Look (aims the arms)', 'Mouse', 'Right stick'], ['Pause', 'Esc', 'Start (hold)']];
+const FIXED: string[][] = [['Pads (torso and hips)', 'Scroll (up = lower the pads)', '—'], ['Look (aims the arms)', 'Mouse', 'Right stick'], ['Pause', 'Esc', 'Start (hold)']];
 
 const DIFF_LABEL = { easy: 'Easy', normal: 'Normal', hard: 'Hard', custom: 'Custom' };
 const x = (v: number) => `${v.toFixed(2)}×`, pct = (v: number) => `${(v * 100).toFixed(0)} %`;
@@ -200,9 +196,7 @@ function controlsTab({ host, status, reopen }: Ctx) {
     el('p', { class: 'sub', text: 'Contact mode is automatic: within about 4 m of the ball carrier your athlete settles into a ready stance with the arms up. No control is needed for balance; once you make contact, physics decides who stays up. J / L and I / K always work alongside the mouse, so a touchpad is enough.' }),
     table,
     el('div', { class: 'set-list' },
-      mode('Sprint', () => s.sprintToggle, (on) => (s.sprintToggle = host.input.sprintToggle = on)),
-      setRow('QB throw scheme', 'How you throw while you hold the ball as QB; switch while playing with 1–6 or the next-scheme key.',
-        seg<string>('QB throw scheme', new Passer().schemes.map((x, i) => ({ value: x.id, text: `${i + 1} ${x.name}` })), () => s.throwScheme, (v) => { s.throwScheme = v; host.save(); }))),
+      mode('Sprint', () => s.sprintToggle, (on) => (s.sprintToggle = host.input.sprintToggle = on))),
     el('p', { class: 'sub', text: 'Click the field to capture the mouse; Esc frees it and pauses. Lowering the pads also gets the hips low; after a big hit they come back up to running.' }),
     el('div', { class: 'items' }, reset, test),
   ];

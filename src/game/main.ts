@@ -147,7 +147,6 @@ class App {
     this.cam.follow = this.input.autoCamera = this.settings.autoCamera;
     this.input.sprintToggle = this.settings.sprintToggle;
     this.input.setKeyboard(this.settings.bindings);
-    this.passer.select(this.settings.throwScheme);
     this.audio.muted = this.settings.mute;
     this.audio.onVoice = (v) => this.renderer?.voice(v);
     // Alt+Tab (or any switch away): pause, which frees the mouse; Resume or a click on the field captures it again
@@ -513,8 +512,7 @@ class App {
       ['Side shuffle (toggle)', t('shiftLock')],
       ...(this.settings.autoCamera ? [] : [['Look', 'Mouse'] as [string, string]]),
       ...(this.throwing ? [ // only while he holds the ball: the QB throw controls
-        ['Throw', this.mode.id === 'pass' ? `${t('throw')} / Left click` : t('throw')], ['Lob (scheme 4)', t('lob')], ['Next receiver', t('target')],
-        ['Throw scheme', `1–6 / ${t('scheme')}`]] as [string, string][] : []),
+        ['Throw (hold for more loft)', this.mode.id === 'pass' ? `${t('throw')} / Left click` : t('throw')]] as [string, string][] : []),
     ];
   }
 
@@ -581,7 +579,6 @@ class App {
     if (k.pause.includes(e.code)) this.pauseMenu();
     else if (k.reset.includes(e.code)) void this.newRep();
     else if (k.overlay.includes(e.code)) { this.settings.overlay = !this.settings.overlay; this.save(); }
-    else if (/^Digit[1-6]$/.test(e.code) && this.schemeKeys() && !Object.values(k).some((v) => v.includes(e.code))) this.switchScheme(+e.code[5] - 1);
     else if (k.tuning.includes(e.code)) { this.paused = true; this.pausedAt = performance.now(); this.input.capture = false; document.exitPointerLock?.(); this.settingsMenu(() => this.pauseMenu(), 'advanced'); }
   }
 
@@ -628,7 +625,7 @@ class App {
         const f: InputFrame = this.input.read(0, dtReal);
         if (!this.paused) {
           const pass = this.passFrame(f, now);
-          if (!this.cam.follow && !(this.throwing && this.passer.holdsLook(f))) this.cam.look(f.look.x, f.look.y);
+          if (!this.cam.follow) this.cam.look(f.look.x, f.look.y);
           this.human.latest = { move: f.move, torso: f.torso, sprint: f.sprint, armL: f.armL, armR: f.armR, held: f.held, cameraYaw: this.cam.yaw, aimPitch: this.cam.aimPitch, shiftLock: f.shiftLock, pass };
           if (f.pressed.has('shiftLock')) this.hud.flash(`Side shuffle ${f.shiftLock ? 'on' : 'off'}`);
           if (this.net && d.human < 0) this.spectateKeys(f);
@@ -729,8 +726,6 @@ class App {
    *  (a throw stays on it PASS_HOLD ms). */
   passFrame(f: InputFrame, now: number): PassCmd | null {
     const d = this.drill!, w = d.world, r = this.renderer;
-    if (this.passer.scheme.id !== this.settings.throwScheme) this.passer.select(this.settings.throwScheme); // changed in Settings
-    if (f.pressed.has('scheme') && this.schemeKeys()) this.switchScheme((this.passer.index + 1) % this.passer.schemes.length);
     const was = this.throwing;
     this.throwing = canThrow(w, d.human) && !d.ended && !!r;
     if (this.mode.id === 'pass' && this.throwing && f.device === 'keyboard') {
@@ -753,18 +748,9 @@ class App {
       const aid = this.passer.aid(c), k = (a: string) => keysText(this.input.bindings.keyboard[a] ?? []);
       this.aim = { aid, from: c.from };
       const s = this.passer.scheme, who = c.receivers.length ? '' : '\nNo receiver: aimed where you look';
-      this.hud.setPass(`Throw scheme ${this.passer.index + 1}/${this.passer.schemes.length}: ${s.name}  ·  1–6 / ${k('scheme')}\n${s.hint(k)}${who}`, aid.meter ?? null);
+      this.hud.setPass(`${s.name}\n${s.hint(k)}${who}`, aid.meter ?? null);
     }
     return this.pass && now < this.pass.until ? this.pass.cmd : null;
-  }
-
-  /** The scheme keys (1–6, V) work in the QB mode, or whenever he holds the ball. */
-  schemeKeys() { return !!this.drill && (this.mode.id === 'pass' || canThrow(this.drill.world, this.drill.human)); }
-
-  switchScheme(i: number) {
-    this.passer.select(i);
-    this.settings.throwScheme = this.passer.scheme.id; this.save();
-    this.hud.flash(this.passer.label);
   }
 
   /** A spectator: Space or the right arm button watches the next athlete, the left arm button the one before. */

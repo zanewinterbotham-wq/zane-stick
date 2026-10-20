@@ -11,7 +11,9 @@ export type Gait = 'walk' | 'jog' | 'sprint';
 /** Throw the ball held now so it arrives at `at` (world, m; y ≈ catch height); loft 0 = the flattest, fastest throw the
  *  arm allows (a bullet) .. 1 = a high touch lob. One-shot: set for the step(s) it is pressed; the world plays the
  *  throwing motion and releases once, and ignores more until the motion is over. */
-export interface PassCmd { at: Vec3; loft: number }
+/** `follow`: the point moves with the passer until the ball leaves (a human's reticle is aimed from where he is, and
+ *  he runs on through the throwing motion); a bot's lead is a fixed point already. */
+export interface PassCmd { at: Vec3; loft: number; follow?: boolean }
 
 export interface Commands {
   /** Desired ground velocity direction (world x, z), magnitude 0..1 of the gait's speed. */
@@ -46,11 +48,6 @@ export interface Commands {
    *  ahead. */
   look: Vec3 | null;
 }
-
-/** Throw the ball held now so it arrives at `at` (world, m; y ≈ catch height); loft 0 = the flattest, fastest
- *  throw the arm allows (a bullet) .. 1 = a high touch lob. One-shot: set for the step(s) it is pressed; the world
- *  plays the throwing motion and releases once, and ignores more until the motion is over. */
-export interface PassCmd { at: Vec3; loft: number }
 
 export function neutralCommands(): Commands {
   return {

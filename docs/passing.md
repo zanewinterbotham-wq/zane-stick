@@ -64,41 +64,13 @@ AI layer that later runs 11 on 11 (later phases), so they take their job as data
   pure helpers (openness, throwing lane, pursuit angle, intercept point) in one module so every brain uses the same
   football sense. Unit tests per helper, headless tests per brain with 2 receivers and 2 defenders as well as 1 v 1.
 
-## Shell contract (src/game; QB throw schemes, switchable while playing)
+## Shell: the QB throw control
 
-Each scheme turns the player's input into `HumanInput.pass` (and draws its own aim aid). Keys 1–6 pick a scheme, V
-cycles; the HUD shows the active scheme's name and its controls; the choice is saved in settings and also listed in
-Settings → Controls. Schemes:
+**Owner decision 2026-10-19: the placement reticle is the only QB control**; the other five schemes (aim & charge,
+target lock, bullet / lob buttons, flick, auto QB) are vaulted in `src/game/passing/vault` (not built or maintained).
 
-1. **Aim & charge** — hold Throw to charge power, release to throw along the camera's aim (pitch = loft); a power
-   meter. Fully manual.
-2. **Target lock** — the receiver has an icon; tap Throw for a bullet, hold longer for more touch; auto lead
-   (`leadPoint`).
-3. **Placement reticle** — a ring on the turf where the camera aims; Throw lands it there; the scroll/pads keys (or
-   hold time) set the loft; an arc preview.
-4. **Bullet / lob buttons** — two buttons, both aimed at the locked receiver with lead: one a bullet, one a lob.
-5. **Flick** — hold Throw and flick the mouse: direction and speed of the flick set the direction and power.
-6. **Auto QB** — press Throw and the game picks the lead and the loft for the open man (an assist for testing).
-
-The Throw action: a dedicated binding (default F, gamepad RT is sprint so use Y / b3), and while the local player
-holds the ball as QB, Left click also throws (the arms otherwise reach and grab). No new physics in the shell.
-
-## Sim side as built (branch pass-sim)
-
-The interfaces above, exactly, plus:
-- `Commands.look: Vec3 | null` (neutral null): eyes on a point; the thorax and neck turn toward it within their ranges.
-  The bot receiver and corner look at a ball in the air (the catch rule's gaze factor reads the head).
-- `leadPoint(from, target, loft, delay = THROW.release)`: the throwing motion's time before release is in the lead.
-  `throwError(dist, speed, knock, pressured, loft)` is the 1σ miss; `THROW` holds the arm's limits and the motion's
-  times (cock 0.28 s, release 0.4 s, end 0.65 s): a scheme's aim preview can use them.
-- `PassRecord` (`Play.lastPass`, also `World.lastPass`): `{ athlete, time, at, to, loft, speed, error }`, `to` = where the
-  error sent it. `Play.pass: 'none' | 'air' | 'complete' | 'intercepted' | 'incomplete'`, `Play.passer`, and
-  `Play.passOk(i)` (whether a pass from athlete i would be allowed now: an aim aid can grey out).
-- `PlaySetup.los` (z of the line of scrimmage) turns passing on for a mode; the rep ends `'incomplete'`.
-- `BodyView.throwing` (the motion's time, target and hand) drives the animator; the world refuses a pass while one runs.
-- Teams: QB and WR are team 0 and the CB team 1, except with "Your role: Cornerback", where (as in the Oklahoma drill)
-  the human's CB is team 0 and the offense team 1, attacking −Z: athlete 0 is always on team 0. Slot labels `QB`,
-  `WR`, `CB` (groups Offense / Defense).
-- Wire: the input codec (version 2) carries `HumanInput.pass`; pass `encodeInput` a `PassHold` (kept by the sender) and
-  a throw is repeated in the next `PASS_REPEAT` inputs (src/game/net/session.ts does). The snapshot (version 3) carries
-  the pass state, the passer and `lastPass`.
+- A ring on the turf where the camera aims; Throw (F, gamepad Y; Left click in QB 1-on-1 while holding the ball) lands
+  the ball there; holding it longer adds loft (full at 0.6 s), shown by a meter and the dotted arc.
+- The pass's point follows the passer (`PassCmd.follow`): he runs on through the throwing motion (THROW.release), so
+  the World moves the point as far as he ran before the ball leaves; a bot's lead point stays fixed.
+- After the release the ring and the arc stay on the throw made until the ball is out of the hand.

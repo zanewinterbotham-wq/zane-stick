@@ -127,7 +127,7 @@ export class Athlete {
   /** World step of the last motor plan (athlete level of detail). */
   planned = -1;
   /** The throw being played (World.throwStep): time into the motion (s), the pass, the throwing hand, released yet. */
-  throwing: { t: number; cmd: PassCmd; hand: 0 | 1; released: boolean } | null = null;
+  throwing: { t: number; cmd: PassCmd; hand: 0 | 1; released: boolean; from: Vec3 } | null = null;
 
   constructor(readonly index: number, readonly setup: AthleteSetup, readonly plan: BodyPlan, readonly controller: MotorController, readonly brain: Brain) {
     this.muscles = new MuscleSet(plan);
@@ -590,7 +590,8 @@ export class World {
     const p = a.cmd.pass;
     if (!p || this.ballCarrier !== a.index || a.downBy || a.injury.out || !(this.passAllowed?.(a.index, p) ?? true)) return;
     const hand = this.gripping(a.index, { athlete: -1, seg: this.ballIndex });
-    if (hand >= 0) a.throwing = { t: 0, cmd: { at: [p.at[0], p.at[1], p.at[2]], loft: clamp(p.loft, 0, 1) }, hand: hand as 0 | 1, released: false };
+    const com = this.scene.athletes[a.index].state.com;
+    if (hand >= 0) a.throwing = { t: 0, cmd: { at: [p.at[0], p.at[1], p.at[2]], loft: clamp(p.loft, 0, 1), follow: !!p.follow }, hand: hand as 0 | 1, released: false, from: [com[0], com[1], com[2]] };
   }
 
   /** The release: the ball leaves the hand on the trajectory to the pass's point (throw.ts), off by the passer's error
@@ -599,7 +600,9 @@ export class World {
     th.released = true;
     const bi = this.ballIndex, h = th.hand;
     if (this.ballCarrier !== a.index || this.gripping(a.index, { athlete: -1, seg: bi }) !== h) return;
-    const s = this.scene.athletes[a.index].state, from = this.handPoint(a, h), at = th.cmd.at, loft = th.cmd.loft;
+    const s = this.scene.athletes[a.index].state, from = this.handPoint(a, h), loft = th.cmd.loft;
+    // a point that follows him: moved along the ground as far as he ran since the throw began
+    const at: Vec3 = th.cmd.follow ? [th.cmd.at[0] + s.com[0] - th.from[0], th.cmd.at[1], th.cmd.at[2] + s.com[2] - th.from[2]] : th.cmd.at;
     const pressured = this.athletes.some((o) => o.setup.team !== a.setup.team && Math.hypot(...sub3(this.scene.athletes[o.index].state.com, s.com)) < THROW.pressR);
     const e = throwError(Math.hypot(at[0] - from[0], at[2] - from[2]), Math.hypot(s.comVel[0], s.comVel[2]), a.knock, pressured, loft);
     const to: Vec3 = [at[0] + e * this.rng.gauss(), at[1] + 0.5 * e * this.rng.gauss(), at[2] + e * this.rng.gauss()];

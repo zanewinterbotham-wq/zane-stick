@@ -55,10 +55,8 @@ it('version 6: the stored Low and High keep their meaning, an unknown level is c
   expect([loadSettings().preset, loadSettings().perf]).toEqual([null, { hz: 200, lod: 12 }]);
 });
 
-it('version 7: the throw keys give way to saved rebinds that hold them, and an unknown throw scheme is the default', () => {
-  store.set('zane-stick-settings-v1', JSON.stringify({ version: 6, bindings: { dive: ['KeyF'], armL: ['KeyV', 'Mouse0'] }, throwScheme: 'bogus' }));
-  const s = loadSettings();
-  expect([s.bindings, s.throwScheme]).toEqual([{ dive: ['KeyF'], armL: ['KeyV', 'Mouse0'], throw: [], scheme: [] }, 'lock']);
-  s.throwScheme = 'flick'; saveSettings(s);
-  expect(loadSettings().throwScheme).toBe('flick'); // the choice is remembered
+it('version 7: the throw key gives way to a saved rebind that holds it; the vaulted scheme choice and keys are dropped', () => {
+  store.set('zane-stick-settings-v1', JSON.stringify({ version: 6, bindings: { dive: ['KeyF'], armL: ['KeyV', 'Mouse0'], lob: ['KeyR'] }, throwScheme: 'flick' }));
+  const s = loadSettings() as ReturnType<typeof loadSettings> & { throwScheme?: string };
+  expect([s.bindings, s.throwScheme]).toEqual([{ dive: ['KeyF'], armL: ['KeyV', 'Mouse0'], throw: [] }, undefined]);
 });
