@@ -16,7 +16,7 @@ import { Audio } from './audio';
 import { autoChoose, chooseBest, reportText, runBenchmark } from './benchmark';
 import { ChaseCamera } from './camera';
 import { SoundCues } from './cues';
-import { HitMeter, hitFeel, MPH } from './feel';
+import { HitMeter, hitFeel, MPH, type BigHit } from './feel';
 import { InputManager, keyName, keysText, type InputFrame } from './input/input';
 import { effectivePreset, PRESETS, type PresetName } from './presets';
 import { GameRenderer } from './render/renderer';
@@ -770,7 +770,7 @@ class App {
       return false;
     }
     const fx = this.bigHit(d, bigNow);
-    if (this.net) { this.net.event({ k: 'hit', closing: bigNow.closing, impulse: bigNow.impulse, a: 0, b: 1 }); return false; } // shared time: no slow motion or hit-stop
+    if (this.net) { this.net.event({ k: 'hit', closing: bigNow.closing, impulse: bigNow.impulse, a: bigNow.a, b: bigNow.b }); return false; } // shared time: no slow motion or hit-stop
     if (fx.slowMo && this.settings.slowMo && now / 1000 > this.slowUntil) { this.timeScale = 0.3; this.slowUntil = now / 1000 + 0.9; }
     if (!fx.stopMs || now < this.nextStop) return false;
     this.freezeUntil = now + fx.stopMs;
@@ -779,14 +779,14 @@ class App {
   }
 
   /** A big hit's sound, shake, rumble, banner and camera punch (a multiplayer guest's from the host's event). */
-  bigHit(d: Play, big: { impulse: number; closing: number }) {
+  bigHit(d: Play, big: BigHit) {
     const w = d.world, fx = hitFeel(big.impulse, big.closing);
-    const a = w.scene.athletes[0].state, b = w.scene.athletes[1].state;
+    const a = w.scene.athletes[big.a].state, b = w.scene.athletes[big.b].state;
     const n = [0, 1, 2].map((k) => b.com[k] - a.com[k]), along = (v: number[]) => v[0] * n[0] + v[1] * n[1] + v[2] * n[2];
     this.audio.play('hit_big_layer', 0.5 + 0.5 * fx.k, [0, 1, 2].map((k) => (a.com[k] + b.com[k]) / 2));
     this.audio.play('crowd_ooh', 0.6 + 0.4 * fx.k);
     // the grunt comes from the athlete who was hit: the one closing less along the line between them
-    const hit = along(a.comVel) >= -along(b.comVel) ? 1 : 0, hs = w.scene.athletes[hit].state, hi = w.athletes[hit].segIndex.get('head')!;
+    const hit = along(a.comVel) >= -along(b.comVel) ? big.b : big.a, hs = w.scene.athletes[hit].state, hi = w.athletes[hit].segIndex.get('head')!;
     this.audio.play('voice_grunt', 1, [hs.segPos[3 * hi], hs.segPos[3 * hi + 1], hs.segPos[3 * hi + 2]], hit);
     this.cam.addShake(fx.shake);
     this.rumble(fx.rumble);
