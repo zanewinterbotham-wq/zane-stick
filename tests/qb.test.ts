@@ -39,7 +39,7 @@ describe('throw ballistics', () => {
   it('leadPoint: a receiver running on at his velocity is there when the ball is', () => {
     const from: Vec3 = [0, 1.9, -5], target = { pos: [8, 1.2, 6] as Vec3, vel: [-2, 0, 8] as Vec3 };
     for (const loft of [0, 0.8]) {
-      const at = leadPoint(from, target, loft), T = throwVelocity(from, at, loft).time;
+      const at = leadPoint(from, target, loft), T = THROW.release + throwVelocity(from, at, loft).time;
       expect(Math.hypot(target.pos[0] + target.vel[0] * T - at[0], target.pos[2] + target.vel[2] * T - at[2])).toBeLessThan(0.01);
     }
   });
@@ -73,8 +73,9 @@ describe('QB decisions', () => {
     console.log('LB under the bullet: thrown', t.kind, 'loft', t.loft, 'to', t.target, 'open', t.open.toFixed(2));
     expect(t.target).toBe(1);
     expect(t.loft).toBeGreaterThan(0);
-    // the linebacker right in front of the QB (1.5 m): no arc gets over him to WR1; WR2's lane is clear
-    const q = percept([qb(), wr, ath(0, -10, 6, run8), ath(1, 0.1, -3.5), ath(1, -14, 30)]);
+    // the linebacker right in front of the QB (1.5 m) on WR1's line: no arc gets over him to WR1; WR2's lane (25° to the
+    // left, passing 1 m from him) is clear
+    const q = percept([qb(), wr, ath(0, -10, 6, run8), ath(1, 0.4, -3.5), ath(1, -14, 30)]);
     const u = chooseTarget(q, c, 0, { heat: Infinity })!;
     expect(bestThrow(q, c, 0, 1, 0)).toBe(null);
     expect(u.target).toBe(2);

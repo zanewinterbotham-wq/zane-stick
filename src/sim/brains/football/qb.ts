@@ -12,7 +12,7 @@ import { GAIT_SPEED } from '../../control/hand';
 import { neutralCommands, type Commands, type PassCmd } from '../../control/types';
 import { clamp, wrapAngle, type Vec3 } from '../../math';
 import type { Rng } from '../../rng';
-import { leadPoint, throwVelocity } from '../../throw';
+import { leadPoint, THROW, throwVelocity } from '../../throw';
 import { CarrierBrain, type BotDifficulty } from '../carrier';
 import { predict, TacklerBrain, turnRate } from '../tackler';
 import type { AthleteView, Brain, Perception } from '../types';
@@ -61,8 +61,9 @@ const AWAY_OUT = 8, AWAY_DOWN = 6, LATE = 1;
 const LOOK = 0.15, LOOK_K = 1.2, AIM_0 = 0.5, AIM_D = 0.04, NERVES = 1.5, MISREAD = 0.15;
 
 export type ThrowKind = 'bullet' | 'touch' | 'lob' | 'back-shoulder' | 'away';
-/** A throw decision: the receiver (−1 thrown away), where and how high, its openness and flight time, and which read
- *  it came from (index into reads; −1 the hot route, −2 the checkdown, −3 thrown away). */
+/** A throw decision: the receiver (−1 thrown away), where and how high, its openness, the time from the decision to
+ *  the catch (s: the throwing motion's THROW.release and the flight), and which read it came from (index into reads;
+ *  −1 the hot route, −2 the checkdown, −3 thrown away). */
 export interface ThrowChoice { target: number; at: Vec3; loft: number; kind: ThrowKind; open: number; time: number; read: number }
 export type QBPhase = 'pre' | 'drop' | 'read' | 'scramble' | 'thrown';
 /** What the bot QB commanded (tests, HUD): the choice, the PassCmd sent (lead noise included), the sim time. */
@@ -107,7 +108,9 @@ export const sackTime = (p: Perception, i: number) => nearestRush(p, i).t;
 
 /** The best throw to `target` (any loft whose lane is open, and a back-shoulder ball when it fits), scored by openness
  *  at the ball's arrival less the loft's cost; null if he is down, out of bounds or no lane is open. */
-export function bestThrow(p: Perception, call: PlayCall, self: number, target: number, read: number, key?: number): ThrowChoice | null {
+export function bestThrow(seen: Perception, call: PlayCall, self: number, target: number, read: number, key?: number): ThrowChoice | null {
+  // the ball leaves the hand THROW.release s from now (the throwing motion): everyone is judged where he will be then
+  const p: Perception = { ...seen, athletes: seen.athletes.map((a) => predict(a, THROW.release)) };
   const me = p.athletes[self], r = p.athletes[target], f = call.frame;
   if (!r || r.down || target === self) return null;
   const from = releasePoint(me), pos: Vec3 = [r.com[0], CATCH_H, r.com[2]];
@@ -126,10 +129,10 @@ export function bestThrow(p: Perception, call: PlayCall, self: number, target: n
     const { vel, time } = throwVelocity(from, at, loft);
     if (!laneOpen(p, from, at, vel, time, me.team, ignore)) return;
     const open = open0(at, time) * lever - LOFT_COST * loft;
-    if (!best || open > best.open) best = { target, at, loft, kind, open, time, read };
+    if (!best || open > best.open) best = { target, at, loft, kind, open, time: THROW.release + time, read };
   };
   for (const [loft, kind] of LOFTS) {
-    const at = leadPoint(from, { pos, vel: r.comVel }, loft);
+    const at = leadPoint(from, { pos, vel: r.comVel }, loft, 0);
     consider([at[0] + away[0], at[1], at[2] + away[1]], loft, kind);
   }
   // back-shoulder: a deep receiver with a man on his hip (not over the top). He stops (he knows when) and the ball meets
@@ -195,7 +198,7 @@ export function throwAway(p: Perception, call: PlayCall, self: number): ThrowCho
   for (const s of sides) {
     at = [s * (p.field.halfWidth + AWAY_OUT), 1, me.com[2] + f.dir * AWAY_DOWN];
     const tv = throwVelocity(from, at, 0.3);
-    time = tv.time;
+    time = THROW.release + tv.time;
     if (laneOpen(p, from, at, tv.vel, tv.time, me.team)) break;
   }
   return { target: -1, at, loft: 0.3, kind: 'away', open: 0, time, read: -3 };
