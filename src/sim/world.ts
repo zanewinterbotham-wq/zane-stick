@@ -1,15 +1,16 @@
 // The simulation loop: brains → commands → motor controller → muscles → physics, at a fixed timestep.
 // Runs unchanged in the browser, a Worker, or Node. No DOM, no wall clock, no Math.random.
-import { buildBody, type AthleteParams, type BodyPlan, type Detail } from './anatomy/body';
+import { buildBody, totalMass, type AthleteParams, type BodyPlan, type Detail } from './anatomy/body';
 import { BALL, GRIP_TIMECONST, EQUIPMENT } from './anatomy/equipment';
 import type { Brain, Perception, AthleteView } from './brains/types';
 import { neutralCommands, type BodyView, type Commands, type FootContact, type MotorController, type PassCmd } from './control/types';
-import { clamp, headingOf, lerp, qaxis, qconj, qlog, qmul, qrot, type Quat, type Vec3 } from './math';
+import { clamp, G, headingOf, lerp, qaxis, qconj, qlog, qmul, qrot, quatAt, sub, vecAt, type Quat, type Vec3 } from './math';
 import { MuscleSet, newTargets, type MuscleTargets } from './muscles';
 import type { AthleteState, LinkRef, PhysicsEngine, PhysicsScene, PropDesc, SolverOptions } from './physics/engine';
 import { Rng } from './rng';
 import { InjuryState, type InjuryEvent } from './injury';
 import { weightSupport, type SupportSettings, type SupportState } from './anim/types';
+import { rootQuat } from './anim/kinematics';
 import { jumpTuning, RUN_TAKEOFF, type JumpTuning } from './anim/jump';
 import { THROW, throwError, throwVelocity, type PassRecord } from './throw';
 
@@ -80,7 +81,6 @@ export interface HitEvent {
 export interface ImpactStats { closingSpeed: number; peakForce: number; peakHeadG: number[]; firstContactTime: number }
 
 export class Athlete {
-  readonly muscles: MuscleSet;
   readonly targets: MuscleTargets;
   cmd: Commands = neutralCommands();
   feet: [FootContact, FootContact] = [{ force: 0, cop: [0, 0, 0], touching: false }, { force: 0, cop: [0, 0, 0], touching: false }];
@@ -102,6 +102,8 @@ export class Athlete {
    *  shoulder, when within REACH.aim of it), or null. */
   reachTo: (Vec3 | null)[] = [null, null];
   readonly segIndex: Map<string, number>;
+  /** Pelvis, thorax (the fused trunk at minimum detail) and head segments, and the body's mass (kg). */
+  readonly pelvisSeg: number; readonly trunkSeg: number; readonly headSeg: number; readonly mass: number;
   readonly footSegs: Set<number>[];
   readonly handSegs: number[];
   readonly limbEndSegs: Set<number>;
@@ -134,11 +136,13 @@ export class Athlete {
   /** The throw being played (World.throwStep): time into the motion (s), the pass, the throwing hand, released yet. */
   throwing: { t: number; cmd: PassCmd; hand: 0 | 1; released: boolean; from: Vec3 } | null = null;
 
-  constructor(readonly index: number, readonly setup: AthleteSetup, readonly plan: BodyPlan, readonly controller: MotorController, readonly brain: Brain) {
-    this.muscles = new MuscleSet(plan);
+  /** `muscles` is the set the controller was built with: one per athlete, so both see the same limits. */
+  constructor(readonly index: number, readonly setup: AthleteSetup, readonly plan: BodyPlan, readonly muscles: MuscleSet, readonly controller: MotorController, readonly brain: Brain) {
     this.targets = newTargets(this.muscles.n);
     this.segIndex = new Map(plan.segments.map((s, i) => [s.name, i]));
     const idx = (n: string) => this.segIndex.get(n) ?? -1;
+    this.pelvisSeg = idx('pelvis'); this.trunkSeg = idx('thorax') >= 0 ? idx('thorax') : idx('trunk'); this.headSeg = idx('head');
+    this.mass = totalMass(plan);
     this.footSegs = ['L', 'R'].map((sx) => new Set([idx('foot' + sx), idx('toes' + sx)].filter((i) => i >= 0)));
     this.handSegs = ['L', 'R'].map((sx) => (idx('hand' + sx) >= 0 ? idx('hand' + sx) : idx('forearm' + sx)));
     this.limbEndSegs = new Set([...this.footSegs[0], ...this.footSegs[1], ...this.handSegs]);
@@ -148,7 +152,6 @@ export class Athlete {
       return g?.pos ? { seg: k, off: [g.pos[0] - sg.origin[0], g.pos[1] - sg.origin[1], g.pos[2] - sg.origin[2]] as Vec3, half: Math.min(...g.size) } : { seg: k, off: [0, 0, 0] as Vec3, half: 0 };
     });
   }
-  get mass() { return this.plan.segments.reduce((a, s) => a + s.mass, 0); }
 }
 
 export class World {
@@ -194,7 +197,7 @@ export class World {
     const w = new World(scene, setup);
     setup.athletes.forEach((a, i) => {
       const muscles = new MuscleSet(plans[i]);
-      const ath = new Athlete(i, a, plans[i], a.controller(plans[i], muscles), a.brain);
+      const ath = new Athlete(i, a, plans[i], muscles, a.controller(plans[i], muscles), a.brain);
       ath.injury = new InjuryState(ath.muscles, scene.dt, a.boneStrength);
       w.athletes.push(ath);
       if (a.hasBall) w.ballCarrier = i;
@@ -221,13 +224,11 @@ export class World {
   private perceive(): Omit<Perception, 'time' | 'self'> {
     const athletes: AthleteView[] = this.athletes.map((a) => {
       const s = this.scene.athletes[a.index].state;
-      const pi = a.segIndex.get('pelvis')!, hi = a.segIndex.get('head')!;
-      const q = s.segQuat.subarray(4 * pi, 4 * pi + 4) as unknown as Quat;
-      const fwd = qrot([q[0], q[1], q[2], q[3]], [0, 0, 1]);
+      const fwd = qrot(quatAt(s.segQuat, a.pelvisSeg), [0, 0, 1]);
       return {
         com: [...s.com] as Vec3, comVel: [...s.comVel] as Vec3,
-        pelvis: [s.segPos[3 * pi], s.segPos[3 * pi + 1], s.segPos[3 * pi + 2]],
-        head: [s.segPos[3 * hi], s.segPos[3 * hi + 1], s.segPos[3 * hi + 2]],
+        pelvis: vecAt(s.segPos, a.pelvisSeg),
+        head: vecAt(s.segPos, a.headSeg),
         heading: headingOf(fwd), down: a.downBy !== null, hasBall: a.index === this.ballCarrier, team: a.setup.team, lame: a.injury.leg[0] || a.injury.leg[1],
       };
     });
@@ -285,7 +286,7 @@ export class World {
     if (!r) return;
     // dive flight is ballistic: no support of any kind, so momentum is the take-off's and the body lands
     if (r.dive === 'flight') return;
-    const s = this.scene.athletes[a.index].state, m = a.mass, k = S.strength, pi = a.segIndex.get('pelvis')!;
+    const s = this.scene.athletes[a.index].state, m = a.mass, k = S.strength, pi = a.pelvisSeg;
     const J = this.jump, air = r.jump === 'flight';
     const c = a.playerContact || (air && J.air <= 0) ? 0 : air ? k : sup.carry * k;
     // dive or jump take-off: the carry stands in for the push off the turf, so it needs a foot on it
@@ -348,15 +349,14 @@ export class World {
     // light for explicit damping of its own spin at 240 Hz, and arm and leg swing leave the total untouched.
     const wb = bodyRate(a.plan, s);
     // the pelvis takes part of the trunk lean, the thorax all of it (as in the hand controller's attitude targets)
-    for (const [name, f] of [['pelvis', 0.3], [a.segIndex.has('thorax') ? 'thorax' : 'trunk', 1]] as const) {
-      const i = a.segIndex.get(name)!, q = s.segQuat.subarray(4 * i, 4 * i + 4);
+    for (const [i, f] of [[pi, 0.3], [a.trunkSeg, 1]] as const) {
       // ... except, off contact, running, where the pelvis pitches with the trunk from 3 to 6 m/s (as the animator
       // solves the legs), and a lean into a turn, which takes the whole body: turning the pelvis through only part of
       // it left the legs solved for hips at the wrong heights, one foot hanging off the turf and the other striking it
       const fp = f + (1 - f) * off * clamp((Math.hypot(s.comVel[0], s.comVel[2]) - 3) / 3, 0, 1), fr = f + (1 - f) * off;
       // the thorax also takes a strike's side bend and, about its own long axis (the spine's rotation), its twist
-      const o = f === 1 ? qmul(orient(r.heading, fp * r.pitch, fr * r.roll + r.bank), qaxis([0, 1, 0], r.twist)) : orient(r.heading, fp * r.pitch, fr * r.roll);
-      const e = qlog(qmul(o, qconj([q[0], q[1], q[2], q[3]])));
+      const o = f === 1 ? qmul(rootQuat(r.heading, fp * r.pitch, fr * r.roll + r.bank), qaxis([0, 1, 0], r.twist)) : rootQuat(r.heading, fp * r.pitch, fr * r.roll);
+      const e = qlog(qmul(o, qconj(quatAt(s.segQuat, i))));
       this.scene.applyWrench(a.index, i, [0, 0, 0], [kUp * e[0] - cUp * wb[0], SUP.yaw * (kUp * e[1] - cUp * wb[1]), kUp * e[2] - cUp * wb[2]]);
     }
   }
@@ -370,8 +370,8 @@ export class World {
     // on at most a real hit's force: past it the contact force is the solver prying apart bodies that met inside one
     // step (a head-on closing at 17 m/s), and multiplying that launched the pushed man tens of m/s into the air
     const k = 0.5 * (hp - 1) * Math.min(1, HIT.maxForce / Math.hypot(f[0], f[1], f[2])), F: Vec3 = [k * f[0], k * HIT.lift * fh, k * f[2]];
-    this.scene.applyWrench(a.index, a.segIndex.get('pelvis')!, F, [0, 0, 0]);
-    this.scene.applyWrench(a.index, a.segIndex.get('thorax') ?? a.segIndex.get('trunk')!, F, [0, 0, 0]);
+    this.scene.applyWrench(a.index, a.pelvisSeg, F, [0, 0, 0]);
+    this.scene.applyWrench(a.index, a.trunkSeg, F, [0, 0, 0]);
   }
 
   /** Speed along a horizontal direction (m/s) of this athlete and whoever he touches, together: positive along the
@@ -399,7 +399,7 @@ export class World {
     const Jh = Math.hypot(J[0], J[2]), vAlong = Jh > 1e-9 ? (s.comVel[0] * J[0] + s.comVel[2] * J[2]) / Jh : 0;
     // Pad level: a low athlete (meaning to be low, and low) has his weight down and his feet wide, so the same
     // impulse takes him less far off balance than an upright one.
-    const pi = a.segIndex.get('pelvis')!, H0 = a.plan.standHeight, T = a.setup.toughness ?? 1;
+    const pi = a.pelvisSeg, H0 = a.plan.standHeight, T = a.setup.toughness ?? 1;
     const low = r ? clamp(Math.min(H0 - r.height, H0 - s.segPos[3 * pi + 1]) / LOW.drop, 0, 1) : 0, big = S.bigHit * T * (1 + LOW.base * low);
     const Jknock = Math.min(Jh, m * Math.max(0, vAlong)), knockHit = Jknock / big;
     // Stun: an athlete driven back hard loses muscle tone for a moment (the controller loosens), so the hit's
@@ -415,9 +415,8 @@ export class World {
     const knockDriven = a.hitMem <= 0 ? 0 : clamp((vHit - Math.max(0, vWant, a.hitPre) - SUP.drivenStart) / (SUP.drivenFull - SUP.drivenStart), 0, 1);
     // Trunk tilt away from both upright and the lean the animation wants: a deliberate lean (low drive) is not a
     // knock, nor is the trunk still on its way into or out of one.
-    const ti = a.segIndex.get('thorax') ?? a.segIndex.get('trunk')!, q = s.segQuat.subarray(4 * ti, 4 * ti + 4);
-    const up = qrot([q[0], q[1], q[2], q[3]], [0, 1, 0]);
-    const upD: Vec3 = r ? qrot(orient(r.heading, r.pitch, r.roll + r.bank), [0, 1, 0]) : [0, 1, 0];
+    const up = qrot(quatAt(s.segQuat, a.trunkSeg), [0, 1, 0]);
+    const upD: Vec3 = r ? qrot(rootQuat(r.heading, r.pitch, r.roll + r.bank), [0, 1, 0]) : [0, 1, 0];
     const tilt = Math.min(Math.acos(clamp(up[1], -1, 1)), Math.acos(clamp(up[0] * upD[0] + up[1] * upD[1] + up[2] * upD[2], -1, 1)));
     const knockTilt = clamp((tilt - S.tiltStart * T) / Math.max(1e-6, (S.tiltEnd - S.tiltStart) * T), 0, 1);
     // both feet off the turf: a sprint stride's flight is allowed, longer means the athlete was lifted or launched
@@ -440,7 +439,6 @@ export class World {
     // Untouched for a while (no contact, no hit still carrying him, nobody holding him) and not still knocked from
     // one, a tilt or a flight is his own running, cutting or leaning, never a knock: off contact the support keeps
     // him upright (design §6.5). One still off balance from a hit keeps stumbling until he has caught himself.
-    a.freeT = a.playerContact ? 0 : a.freeT + dt;
     const own = a.freeT > SUP.free && a.hitMem <= 0 && a.heldT <= 0 && a.knock < 0.05 ? 0 : 1;
     // (his own jump's flight is no knock either, even just after a contact)
     const target = Math.min(1, Math.max(knockHit, own * knockTilt, r?.jump === 'flight' ? 0 : own * knockAir, knockDriven, knockLift, knockHeld));
@@ -474,9 +472,9 @@ export class World {
   private applyAssist(a: Athlete) {
     const level = a.injury.out ? 0 : this.assist * a.assistLevel;
     if (level <= 0) return;
-    const s = this.scene.athletes[a.index].state, m = a.mass, g = 9.81;
+    const s = this.scene.athletes[a.index].state, m = a.mass, g = G;
     if (!a.feet[0].touching && !a.feet[1].touching) return;
-    const pi = a.segIndex.get('pelvis')!;
+    const pi = a.pelvisSeg;
     const standY = a.plan.standHeight;
     const y = s.segPos[3 * pi + 1];
     // Fade support out as the pelvis drops toward the ground, so the assist never holds up a falling body.
@@ -484,10 +482,8 @@ export class World {
     // At 100 % the assist carries at most half the body weight.
     this.scene.applyWrench(a.index, pi, [0, level * m * g * w * 0.5, 0], [0, 0, 0]);
     // Posture: pull pelvis and thorax "up" axes toward vertical (roll/pitch only), and damp roll/pitch rates.
-    for (const name of ['pelvis', a.segIndex.has('thorax') ? 'thorax' : 'trunk']) {
-      const i = a.segIndex.get(name)!;
-      const q = s.segQuat.subarray(4 * i, 4 * i + 4);
-      const upv = qrot([q[0], q[1], q[2], q[3]], [0, 1, 0]);
+    for (const i of [pi, a.trunkSeg]) {
+      const upv = qrot(quatAt(s.segQuat, i), [0, 1, 0]);
       const k = level * m * g * standY * 1.5, c = level * m * standY * standY * 1.2;
       const wx = s.segAngVel[3 * i], wz = s.segAngVel[3 * i + 2];
       // torque = k (up × ŷ) − c ω_horizontal
@@ -498,6 +494,7 @@ export class World {
   private afterStep() {
     this.sense();
     for (const a of this.athletes) {
+      a.freeT = a.playerContact ? 0 : a.freeT + this.dt;
       this.updateInjury(a, this.dt);
       this.updateAssistFade(a, this.dt);
       if (this.supported(a)) this.updateSupport(a, this.dt);
@@ -511,7 +508,7 @@ export class World {
    *  step; a multiplayer replica calls it after writing a snapshot into the scene). */
   sense() {
     for (const a of this.athletes) {
-      a.feet.forEach((f) => { f.force = 0; f.cop = [0, 0, 0]; f.touching = false; });
+      a.feet.forEach((f) => { f.force = 0; f.cop.fill(0); f.touching = false; });
       a.downBy = null; a.handTouch = [null, null];
       a.playerContactNow = false;
       a.touching = [];
@@ -526,7 +523,7 @@ export class World {
         if (o.athlete < 0 && o.seg < 0) { // ground
           a.feet.forEach((f, k) => {
             if (a.footSegs[k].has(p.seg)) {
-              f.cop = [f.cop[0] + c.pos[0] * c.force, f.cop[1] + c.pos[1] * c.force, f.cop[2] + c.pos[2] * c.force];
+              for (let j = 0; j < 3; j++) f.cop[j] += c.pos[j] * c.force;
               f.force += c.force; f.touching = true;
             }
           });
@@ -560,7 +557,7 @@ export class World {
     this.lastHitForce = hit;
     this.hits = [...pairs.values()].map(({ n: _n, ...e }) => ({ ...e, pos: e.force > 0 ? [e.pos[0] / e.force, e.pos[1] / e.force, e.pos[2] / e.force] : e.pos }));
     for (const a of this.athletes) {
-      for (const f of a.feet) if (f.force > 0) f.cop = [f.cop[0] / f.force, f.cop[1] / f.force, f.cop[2] / f.force];
+      for (const f of a.feet) if (f.force > 0) for (let j = 0; j < 3; j++) f.cop[j] /= f.force;
       a.playerContact = a.playerContactNow;
     }
   }
@@ -570,16 +567,16 @@ export class World {
    *  dangles past where it should stop), a broken arm goes limp and a broken leg weak (InjuryState.breakJoint); he
    *  plays on, hobbling or one-armed. A knockout, or both legs broken, puts him out of play for the rep. */
   private updateInjury(a: Athlete, dt: number) {
-    const s = this.scene.athletes[a.index].state, inj = a.injury, at = (k: number): Vec3 => [s.dofAnchor[3 * k], s.dofAnchor[3 * k + 1], s.dofAnchor[3 * k + 2]];
+    const s = this.scene.athletes[a.index].state, inj = a.injury;
     if (inj.out) inj.outFor += dt;
-    for (const b of inj.checkBreaks(this.scene.limitTorques(a.index), s, a.playerContact, dt)) {
+    for (const b of inj.checkBreaks(this.scene.limitTorques(a.index), s, a.freeT, dt)) {
       this.breakJoint(a.index, b.joint, b.dof, b.end, b.relax);
       const j = a.plan.joints.find((x) => x.name === b.joint)!;
-      this.injuries.push({ athlete: a.index, kind: 'break', joint: b.joint, what: b.what, seg: j.child, parentSeg: j.parent, pos: at(b.dof), load: b.load, time: this.time });
+      this.injuries.push({ athlete: a.index, kind: 'break', joint: b.joint, what: b.what, seg: j.child, parentSeg: j.parent, pos: vecAt(s.dofAnchor, b.dof), load: b.load, time: this.time });
     }
-    const hi = a.segIndex.get('head')!;
-    if (inj.checkKo([s.segVel[3 * hi], s.segVel[3 * hi + 1], s.segVel[3 * hi + 2]], dt))
-      this.injuries.push({ athlete: a.index, kind: 'ko', joint: 'head', what: 'ko', seg: 'head', parentSeg: a.plan.joints.find((x) => x.child === 'head')!.parent, pos: [s.segPos[3 * hi], s.segPos[3 * hi + 1], s.segPos[3 * hi + 2]], load: inj.peakDv, time: this.time });
+    const hi = a.headSeg;
+    if (inj.checkKo(vecAt(s.segVel, hi), dt))
+      this.injuries.push({ athlete: a.index, kind: 'ko', joint: 'head', what: 'ko', seg: 'head', parentSeg: a.plan.joints.find((x) => x.child === 'head')!.parent, pos: vecAt(s.segPos, hi), load: inj.peakDv, time: this.time });
   }
 
   /** Break a joint of athlete ai (a physics load did, or a test): its range gives way by `relax` rad at the end that
@@ -623,7 +620,7 @@ export class World {
     const s = this.scene.athletes[a.index].state, from = this.handPoint(a, h), loft = th.cmd.loft;
     // a point that follows him: moved along the ground as far as he ran since the throw began
     const at: Vec3 = th.cmd.follow ? [th.cmd.at[0] + s.com[0] - th.from[0], th.cmd.at[1], th.cmd.at[2] + s.com[2] - th.from[2]] : th.cmd.at;
-    const pressured = this.athletes.some((o) => o.setup.team !== a.setup.team && Math.hypot(...sub3(this.scene.athletes[o.index].state.com, s.com)) < THROW.pressR);
+    const pressured = this.athletes.some((o) => o.setup.team !== a.setup.team && Math.hypot(...sub(this.scene.athletes[o.index].state.com, s.com)) < THROW.pressR);
     const e = throwError(Math.hypot(at[0] - from[0], at[2] - from[2]), Math.hypot(s.comVel[0], s.comVel[2]), a.knock, pressured, loft);
     const to: Vec3 = [at[0] + e * this.rng.gauss(), at[1] + 0.5 * e * this.rng.gauss(), at[2] + e * this.rng.gauss()];
     let vel = throwVelocity(from, to, loft).vel;
@@ -637,7 +634,7 @@ export class World {
     a.grips[h].cooldown = THROW.end; a.cmd.carry = 0; this.ballCarrier = -1;
     this.scene.placeProp(bi, from, noseAlong(vel));
     this.scene.launchProp(bi, vel, [0, 0, THROW.spin]);
-    this.lastPass = { athlete: a.index, time: this.time, at: [at[0], at[1], at[2]], to, loft, speed: Math.hypot(vel[0], vel[1], vel[2]), error: Math.hypot(...sub3(to, at)) };
+    this.lastPass = { athlete: a.index, time: this.time, at: [at[0], at[1], at[2]], to, loft, speed: Math.hypot(vel[0], vel[1], vel[2]), error: Math.hypot(...sub(to, at)) };
     this.onPass?.(this.lastPass);
   }
 
@@ -737,7 +734,7 @@ export class World {
   private reachPoint(a: Athlete, h: 0 | 1): Vec3 | null {
     const k = a.shoulderSegs[h];
     if (k < 0) return null;
-    const s = this.scene.athletes[a.index].state, sp: Vec3 = [s.segPos[3 * k], s.segPos[3 * k + 1], s.segPos[3 * k + 2]];
+    const s = this.scene.athletes[a.index].state, sp = vecAt(s.segPos, k);
     const n = this.nearestBody(a, sp, REACH.aim);
     // a loose ball nearer than any opponent is what the hand goes for
     const bi = this.ballIndex;
@@ -758,7 +755,7 @@ export class World {
       const s = this.scene.athletes[o.index].state;
       if (Math.hypot(hp[0] - s.com[0], hp[1] - s.com[1], hp[2] - s.com[2]) > best + 1.5) continue;
       o.plan.segments.forEach((sg, k) => {
-        const q = quatAt(s.segQuat, k), org: Vec3 = [s.segPos[3 * k], s.segPos[3 * k + 1], s.segPos[3 * k + 2]];
+        const q = quatAt(s.segQuat, k), org = vecAt(s.segPos, k);
         // the point in the segment's rest frame, where its geoms are given
         const l = qrot(qconj(q), [hp[0] - org[0], hp[1] - org[1], hp[2] - org[2]]);
         l[0] += sg.origin[0]; l[1] += sg.origin[1]; l[2] += sg.origin[2];
@@ -794,14 +791,13 @@ export class World {
   }
 
   private updateHeadAccel(a: Athlete, dt: number) {
-    const s = this.scene.athletes[a.index].state, hi = a.segIndex.get('head')!;
-    const v: Vec3 = [s.segVel[3 * hi], s.segVel[3 * hi + 1], s.segVel[3 * hi + 2]];
-    const acc = Math.hypot(v[0] - a.headVelPrev[0], v[1] - a.headVelPrev[1] + 9.81 * dt * 0, v[2] - a.headVelPrev[2]) / dt;
+    const v = vecAt(this.scene.athletes[a.index].state.segVel, a.headSeg);
+    const acc = Math.hypot(v[0] - a.headVelPrev[0], v[1] - a.headVelPrev[1], v[2] - a.headVelPrev[2]) / dt;
     a.headVelPrev = v;
     // First-order low-pass at ~60 Hz: a filtered rigid-body estimate, not a sensor reading.
     const alpha = 1 - Math.exp(-2 * Math.PI * 60 * dt);
     a.headAccFilt += (acc - a.headAccFilt) * alpha;
-    if (this.impact.firstContactTime >= 0) this.impact.peakHeadG[a.index] = Math.max(this.impact.peakHeadG[a.index], a.headAccFilt / 9.81);
+    if (this.impact.firstContactTime >= 0) this.impact.peakHeadG[a.index] = Math.max(this.impact.peakHeadG[a.index], a.headAccFilt / G);
   }
 
   private updateImpact(hit: number) {
@@ -821,20 +817,17 @@ export class World {
   destroy() { this.scene.destroy(); }
 }
 
-const G = 9.81;
 /** Reaching (design §6.5): gap between a raised hand's surface and an opponent's body (m) under which the hand
  *  closes on it (a fistful of jersey stands off the body by a few cm); distance from the shoulder within which
  *  the arm aims at the nearest part of that body (an arm's length and a lean: the eyes guide the hand), and how
  *  far inside its surface the aim point lies. A loose ball is aimed at from further (the body bends to it): its
  *  surface within `ball` m of the shoulder, taken as a sphere of radius `ballR`. */
 const REACH = { grab: 0.07, aim: 0.9, into: 0.03, ball: 1.3, ballR: 0.1 };
-const sub3 = (a: ArrayLike<number>, b: ArrayLike<number>): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 /** The rotation that turns the prop's long axis (+z) along v. */
 function noseAlong(v: Vec3): Quat {
   const n = Math.hypot(v[0], v[1], v[2]) || 1, c = v[2] / n, ax: Vec3 = [-v[1], v[0], 0];
   return Math.hypot(ax[0], ax[1]) < 1e-9 ? (c > 0 ? [0, 0, 0, 1] : [1, 0, 0, 0]) : qaxis(ax, Math.acos(clamp(c, -1, 1)));
 }
-const quatAt = (a: Float64Array, k: number): Quat => [a[4 * k], a[4 * k + 1], a[4 * k + 2], a[4 * k + 3]];
 /** Pad level (design §6.5): pelvis drop below standing (m) at which an athlete counts as fully low, how much
  *  more impulse a fully low athlete takes for the same knock (assumption: a sunk, wide base), and the upward force
  *  from opponents (× body weight, over the impulse window) where the lift knock starts and where it is full. */
@@ -849,9 +842,6 @@ const HIT = { minV: 0.3, lift: 0.5, maxForce: 20000 };
 /** Muscle tone left to an athlete out of play (× all muscle output): knocked out (unconscious, assumption), or both
  *  legs broken and conscious (curled up on the turf, assumption), and how long the tone takes to go (s, assumption). */
 const INJURY = { koTone: 0.2, hurtTone: 0.5, fade: 0.3 };
-/** Orientation from heading, forward pitch and left roll (same convention as the hand controller). */
-const orient = (heading: number, pitchFwd: number, rollLeft: number): Quat =>
-  qmul(qaxis([0, 1, 0], heading), qmul(qaxis([1, 0, 0], pitchFwd), qaxis([0, 0, -1], rollLeft)));
 
 /** Whole-body angular velocity about the COM per world axis: L / I, segment inertias taken as isotropic. */
 function bodyRate(plan: BodyPlan, s: AthleteState): Vec3 {

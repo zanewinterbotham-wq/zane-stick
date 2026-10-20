@@ -2,9 +2,13 @@
 export type Vec3 = [number, number, number];
 export type Quat = [number, number, number, number]; // x y z w
 
-export const v3 = (x = 0, y = 0, z = 0): Vec3 => [x, y, z];
+/** Standard gravity (m/s²). */
+export const G = 9.81;
 export const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
-export const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+export const sub = (a: ArrayLike<number>, b: ArrayLike<number>): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+/** The i-th Vec3 / Quat of a flat array (AthleteState's segPos, segQuat, dofAxis, …). */
+export const vecAt = (a: ArrayLike<number>, i: number): Vec3 => [a[3 * i], a[3 * i + 1], a[3 * i + 2]];
+export const quatAt = (a: ArrayLike<number>, i: number): Quat => [a[4 * i], a[4 * i + 1], a[4 * i + 2], a[4 * i + 3]];
 export const scale = (a: Vec3, s: number): Vec3 => [a[0] * s, a[1] * s, a[2] * s];
 export const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 export const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];

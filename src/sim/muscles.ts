@@ -38,7 +38,6 @@ export class MuscleSet {
   /** Output of the last compute(): explicit torque (N·m), implicit damping gain (N·m·s/rad), and
    *  effort (|total muscle torque| / peak, 0..1). Total muscle torque = torque − damping·qd. */
   readonly torque: Float64Array; readonly damping: Float64Array; readonly effort: Float64Array;
-  strengthScale = 1;
 
   constructor(plan: BodyPlan) {
     const dofs = plan.joints.flatMap((j) => j.dofs.map((d) => ({ j, d })));
@@ -58,7 +57,7 @@ export class MuscleSet {
 
   /** Available torque in direction `sign` at joint velocity `qd`. */
   available(i: number, sign: number, qd: number) {
-    const t0 = (sign >= 0 ? this.tPos[i] : this.tNeg[i]) * this.strengthScale;
+    const t0 = sign >= 0 ? this.tPos[i] : this.tNeg[i];
     return t0 * forceVelocity((sign >= 0 ? qd : -qd) / this.wMax[i]);
   }
 
@@ -82,7 +81,7 @@ export class MuscleSet {
       this.torque[i] = explicit;
       this.damping[i] = kd;
       const applied = explicit - kd * qd[i];
-      const peak = (applied >= 0 ? this.tPos[i] : this.tNeg[i]) * this.strengthScale;
+      const peak = applied >= 0 ? this.tPos[i] : this.tNeg[i];
       this.effort[i] = peak > 0 ? Math.min(1, Math.abs(applied) / peak) : 0;
     }
   }

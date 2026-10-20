@@ -3,7 +3,7 @@
 // concussive blow. Detection only reads the physics; World applies what follows. The same for every athlete.
 import type { MuscleSet } from './muscles';
 import type { AthleteState } from './physics/engine';
-import type { Vec3 } from './math';
+import { G, type Vec3 } from './math';
 
 /** Breakable dofs (joint name without its side, dof): which end of the range breaks (−1 lower, +1 upper, 0 either),
  *  the tolerance of the limit torque averaged over LOAD_TAU (N·m), how far the broken end of the range gives way
@@ -58,8 +58,6 @@ export interface InjuryEvent {
   time: number;
 }
 
-const G = 9.81;
-
 /** One athlete's injury state: what is broken, whether he is knocked out, and the filtered loads behind them. */
 export class InjuryState implements Hurt {
   ko = false;
@@ -71,8 +69,6 @@ export class InjuryState implements Hurt {
   private readonly load: Float64Array;
   private readonly head: Vec3[];
   private headAt = 0; private headN = 0;
-  /** Time since this athlete last touched another athlete (s). */
-  private sinceContact = Infinity;
   /** Largest filtered limit torque per dof and head velocity change seen (for tests and tuning). */
   readonly peak: Float64Array; peakDv = 0;
 
@@ -93,15 +89,15 @@ export class InjuryState implements Hurt {
   /** How long he has been out of play (s). */
   outFor = 0;
 
-  /** Joints that break this step: the dofs, with the end of their range that gave way. */
-  checkBreaks(limit: Float64Array, s: AthleteState, playerContact: boolean, dt: number) {
+  /** Joints that break this step: the dofs, with the end of their range that gave way. `sinceContact`: time since
+   *  the athlete last touched another athlete (s; Athlete.freeT). */
+  checkBreaks(limit: Float64Array, s: AthleteState, sinceContact: number, dt: number) {
     const out: { dof: number; joint: string; end: -1 | 1; relax: number; what: string; load: number }[] = [], al = 1 - Math.exp(-dt / LOAD_TAU), ms = this.muscles;
-    this.sinceContact = playerContact ? 0 : this.sinceContact + dt;
     for (let i = 0; i < ms.n; i++) {
       this.load[i] += (limit[i] - this.load[i]) * al;
       if (this.load[i] > this.peak[i]) this.peak[i] = this.load[i];
       const r = this.rules[i];
-      if (!r || this.broken.has(r.joint) || this.load[i] <= r.torque || this.sinceContact > CONTACT_WINDOW) continue;
+      if (!r || this.broken.has(r.joint) || this.load[i] <= r.torque || sinceContact > CONTACT_WINDOW) continue;
       const end = s.q[i] < 0.5 * (ms.lo[i] + ms.hi[i]) ? -1 : 1;
       if ((r.side !== 0 && r.side !== end) || out.some((o) => o.joint === r.joint)) continue;
       out.push({ dof: i, joint: r.joint, end, relax: r.relax, what: r.what, load: this.load[i] });
