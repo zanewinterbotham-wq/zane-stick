@@ -1,5 +1,6 @@
 // Player settings, remembered per browser. Storage can be unavailable (school-managed profiles, private
 // windows), so every read and write is guarded and the defaults always work.
+import { jumpTuning, type JumpTuning } from '../sim/anim/jump';
 import { DEFAULT_SUPPORT, type SupportSettings } from '../sim/anim/types';
 import { cleanPerf, PRESETS, type PerfOverrides, type PresetName } from './presets';
 import skins from './skins.json';
@@ -19,6 +20,7 @@ export interface Settings {
   boneStrength: number;          // the player's break tolerances × (1 = measured; lower breaks more easily)
   aiBoneStrength: number;        // the bots' break tolerances ×
   hitPower: number;              // arcade hit power, 1 = pure physics
+  jump: Partial<JumpTuning>;     // jump tuning knobs over the defaults (Advanced: Jump; {} = the defaults)
   steerAssist: number;           // 0..1: the player's run turns this far toward the ball carrier or a loose ball
   traction: number;              // cleat–turf friction (tuning)
   gains: Record<string, number>; // controller gain overrides (tuning)
@@ -45,11 +47,11 @@ export const GAME_SUPPORT = { ...DEFAULT_SUPPORT, carryAccel: 10.5 };
 /** Stored settings layout; 2 = strength/speed are multipliers on PLAYER_BASE; 3 = gore levels, owner's new default
  *  skin and stadium; 4 = no sink control (lowering the pads sinks the hips); 5 = thrust on Q, Space jumps; 6 = the
  *  quality ladder (Potato … Ultra; the stored 'minimum' and 'high' keep their meaning) and its Advanced overrides; 7 = the
- *  QB throw controls (F, R, G, V) and the throw scheme. */
-const VERSION = 7;
+ *  QB throw controls (F, R, G, V) and the throw scheme; 8 = jump tuning (Advanced: Jump; absent = the defaults). */
+const VERSION = 8;
 
 export const DEFAULT_SETTINGS: Settings = {
-  version: VERSION, preset: null, perf: {}, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
+  version: VERSION, preset: null, perf: {}, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, jump: {}, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
   slowMo: true, autoCamera: false, sprintToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: skins[0]?.id ?? 'classic', goreLevel: 1, stadium: stadiums[0]?.id ?? 'field' // the owner's picks are first in the lists
 };
 
@@ -94,10 +96,12 @@ export function loadSettings(): Settings {
       // version 6: more levels; an unknown one (an edited or newer file) is chosen again by the benchmark
       if (s.preset != null && !(s.preset in PRESETS)) s.preset = null;
       s.perf = cleanPerf(s.perf);
-      return { ...DEFAULT_SETTINGS, ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support } };
+      // version 8: the jump knobs; only valid ones are kept (clamped to their ranges), the rest are the defaults
+      const jt = jumpTuning(s.jump), jump = Object.fromEntries(Object.keys(jt).filter((k) => typeof s.jump?.[k] === 'number' && Number.isFinite(s.jump[k])).map((k) => [k, jt[k as keyof JumpTuning]]));
+      return { ...DEFAULT_SETTINGS, ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support }, jump };
     }
   } catch { /* storage unavailable: use defaults */ }
-  return { ...DEFAULT_SETTINGS, perf: {}, support: { ...GAME_SUPPORT } };
+  return { ...DEFAULT_SETTINGS, perf: {}, support: { ...GAME_SUPPORT }, jump: {} };
 }
 
 /** v4 → v5 keyboard rebinds: Space leaves a saved thrust rebind (dropped if nothing is left), and a key another saved

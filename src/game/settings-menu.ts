@@ -1,5 +1,6 @@
 // The Settings screen: one tabbed panel for every setting (title menu and pause menu both open it).
 // To add a setting, add a row to GAMEPLAY_ROWS (or the matching tab builder) and a field to Settings.
+import { JUMP_DEFAULTS, JUMP_RANGES, type JumpTuning } from '../sim/anim/jump';
 import type { SupportSettings } from '../sim/anim/types';
 import { DEFAULT_GAINS } from '../sim/control/hand';
 import { keyName, keysText, RESERVED, type InputManager } from './input/input';
@@ -53,6 +54,25 @@ export type GameplayRow =
   | { kind: 'slider'; label: string; desc: string; min: number; max: number; step: number; get(s: Settings): number; set(s: Settings, v: number): void; fmt?: (v: number) => string }
   | { kind: 'toggle'; label: string; desc: string; get(s: Settings): boolean; set(s: Settings, v: boolean): void };
 
+const sec = (v: number) => `${v.toFixed(2)} s`, m = (v: number) => `${v.toFixed(2)} m`;
+/** The Advanced tab's Jump section: [knob, label, description, format]; ranges are JUMP_RANGES. */
+const JUMP_ROWS: [keyof JumpTuning, string, string, (v: number) => string][] = [
+  ['height', 'Jump height', 'Standing take-off strength (higher jumps higher).', x],
+  ['runHeight', 'Running jump height', 'One-foot take-off strength off a run.', x],
+  ['dip', 'Dip depth', 'How far the hips dip before a standing jump: deeper is higher but slower to leave the turf.', m],
+  ['load', 'Dip time', 'How long the dip takes (the take-off delay): shorter is snappier and lower.', sec],
+  ['push', 'Push time', 'Longest standing push off the turf.', sec],
+  ['charge', 'Charge time', 'Hold Jump to charge: seconds to a full jump; it goes on the release. 0 = off (a tap is a full jump).', (v) => (v <= 0 ? 'off' : sec(v))],
+  ['chargeMin', 'Charge: tap strength', 'With charge on, how strong a quick tap is.', pct],
+  ['carry', 'Running jump carry', 'How much of the run\'s speed a running jump keeps.', pct],
+  ['air', 'Air control', 'Steer toward your move direction in the air (m/s²); 0 = none, pure physics.', (v) => (v <= 0 ? 'off' : `${v.toFixed(1)} m/s²`)],
+  ['soft', 'Landing softness', 'How much the legs give as they land.', pct],
+  ['recover', 'Landing recovery', 'How long the legs take to firm up after a landing.', sec],
+  ['cooldown', 'Cooldown', 'Time after a landing before the next jump.', sec],
+  ['buffer', 'Press buffer', 'How long a press waits for a foot on the turf (a press mid-stride jumps on the next step).', sec],
+  ['arms', 'Arm swing', 'How hard the arms swing up through the take-off.', x],
+  ['tuck', 'Knee tuck', 'How high the knees come up in the air.', x],
+];
 export const GAMEPLAY_ROWS: GameplayRow[] = [
   { kind: 'slider', label: 'AI toughness (force needed to tackle the bot)', desc: 'How hard the bot is to knock off balance (its hit, stun and wrap-up thresholds).', min: 0.4, max: 2.5, step: 0.05, get: (s) => s.toughness, set: (s, v) => (s.toughness = v), fmt: x },
   { kind: 'slider', label: 'AI juking', desc: 'How well the bot carrier reads you, times his cuts and bursts away.', min: 0, max: 1, step: 0.05, get: (s) => s.juking, set: (s, v) => (s.juking = v), fmt: pct },
@@ -304,9 +324,16 @@ function advancedTab({ host, status, reopen }: Ctx) {
   copy.addEventListener('click', () => { void navigator.clipboard?.writeText(exp.value).then(() => host.hud.flash('Copied'), () => { exp.select(); }); });
   const reset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset to defaults');
   reset.addEventListener('click', () => { s.gains = {}; s.assist = 0.2; s.traction = 1.2; s.support = { ...GAME_SUPPORT }; host.save(); reopen(); });
-  return [
+  // Jump: one slider per JumpTuning knob over the defaults (s.jump holds only the ones moved)
+  const jumpRows = JUMP_ROWS.map(([k, label, desc, fmt]) => {
+    const [min, max, step] = JUMP_RANGES[k];
+    return setRow(label, desc, ...range(label, s.jump[k] ?? JUMP_DEFAULTS[k], min, max, step, (v) => (s.jump[k] = v), fmt, () => host.save()));
+  });
+  const jumpReset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset jump to defaults');
+  jumpReset.addEventListener('click', () => { s.jump = {}; host.save(); reopen(); });  return [
     el('div', { class: 'set-list' }, setRow('Performance overlay', 'Frame rate and physics cost, top right (also the ` key).', onOff('Performance overlay', () => s.overlay, (v) => { s.overlay = v; host.save(); }))),
     el('h2', { class: 'set-h', text: 'Tuning' }), grid, exp, el('div', { class: 'items' }, copy, reset),
+    el('h2', { class: 'set-h', text: 'Jump' }), el('div', { class: 'set-list' }, ...jumpRows), el('div', { class: 'items' }, jumpReset),
   ];
 }
 
