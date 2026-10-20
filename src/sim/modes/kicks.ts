@@ -110,7 +110,7 @@ export function row(team: 0 | 1, n: number, z: number, gap: number, x0: number, 
 
 /** The result card's title from the player's side, with the spot. '' leaves the game's own title. */
 export function spotVerdict(play: Play, T: 0 | 1 = 0): string {
-  const bc = play.world.ballCarrier, at = yardLine(play.ballPos()[2]);
+  const bc = play.world.ballCarrier, at = yardLine(play.ballPos()[2] * attackDir(T));
   const who = bc === play.human ? 'You were' : bc >= 0 && play.team(bc) === T ? 'Your teammate was' : 'Their runner was';
   switch (play.ended) {
     case 'down': return `${who} tackled at ${at}`;
