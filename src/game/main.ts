@@ -596,7 +596,8 @@ class App {
       if (edge(13)) this.focusMove(1);
       if (edge(12)) this.focusMove(-1);
       if (edge(0)) (document.activeElement as HTMLElement | null)?.click();
-      if (edge(1) && this.drill) { this.audio.play('ui_back', 1); this.resume(); }
+      // B is Esc: each screen's own Esc handler steps back one level (the pause menu's resumes)
+      if (edge(1)) (document.activeElement ?? this.layer.root).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
     } else if (this.drill) {
       if (down(9)) { this.startHeld += dt; if (this.startHeld > 0.6 && this.startHeld - dt <= 0.6) this.pauseMenu(); }
       else { if (this.startHeld > 0 && this.startHeld < 0.6) void this.newRep(); this.startHeld = 0; }
