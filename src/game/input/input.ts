@@ -23,7 +23,8 @@ export interface InputFrame {
   device: 'keyboard' | 'gamepad';
 }
 
-const DIGITAL = ['sprint', 'thrust', 'jump', 'dive', 'armL', 'armR', 'torsoUp', 'torsoDown', 'shiftLock', 'reset', 'pause', 'overlay', 'tuning', 'moveUp', 'moveDown', 'moveLeft', 'moveRight', 'throw'];
+/** Every bound action is read as held / pressed each frame (bindings.json: the keyboard map names them all). */
+const DIGITAL = Object.keys(defaults.keyboard);
 
 /** Keys the player may not bind: the OS and browser need them (Alt+Tab, the Windows key, Esc frees the mouse). */
 export const RESERVED = /^(Escape|Alt|Tab|Meta|OS|ContextMenu)/;
