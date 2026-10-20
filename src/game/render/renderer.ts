@@ -144,8 +144,8 @@ export class GameRenderer {
   setWorld(w: World) {
     this.world = w;
     this.faces = new ExpressionTracker();
-    for (const p of this.props) this.scene.remove(p);
-    if (this.overlay) this.scene.remove(this.overlay.root);
+    for (const p of this.props) { this.scene.remove(p); disposeTree(p); }
+    if (this.overlay) { this.scene.remove(this.overlay.root); disposeTree(this.overlay.root); }
     this.dress(w);
     this.props = (w.setup.props ?? []).map((p) => {
       if (p.hidden) return new THREE.Object3D(); // a collision wall: the stadium draws it (kept so prop indices line up)
@@ -253,6 +253,17 @@ export class GameRenderer {
     this.renderer.render(this.scene, this.camera);
     this.lastMs = performance.now() - t0;
   }
+}
+
+/** Free the GPU buffers of every geometry and material under `o` (an object leaving the scene for good; disposing twice
+ *  is harmless). Never on a skin's meshes: their geometry is the cached template's. */
+export function disposeTree(o: THREE.Object3D) {
+  o.traverse((x) => {
+    const m = x as THREE.Mesh;
+    if (!m.geometry) return;
+    m.geometry.dispose();
+    for (const mat of Array.isArray(m.material) ? m.material : [m.material]) mat?.dispose();
+  });
 }
 
 type Vec7 = [number, number, number, number, number, number, number];

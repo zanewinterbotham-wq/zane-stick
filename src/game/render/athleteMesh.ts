@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { buildBody, DEFAULT_ATHLETE, type BodyPlan, type GeomPlan, type SegmentPlan } from '../../sim/anatomy/body';
 import { BROW_STYLES, Brows } from './brows';
 import { fitAnchor, Mouth, skinAnchor, sphereAnchor, STYLES, type Anchor } from './mouth';
+import { disposeTree } from './renderer';
 import type { SkinTemplate } from './skin';
 
 export interface TeamColors { jersey: number; trim: number; pants: number; helmet: number; mask: number; skin: number; socks: number; cleats: number; glow: number }
@@ -157,7 +158,8 @@ export class AthleteMesh {
     }
   }
 
-  dispose() { this.mouth?.dispose(); this.brows?.dispose(); }
+  /** The classic shapes are this athlete's own; the skin's geometry is the shared template's (only its face is his). */
+  dispose() { disposeTree(this.classic); this.mouth?.dispose(); this.brows?.dispose(); }
 
   /** Show or hide the head, neck, helmet and facemask (classic and skin): the helmet camera sits inside them. */
   setHeadVisible(on: boolean) {

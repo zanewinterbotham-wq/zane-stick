@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import type { Quat, Vec3 } from '../../sim/math';
 import type { World } from '../../sim/world';
 import picks from '../sfx-picks.json';
+import { disposeTree } from './renderer';
 
 export interface EffectStyle {
   id: string; label: string; pitch: string;
@@ -108,7 +109,7 @@ export class InjuryEffects {
   /** Everything off the screen and the turf (a new rep). */
   clear() {
     this.p.n = 0; this.d.n = 0; this.d.next = 0;
-    for (const x of [...this.pins.map((p) => p.node), ...this.stars.map((s) => s.group)]) this.root.remove(x);
+    for (const x of [...this.pins.map((p) => p.node), ...this.stars.map((s) => s.group)]) { this.root.remove(x); disposeTree(x); }
     this.pins = []; this.stars = [];
     if (this.parts) this.parts.count = this.decals.count = 0;
   }
