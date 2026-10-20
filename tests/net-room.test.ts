@@ -1,7 +1,7 @@
 // The real RoomDO + routeRoom + src/net/room.ts client, wired together in-process: a fake Durable Object state,
 // a fake WebSocketPair and a WebSocket stub standing in for the browser's. Node has no RTCPeerConnection, so every
 // peer uses the relay path (the RTC path is covered by tests/e2e/net.spec.ts in Chromium).
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { RoomDO, routeRoom, type CfSocket, type DONamespace, type DOState } from '../server/rooms/index';
 import { createRoom, joinRoom, type NetRoom } from '../src/net/room';
 import { CODE_ALPHABET, MAX_PEERS } from '../src/net/protocol';
@@ -199,6 +199,19 @@ describe('room server over the relay path', () => {
     const stub = ns.get(ns.idFromName('ABCDE'));
     expect((await stub.fetch(up())).status).toBe(101);
     expect((await stub.fetch(up())).status).toBe(409);
+  });
+
+  it('rate-limits each socket: a burst of 3000 messages, then 1500 a second', () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); // only the clock: the harness here runs on real timers
+    try {
+      const o = new RoomDO({} as DOState), ws = {} as CfSocket;
+      const allow = (o as unknown as { allow(ws: CfSocket): boolean }).allow.bind(o);
+      const count = (n: number) => Array.from({ length: n }, () => allow(ws)).filter(Boolean).length;
+      expect(count(3100)).toBe(3000);
+      vi.setSystemTime(Date.now() + 1000);
+      expect(count(1501)).toBe(1500);
+      expect(allow({} as CfSocket)).toBe(true); // per socket
+    } finally { vi.useRealTimers(); }
   });
 
   it('drops junk without dropping the socket', async () => {
