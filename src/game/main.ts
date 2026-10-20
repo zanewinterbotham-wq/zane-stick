@@ -328,7 +328,11 @@ class App {
   /** Multiplayer HUD: the room and ping corner, the Tab roster, the 3-2-1. */
   netHud() {
     const net = this.net, d = this.drill;
-    if (!net || !d) return;
+    if (!net || !d) { this.renderer?.tags.set([]); return; }
+    // over every head but your own: a person's name in his team's colour, or BOT
+    const assign = net.start?.assign ?? [];
+    this.renderer?.tags.set(d.world.athletes.map((_, i) => i === d.human ? null
+      : assign[i] ? { text: net.name(assign[i]) || 'Player', bot: false, team: d.team(i) } : { text: 'BOT', bot: true, team: d.team(i) }));
     const host = net.room.peers().find((p) => p.host);
     const t = net.tally, votes = t.have || net.lobby.votes.length ? `  ·  restart ${t.have}/${t.need}${net.voted ? ' (you asked)' : ''}` : '';
     this.hud.setNet((net.isHost ? `Room ${net.room.code}  ·  hosting ${net.lobby.players.length}` : `Room ${net.room.code}  ·  ${host ? pingText(host) : '…'}`) + votes);
@@ -745,7 +749,8 @@ class App {
       const c = passCtx(w, d.human, now / 1000, { yaw: this.cam.yaw, pitch: this.cam.aimPitch, origin: [m[12], m[13], m[14]], dir: [-m[8], -m[9], -m[10]] });
       const cmd = this.passer.update(f, c);
       if (cmd) this.pass = { cmd, until: now + PASS_HOLD };
-      const aid = this.passer.aid(c), k = (a: string) => keysText(this.input.bindings.keyboard[a] ?? []);
+      // the QB sees his aim all the time; anyone else with the ball only once he starts a throw
+      const qb = /^QB/.test(d.mode.players[d.human]?.label ?? ''), aid = this.passer.aid(c, qb), k = (a: string) => keysText(this.input.bindings.keyboard[a] ?? []);
       this.aim = { aid, from: c.from };
       const s = this.passer.scheme, who = c.receivers.length ? '' : '\nNo receiver: aimed where you look';
       this.hud.setPass(`${s.name}\n${s.hint(k)}${who}`, aid.meter ?? null);

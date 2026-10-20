@@ -92,6 +92,12 @@ test('host, join by link and by code, position menu, ready, start, guest input o
   expect(Math.hypot(seen[0] - after[0], seen[2] - after[2])).toBeLessThan(1.5); // the replica is ~0.1 s behind
   await a.screenshot({ path: 'test-results/mp-05-game-host.png' });
   await b.screenshot({ path: 'test-results/mp-06-game-guest.png' });
+  // name tags: over everyone but yourself, the person's name or BOT (3 athletes: host, guest, a bot)
+  const tags = (p: Page) => p.evaluate(() => (window as unknown as { __app: { renderer: { tags: { root: { children: unknown[] }; key: string } } } }).__app.renderer.tags.key);
+  const texts = async (p: Page) => (JSON.parse((await tags(p)) || '[]') as ({ text: string } | null)[]).map((t) => t?.text ?? null);
+  await expect.poll(() => texts(b)).toEqual(['Ana', 'BOT', null]); // Ben (slot 2) sees the host by name and the bot
+  await expect.poll(() => texts(a)).toEqual([null, 'BOT', 'Ben']);
+  await b.screenshot({ path: 'test-results/mp-06b-name-tags.png' });
 
   // the next rep only when both players ask: A's Enter alone changes nothing, B's too starts rep 2 on both screens
   const repOf = (p: Page) => p.evaluate(() => (window as unknown as { __app: { net: { start: { rep: number } | null } } }).__app.net?.start?.rep ?? -1);

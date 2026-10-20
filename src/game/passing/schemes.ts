@@ -33,7 +33,8 @@ export interface Scheme {
   /** One or two lines of controls for the HUD; `k` names an action's keys. */
   hint(k: (action: string) => string): string;
   update(f: InputFrame, c: PassCtx): PassCmd | null;
-  aid(c: PassCtx): Aid;
+  /** `always`: the aid shows while he only holds the ball (the QB); else only while Throw is held and the throw runs. */
+  aid(c: PassCtx, always?: boolean): Aid;
   reset(): void;
 }
 
@@ -73,7 +74,8 @@ Hold ${k('throw')} longer for more loft`,
       thrown = { cmd, from: [c.from[0], c.from[1], c.from[2]] }; h.t0 = -1;
       return cmd;
     },
-    aid(c) {
+    aid(c, always = true) {
+      if (!thrown && !always && h.t0 < 0) return {};
       if (!thrown) return { reticle: c.turf, arc: { at: c.turf, loft: loft(c) }, ...(h.t0 >= 0 && { meter: loft(c) }) };
       const a = thrown.cmd.at, at: Vec3 = [a[0] + c.from[0] - thrown.from[0], a[1], a[2] + c.from[2] - thrown.from[2]]; // as the World moves it
       return { reticle: at, arc: { at, loft: thrown.cmd.loft } };
@@ -87,7 +89,7 @@ export class Passer {
   readonly scheme: Scheme = reticle();
   /** This frame's pass, if the input triggers one. */
   update(f: InputFrame, c: PassCtx): PassCmd | null { return this.scheme.update(f, c); }
-  aid(c: PassCtx): Aid { return this.scheme.aid(c); }
+  aid(c: PassCtx, always = true): Aid { return this.scheme.aid(c, always); }
   /** Not passing (no ball, a new rep): forget half-done holds and the throw shown. */
   reset() { this.scheme.reset(); }
 }

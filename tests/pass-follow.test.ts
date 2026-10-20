@@ -55,3 +55,36 @@ describe('a running throw', () => {
     }
   });
 });
+
+describe('throwing in every mode (NFL)', () => {
+  /** Ball Carrier (no line of scrimmage): the human carrier throws at 1 s toward a point `dz` m along his attack. */
+  async function carrierThrow(dz: number) {
+    let play: Play | null = null, sent = false;
+    const brain = new ScriptBrain((_t, _p, c) => {
+      if (!play || play.repTime < 1 || sent) return;
+      const b = play.ballPos(), dir = play.world.setup.field?.dirZ ?? 1;
+      sent = true; c.pass = { at: [b[0] + 3, 1.3, b[2] + dz * dir], loft: 0.4 };
+    });
+    const def = modeById('carry');
+    play = await Play.create(mujocoEngine, CFG, def, resolveOptions(def), brain, 0);
+    while (!play.world.lastPass && play.repTime < 3) play.step();
+    const thrown = !!play.world.lastPass;
+    for (let k = 0; k < 480 && !play.ended; k++) play.step();
+    const out = { thrown, ended: play.ended, pass: play.pass, recoveredBy: play.recoveredBy, instab: play.world.scene.stats().instabilities };
+    play.destroy();
+    return out;
+  }
+  it('a forward pass is allowed without a line of scrimmage; on the turf it is incomplete', async () => {
+    const r = await carrierThrow(12);
+    expect([r.thrown, r.ended, r.pass, r.instab]).toEqual([true, 'incomplete', 'incomplete', 0]);
+  }, 60_000);
+  it('a lateral (thrown back) is a live ball: no incompletion, and no fumble recovered', async () => {
+    const r = await carrierThrow(-6);
+    expect(r.thrown).toBe(true);
+    expect(r.ended).not.toBe('incomplete');
+    expect(r.pass).toBe('none');
+    expect(r.recoveredBy).toBe(-1);
+    expect(r.instab).toBe(0);
+  }, 60_000);
+});
+

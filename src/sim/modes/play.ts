@@ -19,7 +19,7 @@ import { BlockerBrain } from '../brains/blocker';
 import { CarrierBrain } from '../brains/carrier';
 import { TacklerBrain } from '../brains/tackler';
 import type { Brain } from '../brains/types';
-import { neutralCommands } from '../control/types';
+import { neutralCommands, type PassCmd } from '../control/types';
 import { makeController } from '../drills/controllers';
 import { clamp, qrot, type Quat, type Vec3 } from '../math';
 import type { PhysicsEngine } from '../physics/engine';
@@ -95,8 +95,11 @@ export class Play {
   impetus: 0 | 1 = 0;
   /** The athlete who last lost the ball: he can recover it only once it has been clear of his body. */
   private fumbler = -1;
-  /** The loose ball was kicked (or a kick blocked): whoever takes it fields the kick, he does not recover a fumble. */
+  /** The loose ball was kicked (or a kick blocked) or thrown back (a lateral): whoever takes it fields it, he does not
+   *  recover a fumble. */
   private kicked = false;
+  /** A forward pass has been thrown this play (one per play, NFL). */
+  private forward = false;
   private clear = false;
   /** The holder: time on the turf (s), time since he last left it (s), last opponent contact (world s), and whether
    *  a dead ball in his own end zone would be a touchback (he got it there from the opponents and has not left). */
@@ -146,7 +149,7 @@ export class Play {
     const play = new Play(world, cfg, ps, r, brains, new Rng(rng.next() * 1e9), options, me, fixed);
     play.rep = rep;
     play.impetus = team;
-    world.passAllowed = (i) => play.passOk(i);
+    world.passAllowed = (i, cmd) => play.passOk(i, cmd);
     world.onPass = (rec) => play.passed(rec);
     for (let i = 0; i < brains.length; i++) if (!fixed[i]) brains[i] = play.roleBrain(i, botRngs[i]);
     play.preroll(holder);
@@ -263,16 +266,26 @@ export class Play {
     this.reassign();
   }
 
-  /** A pass from athlete i now: the mode has a line of scrimmage, none has been thrown, and the ball is behind it. */
-  passOk(i: number): boolean {
+  /** Whether a throw toward `cmd` (or a forward pass, without one) by athlete i is allowed now (NFL, in every mode): a
+   *  lateral (toward or behind his own goal side) any time; one forward pass a play, from behind the line of
+   *  scrimmage where the mode has one (a mode without one allows it from anywhere). */
+  passOk(i: number, cmd?: PassCmd): boolean {
+    if (this.ended) return false;
+    if (cmd && !this.isForward(i, cmd.at)) return true;
     const los = this.mode.los;
-    return los !== undefined && !this.ended && this.passer < 0 && (los - this.ballPos()[2]) * attackDir(this.team(i)) >= 0;
+    return !this.forward && (los === undefined || (los - this.ballPos()[2]) * attackDir(this.team(i)) >= 0);
   }
+  /** A throw toward `at` goes forward: toward the goal athlete i's team attacks, past where the ball is. */
+  private isForward(i: number, at: Vec3) { return (at[2] - this.ballPos()[2]) * attackDir(this.team(i)) > 0; }
 
   /** The ball left the passer's hand (World.onPass): it is in the air, his team's, and he may not take it back until
    *  it has been clear of him. */
   private passed(rec: PassRecord) {
-    this.passer = rec.athlete; this.lastPass = rec; this.pass = 'air';
+    this.lastPass = rec;
+    // a lateral is a live ball like a fumble (no incompletion), but caught or picked up it is fielded, not recovered
+    if (!this.isForward(rec.athlete, rec.at)) { this.ballLoose(this.team(rec.athlete)); this.fumbler = rec.athlete; return; }
+    this.forward = true;
+    this.passer = rec.athlete; this.pass = 'air';
     this.fumbler = rec.athlete; this.clear = false; this.kicked = false; this.muffed.clear(); this.impetus = this.team(rec.athlete);
     this.reassign();
   }

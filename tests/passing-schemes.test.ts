@@ -45,6 +45,17 @@ describe('throw flight', () => {
 });
 
 describe('placement reticle (the QB throw control)', () => {
+  it('for anyone but the QB the aid shows only while Throw is held and the throw runs', () => {
+    const p = new Passer();
+    expect(p.aid(ctx(0), false)).toEqual({});
+    p.update(frame(['throw'], ['throw']), ctx(0));
+    expect(p.aid(ctx(0.3), false).reticle).toEqual([3, CATCH_Y, 25]);
+    p.update(frame(), ctx(0.3));
+    expect(p.aid(ctx(0.4), false).arc?.loft).toBeCloseTo(0.5); // the throw made, through the motion
+    p.reset();
+    expect(p.aid(ctx(0.5), false)).toEqual({});
+    expect(p.aid(ctx(0.5)).reticle).toEqual([3, CATCH_Y, 25]); // the QB's always shows
+  });
   it('lands on the turf aim point; the hold time is the loft; the point follows the passer', () => {
     const p = new Passer();
     expect(hold(p, 0.3)).toEqual({ at: [3, CATCH_Y, 25], loft: 0.5, follow: true });

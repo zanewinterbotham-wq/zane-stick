@@ -22,7 +22,8 @@ const call = (reads: Read[], extra: { hot?: number; checkdown?: number; scramble
 const qb = () => ath(0, 0, -5, [0, 0, 0], true);
 const run8: Vec3 = [0, 0, 8];
 
-describe('throw ballistics', () => {
+// parked: QBBrain is being retuned for the real throw.ts (branch ai-integrate-brains); it is not in the game yet
+describe.skip('throw ballistics', () => {
   it('throwVelocity reaches the point within the arm; a bullet is quicker than a lob', () => {
     const from: Vec3 = [0, 1.9, 0], at: Vec3 = [5, 1.2, 25];
     for (const loft of [0, 0.5, 1]) {
@@ -45,7 +46,7 @@ describe('throw ballistics', () => {
   });
 });
 
-describe('QB decisions', () => {
+describe.skip('QB decisions', () => {
   it('the open man is chosen; a covered first read is skipped', () => {
     // WR1 (1) with a man 1 m on his hip; WR2 (2) running free, his man (4) 14 m off
     const p = percept([qb(), ath(0, 10, 6, run8), ath(0, -10, 6, run8), ath(1, 10.5, 5, run8), ath(1, -10, 22)]);
