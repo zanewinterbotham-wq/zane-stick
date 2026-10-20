@@ -163,17 +163,28 @@ Jump (`Commands.jump`; added October 2026, not yet through the fact-checking pas
 | Quantity | Target | Basis |
 |---|---|---|
 | Standing vertical jump (COM rise) | 0.6–0.75 m | NFL Combine vertical jump means ~0.7–0.9 m by position (McGee & Burkett 2003, J Strength Cond Res 17:6; Robbins 2010, J Strength Cond Res 24:2888), measured reach to reach; college players lower |
-| Counter-movement dip, push time | ~0.3–0.4 m, ~0.25 s | force-platform counter-movement jumps (Linthorne 2001, Am J Phys 69:1198) |
+| Counter-movement dip, push time | ~0.3–0.4 m, ~0.25 s (maximal) | force-platform counter-movement jumps (Linthorne 2001, Am J Phys 69:1198); the game's default dip is quicker and shallower (below) |
 | Propulsive ground force | ~2–3 BW | same; the stance push is 2 BW and the world's launch adds up to 1.7 g net while a foot is on the turf |
 | One-foot running take-off | contact ~0.11–0.13 s, vertical speed ~3–3.5 m/s, ~4–5 BW | long jump take-off (Lees, Graham-Smith & Fowler 1994, J Appl Biomech 10:61); the launch cap off a run is 4 g |
 | Landing peak ground force | ~3–6 BW from ~0.6 m | drop landings, soft to stiff (Zhang, Bates & Dufek 2000, Med Sci Sports Exerc 32:812) |
 
-Measured (tests/jump.test.ts): standing 0.62 m (0.56 m on the minimum body), landing on the toes 3.4–4.6 BW. The legs
-alone (no launch) reach ~0.30 m: joint-level Hill curves without tendon recoil fall short of a real jump's take-off
-power, which is why the launch stands in, as it does for the dive. Known shortfall (assumption): the simulated sprint
-stride touches down on the toes for only ~0.03 s, so a one-foot take-off at 10 m/s lifts the body ~0.1–0.17 m (a real
-one ~0.4–0.5 m) and a jog's ~0.15–0.3 m; the hurdle's tuck still lifts the feet ~0.37–0.5 m, over a diver.
+Measured (tests/jump.test.ts, defaults): standing, take-off 0.37 s after the press and a 0.37 m rise; with a deep, slow
+counter-movement (JumpTuning dip 0.38 m, load 0.4 s: the pre-2026-10-19 jump) 0.61 s and 0.64 m; landing on the toes
+2.6–4 BW. The legs alone (no launch) reach ~0.30 m: joint-level Hill curves without tendon recoil fall short of a real
+jump's take-off power, which is why the launch stands in, as it does for the dive.
 
+Snappy jump (owner request 2026-10-19; game choice, labelled): the default counter-movement is quicker and shallower
+than a maximal one (dip target 0.3 m in 0.2 s, push 0.15 s), so the athlete leaves the turf in ~0.37 s instead of
+~0.62 s, at the cost of height (0.37 m). That trade is physics, not a tuning shortfall: the hips fall at most at 1 g, so
+a deeper dip takes longer, and the take-off speed is √(2·a·d) over the push distance d. A press-to-take-off well under
+0.25 s with a 0.6 m rise would need ~4 g net (~5 BW) through both legs, beyond any measured jump; the settings expose
+the trade (Jump section: dip, dip time, height).
+
+Running take-off: the simulated sprint stride touches down on the toes for only ~0.03 s, a third of a real stance, so a
+one-foot take-off lifted the body ~0.1 m. Assumption (`RUN_TAKEOFF` in anim/jump.ts): the launch pushes for a real
+one-foot stance's 0.1 s from the take-off foot's touchdown, while a foot is on the turf or was within that time (off
+contact only, as every launch). Measured: off a sprint at 10.2 m/s, take-off 0.18 s after the press, 0.52 m rise, speed
+down to 9.3 m/s (a long jumper loses ~1 m/s), landing 5.7–7 BW; off a jog 0.65 m with the hands up.
 Hip thrust from lowered pads (`THRUST` in anim/procedural.ts; owner request 2026-10-18, not yet through the
 fact-checking pass):
 

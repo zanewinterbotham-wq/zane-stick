@@ -1,6 +1,7 @@
 // Game modes are data: options the menu shows, a setup (who stands where, on which team, with which brain, where the
 // ball starts) and rules (when the play ends, what it scores). Play (play.ts) runs any of them.
 import type { AthleteParams } from '../anatomy/body';
+import type { JumpTuning } from '../anim/jump';
 import type { SupportSettings } from '../anim/types';
 import type { BotDifficulty } from '../brains/carrier';
 import type { Brain } from '../brains/types';
@@ -30,6 +31,8 @@ export interface PlayConfig {
   toughness?: number;
   /** Arcade hit power (WorldSetup.hitPower; 1 = pure physics). */
   hitPower?: number;
+  /** Jump tuning for every athlete (WorldSetup.jump; absent / {} = the defaults). */
+  jump?: Partial<JumpTuning>;
   /** Defenders' difficulty (TacklerBrain: the AI tackling setting); absent = difficulty. */
   defense?: BotDifficulty;
   /** Bone strength of the human and of every bot (AthleteSetup.boneStrength; 1 = the measured tolerances). */
