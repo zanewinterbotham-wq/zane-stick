@@ -1,24 +1,20 @@
 // Headless pass scenarios for the receiver brain: a QB standing with the ball (athlete 0, scripted), receivers on
 // route assignments (ReceiverBrain) and defenders given scripted brains, under the shared play rules (the catch rule).
 import { ReceiverBrain } from '../../src/sim/brains/football/receiver';
-import { ballAt } from '../../src/sim/brains/football/sense';
 import type { Assignment, PlayCall, PlayFrame, RouteAssign } from '../../src/sim/brains/football/types';
 import { ScriptBrain } from '../../src/sim/brains/script';
 import type { Brain } from '../../src/sim/brains/types';
 import type { Commands } from '../../src/sim/control/types';
-import { DEFAULT_OPEN_FIELD } from '../../src/sim/drills/openField';
 import type { Vec3 } from '../../src/sim/math';
 import { Play } from '../../src/sim/modes/play';
 import { HALF_WIDTH, NFL } from '../../src/sim/modes/rules';
 import type { ModeDef, PlayerSpec } from '../../src/sim/modes/types';
 import { mujocoEngine } from '../../src/sim/physics/mujoco';
 import type { Rng } from '../../src/sim/rng';
-import { STD } from './scenario';
+import { CFG } from './scenario';
 
-const { carrier, timeLimit: _t, mode: _m, ...base } = DEFAULT_OPEN_FIELD;
-export const CFG = { ...base, physics: STD, bot: carrier };
 export const LOS = -20;
-export const FRAME: PlayFrame = { los: LOS, dir: 1, halfWidth: HALF_WIDTH, snapTime: 0 };
+const FRAME: PlayFrame = { los: LOS, dir: 1, halfWidth: HALF_WIDTH, snapTime: 0 };
 
 export interface Spec { team: 0 | 1; pos: [number, number]; assign?: Assignment; brain?: Brain }
 
@@ -87,4 +83,3 @@ export function manDefender(target: number, o: { cushion?: number; inside?: numb
 }
 
 export const route = (r: RouteAssign['route'], extra: Partial<RouteAssign> = {}): RouteAssign => ({ kind: 'route', route: r, ...extra });
-export { ballAt };

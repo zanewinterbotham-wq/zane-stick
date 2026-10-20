@@ -1,13 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-
-/** Fail on any console error or uncaught exception. */
-function watchErrors(page: Page) {
-  const errors: string[] = [];
-  page.on('console', (m) => { if (m.type() === 'error' && !/still waiting on run dependencies|dependency: wasm|end of list/.test(m.text())) errors.push(m.text()); });
-  page.on('pageerror', (e) => errors.push(e.message));
-  return errors;
-}
+import { carrierComesToYou, seed, watchErrors } from './helpers';
 
 /** The human's latest input snapshot, as the brain sees it. */
 const latest = (page: Page) => page.evaluate(() => {
@@ -29,7 +22,7 @@ const settingsTab = (page: Page, name: string) => page.getByRole('button', { nam
 
 async function startRep(page: Page) {
   // skip the first-launch benchmark for speed; it has its own test below
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })));
+  await seed(page);
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await page.screenshot({ path: 'test-results/01-title.png' });
@@ -37,19 +30,6 @@ async function startRep(page: Page) {
   await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
   await page.waitForFunction(() => (window as unknown as { __app: { human: { latest: unknown } } }).__app.human.latest);
   await page.mouse.move(683, 384);
-}
-
-
-/** The AI carrier now dodges a straight run, so these UI tests have him walk into the human instead. */
-async function carrierComesToYou(page: import('@playwright/test').Page) {
-  await page.evaluate(() => {
-    type V = [number, number, number];
-    const d = (window as unknown as { __app: { drill: { carrier: number; human: number; brains: { think: unknown }[]; world: { athletes: { cmd: Record<string, unknown> }[] } } } }).__app.drill;
-    d.brains[d.carrier] = { think: (p: { athletes: { com: V }[] }) => {
-      const me = p.athletes[d.carrier].com, h = p.athletes[d.human].com, dx = h[0] - me[0], dz = h[2] - me[2], n = Math.hypot(dx, dz) || 1;
-      return { ...d.world.athletes[d.carrier].cmd, move: { x: dx / n, z: dz / n }, face: null, gait: 'jog', carry: 2, dive: false, thrustHips: false };
-    } };
-  });
 }
 
 test('title loads, drill starts, mouse and keyboard controls reach the brain, contact mode is automatic', async ({ page }) => {
@@ -227,7 +207,7 @@ test('side shuffle toggles on middle click and ;, Alt+Tab is never blocked, swit
 
 test('controls rebind live and persist; reserved keys are refused; reset restores the defaults', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { sessionStorage.setItem('seeded', '1'); localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })); } });
+  await seed(page, {}, 'once');
   await page.goto('/');
   await settingsTab(page, 'Controls');
   const cell = (a: string) => page.locator(`tr[data-action=${a}] .keys-cell`);
@@ -347,12 +327,19 @@ test('the picked sounds load and decode from the deploy (and nothing from the de
 
 test('controls screen lists the mouse controls and the game keys', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })));
+  await seed(page);
   await page.goto('/');
   await settingsTab(page, 'Controls');
   for (const t of ['Left click', 'Right click', 'Scroll', 'Lower the pads', 'Space', 'Shift', 'Esc', 'Enter']) await expect(page.locator('.menu')).toContainText(t);
   await expect(page.locator('.menu')).not.toContainText('Ctrl'); // no sink key any more
   await expect(page.locator('.menu')).toContainText('Dive forward'); // owner asked for dive on E
+  // the sprint hold/toggle switch lives here (hold by default); lowering the pads sinks the hips, no own switch
+  await expect(page.getByRole('button', { name: 'Sprint: hold', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: /^Sink hips/ })).toHaveCount(0);
+  // the throw key, and no QB throw scheme choice (the other schemes are vaulted)
+  await expect(page.locator('tr[data-action="throw"] .keys-cell')).toHaveText('F');
+  await expect(page.locator('tr[data-action="scheme"]')).toHaveCount(0);
+  await expect(page.getByText('QB throw scheme')).toHaveCount(0);
   await page.screenshot({ path: 'test-results/10-controls.png', fullPage: true });
   expect(errors).toEqual([]);
 });
@@ -383,7 +370,7 @@ test('tuning panel shows the support, speed and strength sliders; HUD shows spee
 
 test('difficulty screen: presets, the independent sliders and hit power, remembered; reachable from the pause menu', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => { if (!localStorage.getItem('zane-stick-settings-v1')) localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })); });
+  await seed(page, {}, 'ifEmpty');
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.locator('.menu h1')).toHaveText('Settings');
@@ -420,7 +407,7 @@ test('difficulty screen: presets, the independent sliders and hit power, remembe
 
 test('key test screen shows held keys', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })));
+  await seed(page);
   await page.goto('/');
   await settingsTab(page, 'Controls');
   await page.getByRole('button', { name: 'Key test' }).click();

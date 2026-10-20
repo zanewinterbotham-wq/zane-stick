@@ -1,20 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
+import { seed, watchErrors } from './helpers';
 
 const KEY = 'zane-stick-settings-v1';
 const stored = (page: Page) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? '{}'), KEY);
 const openSettings = (page: Page) => page.getByRole('button', { name: 'Settings', exact: true }).click();
 const tab = (page: Page, name: string) => page.getByRole('tab', { name }).click();
 
-function watchErrors(page: Page) {
-  const errors: string[] = [];
-  page.on('console', (m) => { if (m.type() === 'error' && !/still waiting on run dependencies|dependency: wasm|end of list/.test(m.text())) errors.push(m.text()); });
-  page.on('pageerror', (e) => errors.push(e.message));
-  return errors;
-}
-
 test('settings: title menu has Settings and no skin button; every tab opens, a value changes and persists', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { sessionStorage.setItem('seeded', '1'); localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })); } });
+  await seed(page, {}, 'once');
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await expect(page.getByRole('button', { name: /Skin:|Difficulty:|Quality:/ })).toHaveCount(0);
@@ -94,7 +88,7 @@ test('settings: title menu has Settings and no skin button; every tab opens, a v
 
 test('settings: the pause menu keeps only Resume, Reset rep, Settings, Inventory and Quit', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.addInitScript(() => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false } })));
+  await seed(page);
   await page.goto('/');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
   await page.keyboard.press('Enter');

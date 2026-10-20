@@ -4,7 +4,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { ScriptBrain } from '../src/sim/brains/script';
 import { GateBrain } from '../src/sim/brains/gate';
-import { DEFAULT_OPEN_FIELD } from '../src/sim/drills/openField';
 import { PRESETS } from '../src/game/presets';
 import { wrapAngle } from '../src/sim/math';
 import { Play } from '../src/sim/modes/play';
@@ -12,11 +11,9 @@ import { MODES, resolveOptions } from '../src/sim/modes/registry';
 import type { ModeOptions } from '../src/sim/modes/types';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
 import { Rng } from '../src/sim/rng';
-import { STD } from './helpers/scenario';
+import { CFG } from './helpers/scenario';
 
 beforeAll(() => mujocoEngine.init());
-const { carrier, timeLimit: _t, mode: _m, ...base } = DEFAULT_OPEN_FIELD;
-const CFG = { ...base, physics: STD, bot: carrier };
 const mode = (id: string) => MODES.find((m) => m.id === id)!;
 
 /** One rep with a bot standing in for the human; returns what the rep decided and a fingerprint of the final state. */

@@ -6,7 +6,6 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { ScriptBrain } from '../src/sim/brains/script';
 import type { Brain } from '../src/sim/brains/types';
 import { neutralCommands, type Commands } from '../src/sim/control/types';
-import { DEFAULT_OPEN_FIELD } from '../src/sim/drills/openField';
 import { FIELD_GOAL_BLOCK, fieldGoal } from '../src/sim/modes/fieldGoalBlock';
 import { lob, ownYard, POST, yardLine } from '../src/sim/modes/kicks';
 import { Play } from '../src/sim/modes/play';
@@ -14,11 +13,9 @@ import { modeById, resolveOptions } from '../src/sim/modes/registry';
 import { END_LINE, GOAL_LINE, YD } from '../src/sim/modes/rules';
 import type { ModeDef, ModeOptions } from '../src/sim/modes/types';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
-import { STD } from './helpers/scenario';
+import { CFG } from './helpers/scenario';
 
 beforeAll(() => mujocoEngine.init());
-const { carrier, timeLimit: _t, mode: _m, ...base } = DEFAULT_OPEN_FIELD;
-const CFG = { ...base, physics: STD, bot: carrier };
 const SPECIAL = ['kickoffReturn', 'kickoff', 'puntReturn', 'puntBlock', 'fieldGoalBlock'];
 
 /** The human's role played by the bot brain the play would give him (as the preview pictures do), swapped when the

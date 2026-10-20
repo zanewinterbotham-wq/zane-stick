@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import { seed, watchErrors } from './helpers';
 
 // Multiplayer end to end (docs/multiplayer.md) against the local room server (npm run dev:rooms) through the Vite dev
 // server's /api proxy (playwright.config.ts starts both): A hosts, B joins by the invite link, B takes a position, both
@@ -10,16 +11,9 @@ test.use({ launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-s
 type App = { __app: { net: { lobby: { players: { name: string; via: string }[]; assign: (string | null)[]; phase: string }; selfId: string; replica: { time: number } | null } | null;
   drill: { human: number; world: { time: number; scene: { athletes: { state: { com: Float64Array } }[] } } } | null; countdownUntil: number } };
 
-function watchErrors(page: Page) {
-  const errors: string[] = [];
-  page.on('console', (m) => { if (m.type() === 'error' && !/still waiting on run dependencies|dependency: wasm|end of list/.test(m.text())) errors.push(m.text()); });
-  page.on('pageerror', (e) => errors.push(e.message));
-  return errors;
-}
-
 async function open(browser: Browser, name: string, path = ''): Promise<{ page: Page; errors: string[] }> {
   const page = await (await browser.newContext()).newPage(), errors = watchErrors(page);
-  await page.addInitScript((n) => localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false }, netName: n })), name);
+  await seed(page, { netName: name });
   await page.goto(DEV + path);
   return { page, errors };
 }
@@ -134,6 +128,7 @@ test('host, join by link and by code, position menu, ready, start, guest input o
   await c.keyboard.up('Tab');
 
   // B leaves: his athlete is a bot on the host at once; the host goes back to the lobby and C follows
+  expect(B.errors.filter((e) => !/WebGL|GPU stall/i.test(e))).toEqual([]);
   await b.close();
   await expect.poll(async () => (await lobby(a))!.players.map((p) => p.name), { timeout: 15_000 }).toEqual(['Ana', 'Cy']);
   expect(await a.evaluate(() => (window as unknown as { __app: { drill: { isBot(i: number): boolean } } }).__app.drill.isBot(2))).toBe(true);

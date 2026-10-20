@@ -2,6 +2,7 @@
 // played on the same bodies (a break at the carrier's knee, a knockout). Screenshots in test-results/injury-*.png.
 // (Breaks by physics are tested headless in tests/injury.test.ts: a running leg is rarely straight to break here.)
 import { expect, test } from '@playwright/test';
+import { watchErrors } from './helpers';
 
 type Zs = { __zs: {
   advance(s: number): number;
@@ -11,9 +12,7 @@ type Zs = { __zs: {
 } };
 
 test('a head is knocked out by physics; every effect style renders a break and a knockout', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('console', (m) => { if (m.type() === 'error' && !/still waiting on run dependencies|dependency: wasm|end of list/.test(m.text())) errors.push(m.text()); });
-  page.on('pageerror', (e) => errors.push(e.message));
+  const errors = watchErrors(page);
   await page.goto('/?scenario=hit&hp=1&gfx=high&skin=voxel');
   await page.waitForFunction(() => (window as unknown as Zs).__zs);
   // run to contact, then a blindside blow to the carrier's helmet (150 N·s)
@@ -47,8 +46,7 @@ test('a head is knocked out by physics; every effect style renders a break and a
 });
 
 test('a broken knee hobbles and a broken elbow hangs floppy (side views of the running carrier)', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
+  const errors = watchErrors(page);
   await page.goto('/?scenario=hit&hp=1&gfx=high');
   await page.waitForFunction(() => (window as unknown as Zs).__zs);
   const clips: string[] = [];

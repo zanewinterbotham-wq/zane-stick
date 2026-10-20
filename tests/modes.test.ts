@@ -7,7 +7,6 @@ import { BALL } from '../src/sim/anatomy/equipment';
 import { ScriptBrain } from '../src/sim/brains/script';
 import type { Brain } from '../src/sim/brains/types';
 import type { Commands } from '../src/sim/control/types';
-import { DEFAULT_OPEN_FIELD } from '../src/sim/drills/openField';
 import { Play } from '../src/sim/modes/play';
 import { MODES, resolveOptions } from '../src/sim/modes/registry';
 import { deadBall, END_LINE, GOAL_LINE, HALF_WIDTH, inOwnEndZone, NFL, outside, scores } from '../src/sim/modes/rules';
@@ -15,11 +14,9 @@ import type { BallStart, ModeDef, PlayerSpec } from '../src/sim/modes/types';
 import type { Vec3 } from '../src/sim/math';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
 import { Rng } from '../src/sim/rng';
-import { STD } from './helpers/scenario';
+import { CFG } from './helpers/scenario';
 
 beforeAll(() => mujocoEngine.init());
-const { carrier, timeLimit: _t, mode: _m, ...base } = DEFAULT_OPEN_FIELD;
-const CFG = { ...base, physics: STD, bot: carrier };
 
 describe('registry', () => {
   it('every mode has a unique id, a preview picture, valid defaults and the human on team 0', () => {
