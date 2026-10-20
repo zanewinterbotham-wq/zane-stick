@@ -113,7 +113,7 @@ export class Athlete {
   knock = 0; carryLevel = 1; supStable = 0; airT = 0; getup = 0;
   /** Share of the time a foot is on the turf (low-passed): sizes the posture support's push through the feet. */
   grounded = 1;
-  /** Time since this athlete last touched another (s). */
+  /** Time since this athlete last touched another (s): the support's own-movement test and the injury break window. */
   freeT = Infinity;
   /** How long opponents have held this athlete (s), for the held knock. */
   heldT = 0;
