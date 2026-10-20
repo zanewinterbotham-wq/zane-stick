@@ -9,7 +9,7 @@ import { keyName, keysText, RESERVED, type InputManager } from './input/input';
 import { PERF_KNOBS, PRESET_ORDER, PRESETS, type Preset, type PresetName } from './presets';
 import { GORE_LEVELS } from './render/effects';
 import type { GameRenderer } from './render/renderer';
-import { DIFFICULTY_PRESETS, GAME_SUPPORT, PLAYER_BASE, difficultyOf, type Settings } from './settings';
+import { DEFAULT_SETTINGS, DIFFICULTY_PRESETS, PLAYER_BASE, difficultyOf, type Settings } from './settings';
 import { el, type Layer } from './ui';
 
 /** What the screen needs from the running game (the App in main.ts implements it). */
@@ -351,7 +351,10 @@ function advancedTab({ host, status, reopen }: Ctx) {
   const copy = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Copy values');
   copy.addEventListener('click', () => { void navigator.clipboard?.writeText(exp.value).then(() => host.hud.flash('Copied'), () => { exp.select(); }); });
   const reset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset to defaults');
-  reset.addEventListener('click', () => { s.gains = {}; s.assist = 0.2; s.traction = 1.2; s.support = { ...GAME_SUPPORT }; s.speed = 1; s.boneStrength = 1; s.aiBoneStrength = 1; s.steerAssist = 0.3; host.save(); reopen(); });
+  reset.addEventListener('click', () => {
+    for (const k of ['gains', 'assist', 'traction', 'support', 'speed', 'strength', 'boneStrength', 'aiBoneStrength', 'steerAssist'] as const) Object.assign(s, { [k]: structuredClone(DEFAULT_SETTINGS[k]) });
+    host.save(); reopen();
+  });
   // Jump: one slider per JumpTuning knob over the defaults (s.jump holds only the ones moved)
   const jumpRows = JUMP_ROWS.map(([k, label, desc, fmt]) => {
     const [min, max, step] = JUMP_RANGES[k];

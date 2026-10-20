@@ -105,10 +105,11 @@ export function loadSettings(): Settings {
       s.qb = s.qb && typeof s.qb === 'object' ? Object.fromEntries(Object.entries(qbTuning(s.qb)).filter(([k]) => k in s.qb)) : {};
       // version 8: the jump knobs; only valid ones are kept (clamped to their ranges), the rest are the defaults
       const jt = jumpTuning(s.jump), jump = Object.fromEntries(Object.keys(jt).filter((k) => typeof s.jump?.[k] === 'number' && Number.isFinite(s.jump[k])).map((k) => [k, jt[k as keyof JumpTuning]]));
-      return { ...DEFAULT_SETTINGS, ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support }, jump };
+      // (a copy of the defaults: a field the file lacks must not share, and later mutate, DEFAULT_SETTINGS')
+      return { ...structuredClone(DEFAULT_SETTINGS), ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support }, jump };
     }
   } catch { /* storage unavailable: use defaults */ }
-  return { ...DEFAULT_SETTINGS, perf: {}, support: { ...GAME_SUPPORT }, jump: {} };
+  return structuredClone(DEFAULT_SETTINGS);
 }
 
 /** v4 → v5 keyboard rebinds: Space leaves a saved thrust rebind (dropped if nothing is left), and a key another saved

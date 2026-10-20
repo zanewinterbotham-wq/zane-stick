@@ -1,6 +1,6 @@
 // Stored settings from before the owner's baseline (absolute strength/speed) migrate to multipliers.
 import { beforeEach, expect, it } from 'vitest';
-import { loadSettings, saveSettings, PLAYER_BASE } from '../src/game/settings';
+import { DEFAULT_SETTINGS, loadSettings, saveSettings, PLAYER_BASE } from '../src/game/settings';
 
 const store = new Map<string, string>();
 beforeEach(() => {
@@ -20,6 +20,15 @@ it('fresh settings are 1x with the owner carry acceleration', () => {
   const s = loadSettings();
   expect([s.strength, s.speed, s.support.carryAccel]).toEqual([1, 1, 10.5]);
   saveSettings(s); expect(loadSettings().strength).toBe(1);
+});
+
+it('loaded settings are copies: editing them never changes the defaults', () => {
+  for (const saved of [null, '{"version":8}']) {
+    store.clear(); if (saved) store.set('zane-stick-settings-v1', saved);
+    const s = loadSettings();
+    s.gains.torsoKp = 9; s.bindings.jump = ['KeyX']; s.support.strength = 0.1;
+    expect([DEFAULT_SETTINGS.gains, DEFAULT_SETTINGS.bindings, DEFAULT_SETTINGS.support.strength]).toEqual([{}, {}, 1]);
+  }
 });
 
 it('version 3: the owner picks become the default skin and stadium once, and Gore off maps to the no-blood level', () => {
