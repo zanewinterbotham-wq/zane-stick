@@ -11,7 +11,8 @@
 // - The throw: he breaks on the ball only once he sees it in the air (his reaction delay after the release, the
 //   difficulty), runs to the earliest point of its flight he can get a hand on, else to where it comes down (the
 //   receiver's hands, for a breakup), and raises both hands to it (the play's catch rule: an interception or a
-//   muff that knocks it away), jumping for a high one and diving for one just beyond reach.
+//   muff that knocks it away), jumping for a high one and diving for one just beyond reach. In zone only the defender
+//   nearest where it comes down plays it (sense.passIsMine); the others keep their zones.
 // - After a catch, or a runner past the line: a tackler (TacklerBrain: pursuit angle, breakdown, strike); with the
 //   ball himself (an interception) a carrier; a teammate's interception, a blocker.
 // Reads only the Perception through his reaction delay; difficulty is that delay and the noise of his spots. Same
@@ -23,12 +24,12 @@ import type { Rng } from '../../rng';
 import { BlockerBrain } from '../blocker';
 import { CarrierBrain, type BotDifficulty } from '../carrier';
 import { catchPoint } from '../returner';
-import { predict, TacklerBrain, turnRate } from '../tackler';
+import { TacklerBrain, turnRate } from '../tackler';
 import type { AthleteView, Brain, Perception } from '../types';
-import { DB_SPEED, REACH, rel, toWorld } from './sense';
+import { ACC_DT, ballAt, ballSpot, carry, inFlight, passIsMine, REACH, rel, toWorld } from './sense';
 import type { ManAssign, PlayCall, PlayFrame, ZoneAssign, ZoneKind } from './types';
 
-const G = 9.81, FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08;
+const FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08;
 /** Fastest wanted speed (m/s) he backpedals or shuffles at, facing his man or the QB, before he opens his hips and
  *  runs (the animator's backpedal tops out at 6.5 m/s; a DB's at ~5–6). */
 const BP_MAX = 5;
@@ -49,18 +50,14 @@ const K_POS = 2.5, BRAKE = 5;
 /** Zone: a receiver more than HANDOFF m outside the zone's radius has left it (passed off); underneath he takes the
  *  lane LANE m from the receiver toward the QB, deep he stays DEEP_CUSH m over the top. */
 const HANDOFF = 1.5, LANE = 1, DEEP_CUSH = 3;
-/** Ball: a hand gets to a ball between BALL_H heights (m) within REACH of the COM, running from his own speed toward
- *  it at ACCEL m/s² up to DB_SPEED after a TURN s first step; the hands go up HANDS_T s before it gets to him (or
- *  inside HANDS_D m); a jump for one above JUMP_H m within JUMP_T s; a dive for one he cannot reach running, DIVE_D m
- *  away (beyond his reach) within DIVE_T s. */
-const BALL_H: [number, number] = [0.35, 2.7], ACCEL = 6, TURN = 0.15, HANDS_T = 0.45, HANDS_D = 2.5, JUMP_H = 2.15, JUMP_T = 0.3;
+/** Ball (sense.ballSpot: where he gets a hand on it): the hands go up HANDS_T s before it gets to him (or inside
+ *  HANDS_D m); a jump for one above JUMP_H m within JUMP_T s; a dive for one he cannot reach running, DIVE_D m away
+ *  (beyond his reach) within DIVE_T s. In zone the pass is his to play when it is his (sense.passIsMine), kept unless
+ *  a team mate is MINE m nearer where it comes down. */
+const HANDS_T = 0.45, HANDS_D = 2.5, JUMP_H = 2.15, JUMP_T = 0.3, MINE = 2;
 const DIVE_D: [number, number] = [0.4, 2], DIVE_T = 0.35;
-/** A ball counts as thrown (in the air, a pass) above AIR_H m and faster than AIR_V m/s. */
-const AIR_H = 0.4, AIR_V = 5;
 /** Plant and cut when the wanted direction is PLANT_ANGLE rad off a run faster than PLANT_RUN m/s (as TacklerBrain). */
 const PLANT_ANGLE = 0.6, PLANT_RUN = 2.5, PLANT_HOLD = 0.1, PLANT_GAP = 0.6, TURN_MAX = 6;
-/** A receiver's acceleration is read over ACC_DT s and believed up to ACC_MAX m/s² (a sprint start's ~6). */
-const ACC_DT = 0.1, ACC_MAX = 7;
 /** Below this ground speed (m/s) the wanted direction is taken at once. */
 const SNAP_V = 2;
 
@@ -88,33 +85,6 @@ export function eligible(p: Perception, call: PlayCall, i: number, team: 0 | 1):
   return a.team !== team && !a.hasBall && !a.down && (k === undefined || k === 'route');
 }
 
-/** A ball in flight `t` s on (ballistic, no drag). */
-export function ballAt(b: { pos: Vec3; vel: Vec3 }, t: number): { pos: Vec3; vel: Vec3 } {
-  return { pos: [b.pos[0] + b.vel[0] * t, b.pos[1] + b.vel[1] * t - G * t * t / 2, b.pos[2] + b.vel[2] * t], vel: [b.vel[0], b.vel[1] - G * t, b.vel[2]] };
-}
-
-/** Time (s) to run `d` m from `v0` m/s (toward it) at ACCEL up to DB_SPEED, after TURN s. */
-export function runTime(d: number, v0 = 0): number {
-  const v = clamp(v0, 0, DB_SPEED), tA = (DB_SPEED - v) / ACCEL, dA = (v + DB_SPEED) / 2 * tA;
-  return TURN + (d <= dA ? (Math.sqrt(v * v + 2 * ACCEL * d) - v) / ACCEL : tA + (d - dA) / DB_SPEED);
-}
-
-/** Where a defender at `from` (moving at `vel`) gets a hand on a ball in flight: the earliest point of its flight
- *  (within BALL_H) he reaches in time (runTime), and when (s); else (late: true) where it comes down through catch
- *  height. */
-export function ballSpot(b: { pos: Vec3; vel: Vec3 }, from: Vec3, vel: Vec3 = [0, 0, 0]): { at: Vec3; t: number; late: boolean } {
-  let last: { at: Vec3; t: number } | null = null;
-  for (let t = 0; t < 4; t += 0.02) {
-    const q = ballAt(b, t).pos;
-    if (q[1] < BALL_H[0]) break;
-    if (q[1] > BALL_H[1]) continue;
-    last = { at: q, t };
-    const dx = q[0] - from[0], dz = q[2] - from[2], d = Math.hypot(dx, dz) || 1e-9;
-    if (runTime(Math.max(0, d - REACH), (vel[0] * dx + vel[2] * dz) / d) <= t) return { ...last, late: false };
-  }
-  return { ...(last ?? { at: b.pos, t: 0 }), late: true };
-}
-
 export type DbPhase = 'cover' | 'jam' | 'ball' | 'tackle' | 'carry' | 'block';
 
 export class DefensiveBackBrain implements Brain {
@@ -126,7 +96,7 @@ export class DefensiveBackBrain implements Brain {
   private tackler: TacklerBrain; private carrier: CarrierBrain; private blocker: BlockerBrain;
   private err: [number, number] = [0, 0]; private errUntil = -Infinity;
   private ballX = NaN;
-  private opened = false; private released = false; private thrown = false; private jumped = false; private dived = false;
+  private opened = false; private released = false; private thrown = false; private jumped = false; private dived = false; private mine = false;
   /** What he is doing (tests, HUD). */
   phase: DbPhase = 'cover';
   /** The receiver he is on now (man: his man; zone: the one matched in his zone, −1 none), and every receiver he has
@@ -152,13 +122,16 @@ export class DefensiveBackBrain implements Brain {
     const a = as?.kind === 'man' || as?.kind === 'zone' ? as : null;
     if (hi >= 0 && seen.athletes[hi].team === me.team) { this.phase = 'block'; return this.blocker.think(p, dt); }
     if (b && Number.isNaN(this.ballX)) this.ballX = b.pos[0];
-    const air = !!b && hi < 0 && b.pos[1] > AIR_H && Math.hypot(...b.vel) > AIR_V;
+    const air = inFlight(seen);
     if (air) this.thrown = true;
     // a catch, a runner (past the line, or my man with the ball), a ball on the turf: football, tackle or recover it
     const runner = hi >= 0 && (this.thrown || rel(f, seen.athletes[hi].com).depth > 0.5 || (a?.kind === 'man' && a.target === hi));
     if (runner || (hi < 0 && !air) || !a) { this.phase = 'tackle'; return this.tackler.think(p, dt); }
     if (p.time >= this.errUntil) { this.err = [this.rng.gauss() * this.diff.noise, this.rng.gauss() * this.diff.noise]; this.errUntil = p.time + 0.6; }
-    if (air) this.playBall(p, ballAt(b!, age), me, dt, c);
+    const ball = air ? ballAt(b!, age) : null;
+    // in zone the pass is played by the defender nearest where it comes down; the others stay in their zones
+    if (ball && a.kind === 'zone') this.mine = passIsMine(seen, ball, this.self, this.mine ? MINE : 0, me.com);
+    if (ball && (a.kind === 'man' || this.mine)) this.playBall(p, ball, me, dt, c);
     else if (a.kind === 'man') this.man(p, seen, age, me, a, dt, c);
     else this.zone(p, seen, age, me, a, dt, c);
     return c;
@@ -167,13 +140,8 @@ export class DefensiveBackBrain implements Brain {
   /** Athlete i as seen, carried on `age` s with the velocity and acceleration seen (the eye reads a burst off the line
    *  as well as a steady run; a change of either is what the reaction delay answers). */
   private track(seen: Perception, i: number, age: number): AthleteView {
-    const a = seen.athletes[i], o = this.past[0]?.athletes[i], dt = o ? seen.time - this.past[0].time : 0;
-    if (!o || dt < 1e-3) return predict(a, age);
-    let ax = (a.comVel[0] - o.comVel[0]) / dt, az = (a.comVel[2] - o.comVel[2]) / dt;
-    const n = Math.hypot(ax, az);
-    if (n > ACC_MAX) { ax *= ACC_MAX / n; az *= ACC_MAX / n; }
-    const v: Vec3 = [a.comVel[0] + ax * age, a.comVel[1], a.comVel[2] + az * age], f = (x: Vec3): Vec3 => [x[0] + a.comVel[0] * age + ax * age * age / 2, x[1], x[2] + a.comVel[2] * age + az * age * age / 2];
-    return { ...a, com: f(a.com), pelvis: f(a.pelvis), head: f(a.head), comVel: v };
+    const o = this.past[0];
+    return carry(seen.athletes[i], o?.athletes[i], o ? seen.time - o.time : 0, age);
   }
 
   /** Inside (toward the ball) from a receiver at world x `rx`: ±1 along x. */

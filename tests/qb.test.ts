@@ -4,7 +4,9 @@
 import { describe, expect, it } from 'vitest';
 import type { AthleteView, Perception } from '../src/sim/brains/types';
 import type { PlayCall, Read } from '../src/sim/brains/football/types';
-import { bestThrow, chooseTarget, laneOpen, pocketStep, releasePoint, sackTime, scrambleLane, throwAway } from '../src/sim/brains/football/qb';
+import { alongRoute, bestThrow, chooseTarget, pocketStep, scrambleLane, throwAway } from '../src/sim/brains/football/qb';
+import { routePath } from '../src/sim/brains/football/routes';
+import { laneOpen, releasePoint, sackTime } from '../src/sim/brains/football/sense';
 import { leadPoint, THROW, throwVelocity } from '../src/sim/throw';
 const ARM_SPEED = THROW.vmax;
 import type { Vec3 } from '../src/sim/math';
@@ -22,8 +24,7 @@ const call = (reads: Read[], extra: { hot?: number; checkdown?: number; scramble
 const qb = () => ath(0, 0, -5, [0, 0, 0], true);
 const run8: Vec3 = [0, 0, 8];
 
-// parked: QBBrain is being retuned for the real throw.ts (branch ai-integrate-brains); it is not in the game yet
-describe.skip('throw ballistics', () => {
+describe('throw ballistics', () => {
   it('throwVelocity reaches the point within the arm; a bullet is quicker than a lob', () => {
     const from: Vec3 = [0, 1.9, 0], at: Vec3 = [5, 1.2, 25];
     for (const loft of [0, 0.5, 1]) {
@@ -40,13 +41,29 @@ describe.skip('throw ballistics', () => {
   it('leadPoint: a receiver running on at his velocity is there when the ball is', () => {
     const from: Vec3 = [0, 1.9, -5], target = { pos: [8, 1.2, 6] as Vec3, vel: [-2, 0, 8] as Vec3 };
     for (const loft of [0, 0.8]) {
-      const at = leadPoint(from, target, loft), T = throwVelocity(from, at, loft).time;
+      const at = leadPoint(from, target, loft), T = THROW.release + throwVelocity(from, at, loft).time;
       expect(Math.hypot(target.pos[0] + target.vel[0] * T - at[0], target.pos[2] + target.vel[2] * T - at[2])).toBeLessThan(0.01);
     }
   });
 });
 
-describe.skip('QB decisions', () => {
+describe('the lead on a route (a throw on timing)', () => {
+  const F = { los: 0, dir: 1 as const, halfWidth: HW, snapTime: 0 };
+  it('alongRoute: through the break of an in, to the end of a curl and no further; off his path, none', () => {
+    const inn = routePath({ kind: 'route', route: 'in' }, [-12, 1, -0.5], F), b = inn.pts[inn.brk];
+    // 3 m short of the break at 8 m/s: 1.5 s on he has planted and gone across, toward the middle, at the break's depth
+    const r = ath(0, -12, b[2] - 3, [0, 0, 8]), at = alongRoute(inn, r, 1.5)!;
+    console.log(`in: break at (${b[0].toFixed(1)}, ${b[2].toFixed(1)}), led to (${at[0].toFixed(1)}, ${at[2].toFixed(1)}); on his velocity (${r.com[0].toFixed(1)}, ${(r.com[2] + 12).toFixed(1)})`);
+    expect(at[0]).toBeGreaterThan(b[0] + 3);
+    expect(Math.abs(at[2] - b[2])).toBeLessThan(0.5);
+    const curl = routePath({ kind: 'route', route: 'curl' }, [12, 1, -0.5], F), end = curl.pts[curl.pts.length - 1];
+    const c = alongRoute(curl, ath(0, 12, 6, [0, 0, 8]), 4)!;
+    expect(Math.hypot(c[0] - end[0], c[2] - end[2])).toBeLessThan(0.05);
+    expect(alongRoute(curl, ath(0, 5, 6, [0, 0, 8]), 1)).toBe(null);
+  });
+});
+
+describe('QB decisions', () => {
   it('the open man is chosen; a covered first read is skipped', () => {
     // WR1 (1) with a man 1 m on his hip; WR2 (2) running free, his man (4) 14 m off
     const p = percept([qb(), ath(0, 10, 6, run8), ath(0, -10, 6, run8), ath(1, 10.5, 5, run8), ath(1, -10, 22)]);
@@ -74,8 +91,9 @@ describe.skip('QB decisions', () => {
     console.log('LB under the bullet: thrown', t.kind, 'loft', t.loft, 'to', t.target, 'open', t.open.toFixed(2));
     expect(t.target).toBe(1);
     expect(t.loft).toBeGreaterThan(0);
-    // the linebacker right in front of the QB (1.5 m): no arc gets over him to WR1; WR2's lane is clear
-    const q = percept([qb(), wr, ath(0, -10, 6, run8), ath(1, 0.1, -3.5), ath(1, -14, 30)]);
+    // the linebacker right in front of the QB (1.5 m) on WR1's line: no arc gets over him to WR1; WR2's lane (25° to the
+    // left, passing 1 m from him) is clear
+    const q = percept([qb(), wr, ath(0, -10, 6, run8), ath(1, 0.4, -3.5), ath(1, -14, 30)]);
     const u = chooseTarget(q, c, 0, { heat: Infinity })!;
     expect(bestThrow(q, c, 0, 1, 0)).toBe(null);
     expect(u.target).toBe(2);

@@ -3,7 +3,8 @@
 // pass crossing receivers off to each other, and a thrown ball gets a hand on it or near it. 1 v 1 and 2 v 2.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { DIFFICULTY } from '../src/sim/brains/carrier';
-import { ballSpot, DefensiveBackBrain, eligible, runTime, zoneLandmark } from '../src/sim/brains/football/db';
+import { DefensiveBackBrain, eligible, zoneLandmark } from '../src/sim/brains/football/db';
+import { ballSpot, DB_SPEED, DB_TURN, runTime } from '../src/sim/brains/football/sense';
 import type { Assignment, ManAssign, PlayCall, PlayFrame, ZoneAssign } from '../src/sim/brains/football/types';
 import { ScriptBrain } from '../src/sim/brains/script';
 import type { AthleteView, Brain, Perception } from '../src/sim/brains/types';
@@ -135,7 +136,8 @@ describe('defensive back helpers (pure)', () => {
     expect(running.late).toBe(false); // already at speed his way: he gets there, from a stand he would not
     expect(ballSpot(b, [1, 1, 10]).late).toBe(true);
     expect(far.late).toBe(true); expect(far.at[1]).toBeLessThan(0.5);
-    expect(runTime(0)).toBeCloseTo(0.15); expect(runTime(30)).toBeCloseTo(0.15 + 1.5 + (30 - 6.75) / 9); expect(runTime(5, 9)).toBeCloseTo(0.15 + 5 / 9);
+    const dbRun = (d: number, v0 = 0) => runTime(d, v0, DB_SPEED, DB_TURN);
+    expect(dbRun(0)).toBeCloseTo(0.15); expect(dbRun(30)).toBeCloseTo(0.15 + 1.5 + (30 - 6.75) / 9); expect(dbRun(5, 9)).toBeCloseTo(0.15 + 5 / 9);
   });
 
   it('eligible: the receivers, not the QB with the ball, a teammate, or a man on the turf', () => {
