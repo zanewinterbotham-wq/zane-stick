@@ -70,7 +70,7 @@ class MujocoScene implements PhysicsScene {
   private xfrc!: Float64Array; private qfrc!: Float64Array;
   /** The state before the current step, restored if it diverges; divergence count and bookkeeping. */
   private good!: { qpos: Float64Array; qvel: Float64Array; eq: Uint8Array; time: number };
-  private instab = 0; private warned = 0; private steps = 0; private lastBad = -9;
+  private instab = 0; private steps = 0; private lastBad = -9;
   private pyramidal = false;
   private heap: { f64: Float64Array; i32: Int32Array } | null = null;
 
@@ -176,12 +176,13 @@ class MujocoScene implements PhysicsScene {
     mj.mj_step(this.m, d);
     // a diverged solve makes MuJoCo reset everyone to the spawn pose (a mid-rep teleport, injuries kept): undo it,
     // back to the last good state with the motion damped out (halved; stopped if it diverges again at once). A reset
-    // sets the clock back to 0, so the warning counters (slow to read) are read only when it did not advance.
-    const n = d.time > this.good.time ? this.warned : this.warnings();
-    if (n > this.warned) {
+    // sets the clock back to 0 before the step advances it, so the clock not moving on is the sign. (The warning
+    // counters cannot tell: a reset clears them and sets the one that fired to 1, every time.) Only on the first step,
+    // from 0, do a reset and a good step both end at dt: there the counters, which start at 0, decide.
+    if (d.time <= this.good.time || (this.good.time === 0 && this.warnings() > 0)) {
       this.views();
       const k = this.lastBad === this.steps - 1 ? 0 : 0.5;
-      this.lastBad = this.steps; this.instab += n - this.warned; this.warned = n;
+      this.lastBad = this.steps; this.instab++;
       this.v.qpos.set(this.good.qpos); this.v.qvel.set(this.good.qvel); (d.eq_active as Uint8Array).set(this.good.eq);
       for (let i = 0; i < this.v.qvel.length; i++) this.v.qvel[i] *= k;
       d.qacc_warmstart.fill(0); d.time = this.good.time + this.dt;

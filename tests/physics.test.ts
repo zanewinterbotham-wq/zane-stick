@@ -76,6 +76,14 @@ describe('divergence', () => {
     expect(sc.stats().instabilities).toBeGreaterThan(0); // still counted: tests keep requiring 0
     expect(Math.hypot(s.com[0] - before[0], s.com[2] - before[2])).toBeLessThan(0.1); // where he was, not back at spawn
     expect(Math.hypot(...sc.propPose(0).pos.map((x, k) => x - ball[k]))).toBeLessThan(0.2); // the ball flies on
+    // a second divergence later in the scene is caught and counted too (MuJoCo's warning counter reads 1 after each)
+    for (let i = 0; i < 60; i++) sc.step();
+    const again = [...s.com];
+    sc.setTorques(0, tau);
+    sc.step();
+    expect(sc.stats().instabilities).toBe(2);
+    expect(Math.hypot(s.com[0] - again[0], s.com[2] - again[2])).toBeLessThan(0.1);
+    expect(s.com[1]).toBeGreaterThan(again[1] - 0.1); // not dropped to the spawn pose's root height either
     for (let i = 0; i < 240; i++) sc.step();
     for (const a of sc.athletes) expect(Number.isFinite(a.state.com[1])).toBe(true);
     sc.destroy();
