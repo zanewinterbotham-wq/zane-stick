@@ -97,3 +97,12 @@ test('QB 1-on-1: the QB starts with the ball, the scheme panel shows, and every 
   }
   expect(errors).toEqual([]);
 });
+
+test('QB 1-on-1, 2 v 2 in zone with a concept (remembered options): five athletes, the status names them', async ({ page }) => {
+  const errors = await start(page, /^QB 1-on-1/, { modeOptions: { pass: { receivers: 2, coverage: 'zone', concept: 'smash' } } });
+  await expect(page.locator('.status')).toContainText('smash  ·  zone');
+  expect(await page.evaluate(() => (window as unknown as { __app: { drill: { world: { athletes: unknown[] } } } }).__app.drill.world.athletes.length)).toBe(5);
+  await page.waitForTimeout(1500); // the routes and the drops under way
+  await page.screenshot({ path: 'test-results/passing-qb-2v2.png' });
+  expect(errors).toEqual([]);
+});
