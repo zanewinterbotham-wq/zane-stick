@@ -1,7 +1,7 @@
 // Room server: one Durable Object per room code (signaling for WebRTC + a WebSocket relay fallback).
 // Deployed as Worker "zane-stick-rooms" (workers_dev = false); players reach it only through the Pages Function
 // functions/api/room/[[path]].ts on the game's own address. `wrangler dev` serves the same routes for local play.
-import { CLOSE, MAX_MESSAGE, cleanName, frameHeader, makeCode, normCode, readdressFrame } from '../../src/net/protocol';
+import { CLOSE, CLOSE_REASON, MAX_MESSAGE, MAX_PEERS, cleanName, frameHeader, makeCode, normCode, readdressFrame } from '../../src/net/protocol';
 import type { ClientMsg, ServerMsg, WirePeer } from '../../src/net/protocol';
 
 // The slice of the Workers runtime this file uses (no @cloudflare/workers-types dependency).
@@ -18,25 +18,31 @@ const json = (status: number, body: unknown) => new Response(JSON.stringify(body
 const isUpgrade = (req: Request) => req.headers.get('Upgrade')?.toLowerCase() === 'websocket';
 const rand = () => crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
 const say = (ws: CfSocket, m: ServerMsg) => { try { ws.send(JSON.stringify(m)); } catch { /* closing */ } };
+/** A browser can't read an HTTP status off a failed upgrade, so accept and close with a reason it can read. */
+function refuse(code: number): Response {
+  const pair = new WebSocketPair();
+  pair[1].accept();
+  pair[1].close(code, CLOSE_REASON[code]);
+  return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit);
+}
 
 /** /api/room → health, /api/room/new → create (WebSocket), /api/room/<CODE> → join (WebSocket) or status (GET). */
 export async function routeRoom(req: Request, rooms: DONamespace): Promise<Response> {
   const url = new URL(req.url);
   const seg = url.pathname.replace(/^\/api\/room\/?/, '').split('/')[0];
-  const name = encodeURIComponent(cleanName(url.searchParams.get('name') ?? ''));
   if (!seg) return json(200, { ok: true });
   if (seg === 'new') {
     if (!isUpgrade(req)) return json(426, { error: 'websocket required' });
     for (let i = 0; i < 8; i++) { // a DO per code: a taken code answers 409, so draw again
       const code = makeCode(rand);
-      const res = await rooms.get(rooms.idFromName(code)).fetch(new Request(`https://room/${code}/create?name=${name}`, req));
+      const res = await rooms.get(rooms.idFromName(code)).fetch(new Request(`https://room/${code}/create${url.search}`, req));
       if (res.status !== 409) return res;
     }
     return json(503, { error: 'no free room code' });
   }
-  const code = normCode(decodeURIComponent(seg));
+  const code = normCode(seg); // a client sends a normCode'd code, which needs no decoding
   if (!code) return json(404, { error: 'room not found' });
-  return rooms.get(rooms.idFromName(code)).fetch(new Request(`https://room/${code}/join?name=${name}`, req));
+  return rooms.get(rooms.idFromName(code)).fetch(new Request(`https://room/${code}/join${url.search}`, req));
 }
 
 type Peer = WirePeer;
@@ -61,13 +67,10 @@ export class RoomDO {
     if (!open) {
       const closed = (await this.state.storage.get('closed')) === true;
       if (!isUpgrade(req)) return json(closed ? 410 : 404, { error: closed ? 'room closed' : 'room not found' });
-      // A browser can't read an HTTP status off a failed upgrade, so accept and close with a reason it can read.
-      const pair = new WebSocketPair();
-      pair[1].accept();
-      pair[1].close(closed ? CLOSE.roomClosed : CLOSE.noRoom, closed ? 'room-closed' : 'no-room');
-      return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit);
+      return refuse(closed ? CLOSE.roomClosed : CLOSE.noRoom);
     }
     if (!isUpgrade(req)) return json(200, { code, players: this.state.getWebSockets().length });
+    if (this.state.getWebSockets().length >= MAX_PEERS) return refuse(CLOSE.roomFull);
     return this.admit(code, name, false);
   }
 
@@ -118,6 +121,12 @@ export class RoomDO {
     try { m = JSON.parse(msg); } catch { return; }
     if (m?.t === 'ping') say(ws, { t: 'pong', ts: Number(m.ts) || 0 });
     else if (m?.t === 'signal') { const to = this.target(me, m.to); if (to) say(to, { t: 'signal', from: me.id, data: m.data }); }
+    else if (m?.t === 'kick' && me.host) {
+      const to = this.target(me, m.to);
+      if (!to || to === ws) return;
+      try { to.close(CLOSE.kicked, CLOSE_REASON[CLOSE.kicked]); } catch { /* gone */ }
+      this.announce(to, true); // now: his close event may never come (the close handshake can stall)
+    }
   }
 
   async webSocketClose(ws: CfSocket) {
@@ -127,7 +136,7 @@ export class RoomDO {
     await this.state.storage.put('closed', true); // joiners now get "room closed" instead of "not found"
     await this.state.storage.setAlarm(Date.now() + 10 * 60_000);
     // the message first: a guest's close event may never come (the close handshake can stall), the message does
-    for (const s of this.state.getWebSockets()) if (s !== ws) { say(s, { t: 'bye', reason: 'host-left' }); try { s.close(CLOSE.hostLeft, 'host-left'); } catch { /* gone */ } }
+    for (const s of this.state.getWebSockets()) if (s !== ws) { say(s, { t: 'bye', reason: 'host-left' }); try { s.close(CLOSE.hostLeft, CLOSE_REASON[CLOSE.hostLeft]); } catch { /* gone */ } }
   }
 
   async webSocketError(ws: CfSocket) { return this.webSocketClose(ws); }

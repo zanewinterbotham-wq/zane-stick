@@ -41,6 +41,7 @@ export interface NetRoom {
   onMessage(cb: (from: string, data: ArrayBuffer | string) => void): void;
   onPeers(cb: (peers: PeerInfo[]) => void): void;        // join, leave, path or rtt change
   onClose(cb: (reason: string) => void): void;
+  kick(id: string): void;                                // host: the server closes that guest's socket
   close(): void;
 }
 export function createRoom(name: string, server?: string): Promise<NetRoom>;
@@ -49,8 +50,9 @@ export function joinRoom(code: string, name: string, server?: string): Promise<N
 
 Implementation notes (src/net/, server/rooms/):
 - `rtt` is in seconds (SI), smoothed, 0 until the first probe returns (probes run once a second).
-- `onClose` reasons: `'host-left'`, `'disconnected'` (socket lost), `'closed'` (own `close()`). `createRoom`/`joinRoom`
-  reject with `Error('Room not found' | 'Room closed' | 'Could not reach the room server')`.
+- `onClose` reasons: `'host-left'`, `'kicked'`, `'disconnected'` (socket lost), `'closed'` (own `close()`).
+  `createRoom`/`joinRoom` reject with `Error('no-room' | 'room-closed' | 'room-full' | 'unreachable')`. One table,
+  `CLOSE_REASON` in src/net/protocol.ts, spells every close code. A room takes `MAX_PEERS` (32) sockets.
 - A guest knows the host when `joinRoom` resolves; the host learns of a guest from `onPeers`. A send to an id not in
   `peers()` (or guest to guest) is dropped. Relay messages over 64 KB are dropped by the server. Strings starting
   with `\u0001` are reserved for the transport.
@@ -77,7 +79,8 @@ Implementation notes (src/net/, server/rooms/):
   'BLOCKED', the pass state and the last throw), every injury so far.
 - `ev` (host → all, reliable, JSON): big hits (feel.ts: impulse and closing speed, so guests get the banner, shake
   and rumble from the host's numbers, not from replica contact forces) and a player leaving mid-rep.
-- `kick` (host → one guest): he is removed (the host ignores him from then on).
+- `kick` (host → one guest): he is removed (the host ignores him from then on), and the host has the room server
+  close his socket (`NetRoom.kick`, a `{t:'kick', to}` to the server). He can rejoin under a new id.
 
 ## What is built (game side, src/game/net/)
 
@@ -97,8 +100,10 @@ Implementation notes (src/net/, server/rooms/):
 - **Playing**: the host steps the play at the fixed rate for everyone (no slow motion, no hit-stop) and sends
   snapshots 30 times a second of play time; the next rep starts only when every player on a position has asked for it (Enter / Start or the menu's Vote to
   restart; again takes it back; a watcher may ask but is not waited for; owner decision 2026-10-19). The HUD corner shows
-  the count (restart 1/2); the votes reset each rep.
-  Guests send their input every frame and render `Replica.render(now)`; the camera, HUD, faces, sounds and gore
+  the count (restart 1/2); the votes reset each rep. A vote (`{t:'restart', on, rep}`) names its rep: the host ignores one
+  for a rep gone by, and a guest flips his own vote at once, so a double tap asks and takes back.
+  Guests send their input every frame (over the relay at most 30 a second, a throw or a button change at once: every
+  relayed message bills the room server) and render `Replica.render(now)`; the camera, HUD, faces, sounds and gore
   read the replica world. The HUD shows your position and team, the score per team, and the room / path / ping
   corner; Tab shows everyone. Spectators follow any athlete (Space / arm buttons cycle). The pause menu keeps the
   game running: Positions (the lobby over the play, for the next rep), Vote to restart, Back to lobby (host), Leave

@@ -38,6 +38,7 @@ export function createLoopbackRoom(guestNames: string[] = ['Guest'], hostName = 
     onPeers(cb: (peers: PeerInfo[]) => void) { this.peerCbs.push(cb); }
     onClose(cb: (reason: string) => void) { this.closeCbs.push(cb); }
     close() { leave(this, 'closed'); }
+    kick(id: string) { const o = this.isHost && members.find((x) => x.selfId === id && !x.isHost); if (o) leave(o, 'kicked'); }
   }
 
   const join = (name: string, isHost = false) => { const m = new Member(name, isHost); members.push(m); announce(); return m; };

@@ -20,9 +20,10 @@ const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
 /** Transport errors and close reasons, as a player reads them. */
 export function netMessage(reason: string): string {
   return ({
-    'Room not found': 'No room has that code. Check it with the host (it ends when the host leaves).',
-    'Room closed': 'That room has closed.',
-    'Could not reach the room server': 'Could not reach the room server. Check your connection and try again.',
+    'no-room': 'No room has that code. Check it with the host (it ends when the host leaves).',
+    'room-closed': 'That room has closed.',
+    'room-full': 'That room is full.',
+    unreachable: 'Could not reach the room server. Check your connection and try again.',
     'host-left': 'The host left, so the room has closed.',
     disconnected: 'The connection to the room was lost.',
     kicked: 'The host removed you from the room.',

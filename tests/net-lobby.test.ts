@@ -7,9 +7,9 @@ import { DEFAULT_OPEN_FIELD } from '../src/sim/drills/openField';
 import { listSlots, modeById } from '../src/sim/modes/registry';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
 import { createLoopbackRoom } from '../src/net/loopback';
-import { defaultServer, PAGES_SERVER } from '../src/net/room';
+import { defaultServer, PAGES_SERVER, type NetRoom, type PeerInfo } from '../src/net/room';
 import * as L from '../src/game/net/lobby';
-import { Session } from '../src/game/net/session';
+import { Session, SNAP_HZ } from '../src/game/net/session';
 import { STD } from './helpers/scenario';
 
 beforeAll(() => mujocoEngine.init());
@@ -72,8 +72,9 @@ describe('lobby rules', () => {
     const empty = L.newLobby({ id: 'h', name: 'Host' }, 'tackle', {});
     expect(L.restartTally(empty, [null, null]).due).toBe(false); // all bots: anyone's vote restarts
     L.vote(empty, 'h', true); expect(L.restartTally(empty, [null, null]).due).toBe(true);
-    expect(L.parseToHost(JSON.stringify({ t: 'restart', on: true }))).toEqual({ t: 'restart', on: true });
-    expect(L.parseToHost(JSON.stringify({ t: 'restart', on: 'yes' }))).toBeNull();
+    expect(L.parseToHost(JSON.stringify({ t: 'restart', on: true, rep: 4 }))).toEqual({ t: 'restart', on: true, rep: 4 });
+    expect(L.parseToHost(JSON.stringify({ t: 'restart', on: 'yes', rep: 4 }))).toBeNull();
+    expect(L.parseToHost(JSON.stringify({ t: 'restart', on: true }))).toBeNull(); // which rep it is for
   });
 
   it('ready, start checks and trusting nothing a guest sends', () => {
@@ -173,6 +174,10 @@ describe('a host and two guests over a loopback room (headless)', () => {
     await host.begin(CFG, human, 0);
     for (let k = 0; k < 200 && ann.start?.rep !== 1; k++) await flush();
     expect([ann.start?.rep, host.lobby.votes, ann.voted]).toEqual([1, [], false]);
+    room.guests[0].broadcast(JSON.stringify({ t: 'restart', on: true, rep: 0 }), true); await flush(); // a vote from rep 0, late
+    expect(host.lobby.votes).toEqual([]);
+    ann.voteRestart(); ann.voteRestart(); await flush(); // a double tap inside one round trip: asked, taken back
+    expect([host.lobby.votes, ann.voted]).toEqual([[], false]);
     host.onRestart = () => {};
 
     // a late joiner watches the rep in progress; back to the lobby, the guests drop their replicas
@@ -184,6 +189,38 @@ describe('a host and two guests over a loopback room (headless)', () => {
     host.close(); await flush();
     expect(ann.closed).toBe('host-left');
   }, 120_000);
+});
+
+describe('guest input over the relay', () => {
+  it('goes at most SNAP_HZ times a second, a throw or a button change at once; a direct link sends every frame', () => {
+    const sent: unknown[] = [];
+    let via: PeerInfo['via'] = 'relay', clock = 0;
+    const room: NetRoom = { code: 'X', selfId: 'g', isHost: false, peers: () => [{ id: 'h', name: 'H', host: true, via, rtt: 0 }], send() {}, broadcast: (d) => void sent.push(d), onMessage() {}, onPeers() {}, onClose() {}, kick() {}, close() {} };
+    const g = new Session(room, mujocoEngine, 'G', { mode: 'tackle', options: {}, steer: 0 }, () => clock);
+    const second = (o: Partial<HumanInput> = {}) => { sent.length = 0; for (let f = 0; f < 144; f++) { clock += 1 / 144; g.sendInput(input(o)); } return sent.length; };
+    const n = second();
+    expect(n).toBeLessThanOrEqual(SNAP_HZ); expect(n).toBeGreaterThan(SNAP_HZ / 2);
+    sent.length = 0;
+    g.sendInput(input({ pass: { at: [1, 1, 10], loft: 0.5 } })); g.sendInput(input({ held: new Set(['jump']) })); g.sendInput(input());
+    expect(sent.length).toBe(3); // the throw, the press, the release
+    via = 'rtc';
+    expect(second()).toBe(144);
+  });
+});
+
+describe('joining while the host builds a rep (headless)', () => {
+  it('the joiner gets the rep being built, not the old one (or none)', async () => {
+    const room = createLoopbackRoom(['Ann']);
+    const host = new Session(room.host, mujocoEngine, 'Host', { mode: 'tackle', options: {}, steer: 0.3 });
+    new Session(room.guests[0], mujocoEngine, 'Ann', { mode: 'tackle', options: {}, steer: 0 });
+    await flush();
+    const building = host.begin(CFG, new HumanBrain(), 3); // the first rep: no start of the host's yet
+    const cy = new Session(room.join('Cy'), mujocoEngine, 'Cy', { mode: 'tackle', options: {}, steer: 0 });
+    await building;
+    for (let k = 0; k < 200 && !cy.play; k++) await flush();
+    expect([cy.start?.rep, cy.start?.countdown, cy.mySlot]).toEqual([0, 3, -1]);
+    host.close();
+  }, 60_000);
 });
 
 describe('versions (headless)', () => {
@@ -199,6 +236,10 @@ describe('versions (headless)', () => {
     expect(events).toContainEqual({ k: 'old', name: 'Old' });
     expect(host.lobby.players.map((p) => p.name)).toEqual(['Host', 'New']);
     expect(same.closed).toBe('');
+    const deaf = room.join('Deaf'); // another build that ignores the kick: banned, he never comes back
+    deaf.broadcast(JSON.stringify({ t: 'hi', steer: 0, v: 'r0' }), true); await flush();
+    room.join('Late'); await flush(); // a peers update with him still in the room
+    expect(host.lobby.players.map((p) => p.name)).toEqual(['Host', 'New', 'Late']);
     host.close(); await flush();
     // the other way: an older host's lobby
     const room2 = createLoopbackRoom(['Newer']);

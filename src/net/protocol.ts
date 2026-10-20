@@ -7,7 +7,11 @@ export const CODE_LENGTH = 5;
 /** The server drops any message bigger than this (bytes; a string counts its UTF-16 length). */
 export const MAX_MESSAGE = 64 * 1024;
 /** WebSocket close codes the server uses; the client turns them into onClose reasons. */
-export const CLOSE = { hostLeft: 4000, noRoom: 4004, roomClosed: 4010 } as const;
+export const CLOSE = { hostLeft: 4000, kicked: 4003, noRoom: 4004, roomClosed: 4010, roomFull: 4029 } as const;
+/** The one spelling of each close code: the server's close reason, the client's onClose reason or open() error. */
+export const CLOSE_REASON: Record<number, string> = { 4000: 'host-left', 4003: 'kicked', 4004: 'no-room', 4010: 'room-closed', 4029: 'room-full' };
+/** Sockets a room takes, the host's included (the biggest mode has 22 athletes, plus watchers). */
+export const MAX_PEERS = 32;
 
 /** A fresh code from `rand` (uniform in [0, 1)); server side uses crypto, tests can pass a stub. */
 export function makeCode(rand: () => number): string {
@@ -37,7 +41,8 @@ export type ServerMsg =
   /** The room is over (the host left): sent before the close frame, which a hibernating socket's runtime may never
    *  finish delivering. */
   | { t: 'bye'; reason: 'host-left' };
-export type ClientMsg = { t: 'signal'; to: string; data: unknown } | { t: 'ping'; ts: number };
+/** kick: the host has the server close that guest's socket. */
+export type ClientMsg = { t: 'signal'; to: string; data: unknown } | { t: 'ping'; ts: number } | { t: 'kick'; to: string };
 
 // Relay frames (binary WebSocket frames): [kind u8][id length u8][id utf-8][payload]. The sender puts the target id
 // in the header, the server swaps in the sender's id and forwards the payload untouched.

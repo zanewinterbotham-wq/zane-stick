@@ -1,10 +1,10 @@
 // The real RoomDO + routeRoom + src/net/room.ts client, wired together in-process: a fake Durable Object state,
 // a fake WebSocketPair and a WebSocket stub standing in for the browser's. Node has no RTCPeerConnection, so every
 // peer uses the relay path (the RTC path is covered by tests/e2e/net.spec.ts in Chromium).
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { RoomDO, routeRoom, type CfSocket, type DONamespace, type DOState } from '../server/rooms/index';
 import { createRoom, joinRoom, type NetRoom } from '../src/net/room';
-import { CODE_ALPHABET } from '../src/net/protocol';
+import { CODE_ALPHABET, MAX_PEERS } from '../src/net/protocol';
 
 type Data = string | ArrayBuffer;
 /** One end of a fake WebSocketPair. Events wait until someone listens, like a socket handed over in a 101. */
@@ -153,7 +153,7 @@ describe('room server over the relay path', () => {
     expect(host.peers()).toEqual([]);
   });
 
-  it('host leaving closes the room: guests see host-left, late joiners "Room closed", unknown codes "Room not found"', async () => {
+  it('host leaving closes the room: guests see host-left, late joiners room-closed, unknown codes no-room', async () => {
     ns = namespace();
     const host = await room(createRoom('H', SERVER));
     const g = await room(joinRoom(host.code, 'G', SERVER));
@@ -162,12 +162,35 @@ describe('room server over the relay path', () => {
     host.close();
     await until(() => why.length === 1);
     expect(why).toEqual(['host-left']);
-    await expect(joinRoom(host.code, 'Late', SERVER)).rejects.toThrow('Room closed');
-    await expect(joinRoom('ZZZZZ', 'X', SERVER)).rejects.toThrow('Room not found');
-    await expect(joinRoom('nope', 'X', SERVER)).rejects.toThrow('Room not found');
+    await expect(joinRoom(host.code, 'Late', SERVER)).rejects.toThrow('room-closed');
+    await expect(joinRoom('ZZZZZ', 'X', SERVER)).rejects.toThrow('no-room');
+    await expect(joinRoom('nope', 'X', SERVER)).rejects.toThrow('no-room');
     expect((await routeRoom(new Request(`${SERVER}/api/room/${host.code}`), ns)).status).toBe(410);
     expect((await routeRoom(new Request(`${SERVER}/api/room/ZZZZZ`), ns)).status).toBe(404);
+    expect((await routeRoom(new Request(`${SERVER}/api/room/%E0%A4%A`), ns)).status).toBe(404); // a bad escape: 404, not a throw
     expect((await routeRoom(new Request(`${SERVER}/api/room`), ns)).status).toBe(200);
+  });
+
+  it(`a room takes ${MAX_PEERS} sockets: the next join is refused room-full`, async () => {
+    ns = namespace();
+    const host = await room(createRoom('H', SERVER));
+    for (let i = 1; i < MAX_PEERS; i++) await room(joinRoom(host.code, `G${i}`, SERVER));
+    await expect(joinRoom(host.code, 'One too many', SERVER)).rejects.toThrow('room-full');
+    await until(() => host.peers().length === MAX_PEERS - 1);
+  });
+
+  it('the host kicks a guest through the server: his socket closes "kicked"; a guest cannot kick', async () => {
+    ns = namespace();
+    const host = await room(createRoom('H', SERVER));
+    const a = await room(joinRoom(host.code, 'A', SERVER)), b = await room(joinRoom(host.code, 'B', SERVER));
+    await until(() => host.peers().length === 2);
+    const why: string[] = [];
+    a.onClose((r) => why.push('a:' + r)); b.onClose((r) => why.push('b:' + r)); host.onClose((r) => why.push('h:' + r));
+    (b as unknown as { ws: FakeWebSocket }).ws.send(JSON.stringify({ t: 'kick', to: host.selfId })); // a guest's kick: ignored
+    host.kick(a.selfId);
+    await until(() => why.length === 1 && host.peers().length === 1);
+    await new Promise((r) => setTimeout(r, 20));
+    expect([why, host.peers().map((p) => p.name)]).toEqual([['a:kicked'], ['B']]);
   });
 
   it('a code with a host in it is never handed out twice', async () => {
@@ -176,6 +199,19 @@ describe('room server over the relay path', () => {
     const stub = ns.get(ns.idFromName('ABCDE'));
     expect((await stub.fetch(up())).status).toBe(101);
     expect((await stub.fetch(up())).status).toBe(409);
+  });
+
+  it('rate-limits each socket: a burst of 3000 messages, then 1500 a second', () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); // only the clock: the harness here runs on real timers
+    try {
+      const o = new RoomDO({} as DOState), ws = {} as CfSocket;
+      const allow = (o as unknown as { allow(ws: CfSocket): boolean }).allow.bind(o);
+      const count = (n: number) => Array.from({ length: n }, () => allow(ws)).filter(Boolean).length;
+      expect(count(3100)).toBe(3000);
+      vi.setSystemTime(Date.now() + 1000);
+      expect(count(1501)).toBe(1500);
+      expect(allow({} as CfSocket)).toBe(true); // per socket
+    } finally { vi.useRealTimers(); }
   });
 
   it('drops junk without dropping the socket', async () => {
