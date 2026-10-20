@@ -30,6 +30,13 @@ test('touch buttons press keys, the stick moves, a moved button stays moved', as
   await ptr(page, '.tstick', 'pointerup');
   expect(await keys(page)).not.toContain('KeyW');
 
+  // the pads slider: a touch near its bottom sinks the torso, near its top raises it
+  await ptr(page, '.tslider', 'pointerdown', 0, 60);
+  expect(await page.evaluate(() => window.__app.input.torsoAim())).toBeGreaterThan(0.6);
+  await ptr(page, '.tslider', 'pointermove', 0, -60);
+  expect(await page.evaluate(() => window.__app.input.torsoAim())).toBeLessThan(-0.6);
+  await ptr(page, '.tslider', 'pointerup');
+
   // the pause button opens the pause menu, and the controls hide under it; Resume brings them back
   await ptr(page, '.tbtn[data-id="pause"]', 'pointerdown'); await ptr(page, '.tbtn[data-id="pause"]', 'pointerup');
   await expect(page.locator('.touch')).toBeHidden();

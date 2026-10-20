@@ -5,13 +5,13 @@
 import { el } from '../ui';
 import type { InputManager } from './input';
 
-/** [action, label, x %, y %]: the default spot of each control's centre. 'stick' is the move stick. */
+/** [action, label, x %, y %]: the default spot of each control's centre. 'stick' is the move stick, 'torso' the pads slider. */
 const CONTROLS: [string, string, number, number][] = [
   ['stick', '', 14, 72],   // the bottom-right corner stays clear for the speed meter
   ['armL', 'L arm', 66, 86], ['sprint', 'Sprint', 77, 86],
   ['armR', 'R arm', 66, 68], ['thrust', 'Thrust', 77, 68], ['jump', 'Jump', 88, 64],
   ['shiftLock', 'Shuffle', 66, 50], ['throw', 'Throw', 77, 50], ['dive', 'Dive', 88, 44],
-  ['torsoUp', 'Pads ▲', 66, 30], ['torsoDown', 'Pads ▼', 77, 30],
+  ['torso', '', 96, 46],
   ['pause', 'II', 95, 9], ['reset', '↻', 87, 9],
 ];
 const KEY = 'zane-stick-touch-v1';
@@ -23,7 +23,9 @@ export function touchControls(input: InputManager, view: HTMLElement) {
   try { pos = JSON.parse(localStorage.getItem(KEY) ?? '{}') ?? {}; } catch { /* storage unavailable: the defaults */ }
   const root = el('div', { class: 'touch', 'aria-hidden': 'true' });
   document.body.append(root);
-  setInterval(() => { const off = !input.capture; if (root.hidden !== off) root.hidden = off; }, 200); // menus: no controls
+  let setKnob = (_v: number) => {}; // the pads slider follows the torso when something else moves it (a big hit, a new rep)
+  let sliding = false;
+  setInterval(() => { const off = !input.capture; if (root.hidden !== off) root.hidden = off; if (!sliding) setKnob(input.torsoAim()); }, 200); // menus: no controls
   let editing = false;
   // a control presses the action's first bound key, as the keyboard would (pause and reset reach the game's key handler too)
   const press = (action: string, down: boolean) => {
@@ -34,7 +36,7 @@ export function touchControls(input: InputManager, view: HTMLElement) {
   const placeAll = () => { for (const [id, , x, y] of CONTROLS) place(root.querySelector<HTMLElement>(`[data-id="${id}"]`)!, id, x, y); };
 
   for (const [id, label] of CONTROLS) {
-    const b = el('div', { class: id === 'stick' ? 'tstick' : 'tbtn', 'data-id': id }, id === 'stick' ? el('div', { class: 'knob' }) : label);
+    const b = el('div', { class: id === 'stick' ? 'tstick' : id === 'torso' ? 'tslider' : 'tbtn', 'data-id': id }, id === 'stick' || id === 'torso' ? el('div', { class: 'knob' }) : label);
     root.append(b);
     const held = new Set<string>(); // the stick's direction keys down now
     let active = false;
@@ -47,21 +49,25 @@ export function touchControls(input: InputManager, view: HTMLElement) {
         if (on !== held.has(a)) { press(a, on); if (on) held.add(a); else held.delete(a); }
       }
     };
+    // pads slider: top = pads high (torso up), bottom = low and sunk; the finger's height sets the torso angle
+    const slide = (ev: PointerEvent) => { const r = b.getBoundingClientRect(); input.setTorso(((ev.clientY - r.top) / r.height) * 2 - 1); setKnob(input.torsoAim()); };
+    if (id === 'torso') setKnob = (v) => { (b.firstChild as HTMLElement).style.top = `${(v + 1) * 50}%`; };
     b.addEventListener('pointerdown', (ev) => {
       ev.preventDefault(); active = true; b.classList.add('on');
       if (editing) return;
-      if (id === 'stick') stick(ev); else press(id, true);
+      if (id === 'stick') stick(ev); else if (id === 'torso') { sliding = true; slide(ev); } else press(id, true);
     });
     b.addEventListener('pointermove', (ev) => {
       if (!active) return;
       if (editing) { const r = root.getBoundingClientRect(); pos[id] = [(ev.clientX - r.left) / r.width * 100, (ev.clientY - r.top) / r.height * 100]; place(b, id, 0, 0); }
       else if (id === 'stick') stick(ev);
+      else if (id === 'torso') slide(ev);
     });
     const up = () => {
       if (!active) return;
       active = false; b.classList.remove('on');
       if (editing) { try { localStorage.setItem(KEY, JSON.stringify(pos)); } catch { /* not saved */ } return; }
-      if (id === 'stick') stick(null); else press(id, false);
+      if (id === 'stick') stick(null); else if (id === 'torso') sliding = false; else press(id, false);
     };
     b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
   }

@@ -120,6 +120,9 @@ export class InputManager {
 
   /** Touch look (a drag on the field), in mouse pixels. */
   addLook(dx: number, dy: number) { if (this.capture) { this.mouse.x += dx; this.mouse.y += dy; } }
+  /** Touch pads slider: the torso angle aimed at directly (−1 up .. 1 down), eased like the wheel. */
+  setTorso(v: number, player = 0) { this.torsoTarget[player] = Math.max(-1, Math.min(1, v)); }
+  torsoAim(player = 0) { return this.torsoTarget[player]; }
   clearLook() { this.mouse.x = this.mouse.y = 0; }
   resetTorso() { this.torso = [0, 0]; this.torsoTarget = [0, 0]; this.mouse.wheel = 0; }
   /** A big hit: lowered pads come back up to the running position (torso 0, eased); a raised torso stays. */

@@ -239,12 +239,16 @@ table.controls .bind:hover { background: #2c4431; }
 html, body { overscroll-behavior: none; }
 .trotate { display: none; }
 @media (orientation: portrait) { .trotate { display: grid; place-items: center; position: absolute; inset: 0; pointer-events: auto; background: rgba(5, 12, 7, 0.85); color: #fff; font: 600 18px system-ui, sans-serif; text-align: center; padding: 24px; } }
-.tbtn, .tstick { position: absolute; pointer-events: auto; touch-action: none; transform: translate(-50%, -50%); display: grid; place-items: center; }
+.tbtn, .tstick, .tslider { position: absolute; pointer-events: auto; touch-action: none; transform: translate(-50%, -50%); display: grid; place-items: center; }
 .tbtn { width: 62px; height: 62px; border-radius: 50%; background: rgba(10, 20, 14, 0.45); border: 2px solid rgba(255, 255, 255, 0.5); color: #fff; font: 600 13px system-ui, sans-serif; }
 .tbtn.small { width: auto; height: 36px; padding: 0 12px; border-radius: 18px; }
 .tbtn.on { background: rgba(255, 255, 255, 0.4); }
 .tstick { width: 140px; height: 140px; border-radius: 50%; background: rgba(10, 20, 14, 0.3); border: 2px solid rgba(255, 255, 255, 0.4); }
+.tslider { width: 44px; height: 150px; border-radius: 22px; background: rgba(10, 20, 14, 0.3); border: 2px solid rgba(255, 255, 255, 0.4); }
+.tslider::before, .tslider::after { position: absolute; left: 50%; transform: translateX(-50%); color: #fff; font: 600 11px system-ui, sans-serif; }
+.tslider::before { content: 'High'; top: -18px; } .tslider::after { content: 'Low'; bottom: -18px; }
+.tslider .knob { position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; transform: translate(-50%, -50%); border-radius: 50%; background: rgba(255, 255, 255, 0.5); }
 .tstick .knob { width: 56px; height: 56px; border-radius: 50%; background: rgba(255, 255, 255, 0.5); }
 .tbtn[hidden] { display: none; }
 @media (pointer: coarse) { .keylist { display: none; } } /* the key list means nothing on a touch screen */
-.touch.editing .tbtn:not(.small), .touch.editing .tstick { outline: 2px dashed #ffd23f; outline-offset: 3px; }
+.touch.editing .tbtn:not(.small), .touch.editing .tstick, .touch.editing .tslider { outline: 2px dashed #ffd23f; outline-offset: 3px; }
