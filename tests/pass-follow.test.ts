@@ -4,17 +4,14 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { ScriptBrain } from '../src/sim/brains/script';
 import type { PassCmd } from '../src/sim/control/types';
-import { DEFAULT_OPEN_FIELD } from '../src/sim/drills/openField';
 import type { Vec3 } from '../src/sim/math';
 import { Play } from '../src/sim/modes/play';
 import { modeById, resolveOptions } from '../src/sim/modes/registry';
 import { decodeInput, encodeInput } from '../src/sim/net/input';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
-import { STD } from './helpers/scenario';
+import { CFG } from './helpers/scenario';
 
 beforeAll(() => mujocoEngine.init());
-const { carrier, timeLimit: _t, mode: _m, ...base } = DEFAULT_OPEN_FIELD;
-const CFG = { ...base, physics: STD, bot: carrier };
 
 /** The QB sprints sideways and throws at 1.5 s to a point 15 m upfield of him; returns how far he ran during the
  *  motion (x) and where the pass was aimed at the release. */

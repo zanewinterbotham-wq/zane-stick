@@ -6,18 +6,15 @@ import { CoverBrain } from '../src/sim/brains/cover';
 import { TacklerBrain } from '../src/sim/brains/tackler';
 import type { AthleteView, Brain } from '../src/sim/brains/types';
 import { neutralCommands } from '../src/sim/control/types';
-import { DEFAULT_OPEN_FIELD } from '../src/sim/drills/openField';
 import { coverLanes } from '../src/sim/modes/kicks';
 import { Play } from '../src/sim/modes/play';
 import { modeById, resolveOptions } from '../src/sim/modes/registry';
 import type { Vec3 } from '../src/sim/math';
 import { mujocoEngine } from '../src/sim/physics/mujoco';
 import { Rng } from '../src/sim/rng';
-import { STD } from './helpers/scenario';
+import { CFG } from './helpers/scenario';
 
 beforeAll(() => mujocoEngine.init());
-const { carrier, timeLimit: _t, mode: _m, ...base } = DEFAULT_OPEN_FIELD;
-const CFG = { ...base, physics: STD, bot: carrier };
 
 /** The human's role played by the bot brain the play would give him, swapped when the role changes. */
 function autoHuman(get: () => Play | null): Brain {
