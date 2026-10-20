@@ -122,6 +122,8 @@ export class InputManager {
   addLook(dx: number, dy: number) { if (this.capture) { this.mouse.x += dx; this.mouse.y += dy; } }
   /** Touch pads slider: the torso angle aimed at directly (−1 up .. 1 down), eased like the wheel. */
   setTorso(v: number, player = 0) { this.torsoTarget[player] = Math.max(-1, Math.min(1, v)); }
+  /** Whether a toggle action is on now: side shuffle, and sprint in toggle mode (touch buttons light up). */
+  toggled(action: string, player = 0) { return action === 'shiftLock' ? this.shiftLock[player] : action === 'sprint' && this.sprintToggle && this.sprintOn[player]; }
   torsoAim(player = 0) { return this.torsoTarget[player]; }
   clearLook() { this.mouse.x = this.mouse.y = 0; }
   resetTorso() { this.torso = [0, 0]; this.torsoTarget = [0, 0]; this.mouse.wheel = 0; }

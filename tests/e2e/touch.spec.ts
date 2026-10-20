@@ -30,6 +30,13 @@ test('touch buttons press keys, the stick moves, a moved button stays moved', as
   await ptr(page, '.tstick', 'pointerup');
   expect(await keys(page)).not.toContain('KeyW');
 
+  // Shuffle is a toggle: it stays lit while on, and a second tap turns it off
+  const tap = async (id: string) => { await ptr(page, `.tbtn[data-id="${id}"]`, 'pointerdown'); await page.waitForTimeout(100); await ptr(page, `.tbtn[data-id="${id}"]`, 'pointerup'); };
+  await tap('shiftLock');
+  await expect(page.locator('.tbtn[data-id="shiftLock"]')).toHaveClass(/lit/);
+  await tap('shiftLock');
+  await expect(page.locator('.tbtn[data-id="shiftLock"]')).not.toHaveClass(/lit/);
+
   // the pads slider: a touch near its bottom sinks the torso, near its top raises it
   await ptr(page, '.tslider', 'pointerdown', 0, 60);
   expect(await page.evaluate(() => window.__app.input.torsoAim())).toBeGreaterThan(0.6);

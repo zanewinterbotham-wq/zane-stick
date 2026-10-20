@@ -25,7 +25,8 @@ export function touchControls(input: InputManager, view: HTMLElement) {
   document.body.append(root);
   let setKnob = (_v: number) => {}; // the pads slider follows the torso when something else moves it (a big hit, a new rep)
   let sliding = false;
-  setInterval(() => { const off = !input.capture; if (root.hidden !== off) root.hidden = off; if (!sliding) setKnob(input.torsoAim()); }, 200); // menus: no controls
+  setInterval(() => { const off = !input.capture; if (root.hidden !== off) root.hidden = off; if (!sliding) setKnob(input.torsoAim());
+    for (const a of ['shiftLock', 'sprint']) root.querySelector(`[data-id="${a}"]`)?.classList.toggle('lit', input.toggled(a)); }, 100); // menus: no controls
   let editing = false;
   // a control presses the action's first bound key, as the keyboard would (pause and reset reach the game's key handler too)
   const press = (action: string, down: boolean) => {

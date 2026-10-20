@@ -242,6 +242,7 @@ html, body { overscroll-behavior: none; }
 .tbtn, .tstick, .tslider { position: absolute; pointer-events: auto; touch-action: none; transform: translate(-50%, -50%); display: grid; place-items: center; }
 .tbtn { width: 62px; height: 62px; border-radius: 50%; background: rgba(10, 20, 14, 0.45); border: 2px solid rgba(255, 255, 255, 0.5); color: #fff; font: 600 13px system-ui, sans-serif; }
 .tbtn.small { width: auto; height: 36px; padding: 0 12px; border-radius: 18px; }
+.tbtn.lit { background: rgba(255, 210, 63, 0.55); border-color: #ffd23f; }
 .tbtn.on { background: rgba(255, 255, 255, 0.4); }
 .tstick { width: 140px; height: 140px; border-radius: 50%; background: rgba(10, 20, 14, 0.3); border: 2px solid rgba(255, 255, 255, 0.4); }
 .tslider { width: 44px; height: 150px; border-radius: 22px; background: rgba(10, 20, 14, 0.3); border: 2px solid rgba(255, 255, 255, 0.4); }
