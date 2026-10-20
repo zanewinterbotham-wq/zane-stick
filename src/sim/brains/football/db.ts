@@ -19,17 +19,18 @@
 // Commands as a human.
 import { GAIT_SPEED } from '../../control/hand';
 import { neutralCommands, type Commands } from '../../control/types';
-import { clamp, wrapAngle, type Vec3 } from '../../math';
+import { clamp, type Vec3 } from '../../math';
 import type { Rng } from '../../rng';
 import { BlockerBrain } from '../blocker';
 import { CarrierBrain, type BotDifficulty } from '../carrier';
 import { catchPoint } from '../returner';
-import { TacklerBrain, turnRate } from '../tackler';
+import { Steer } from '../steer';
+import { TacklerBrain } from '../tackler';
 import type { AthleteView, Brain, Perception } from '../types';
 import { ACC_DT, ballAt, ballSpot, carry, inFlight, passIsMine, REACH, rel, toWorld } from './sense';
 import type { ManAssign, PlayCall, PlayFrame, ZoneAssign, ZoneKind } from './types';
 
-const FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08;
+const FULL = GAIT_SPEED.sprint;
 /** Fastest wanted speed (m/s) he backpedals or shuffles at, facing his man or the QB, before he opens his hips and
  *  runs (the animator's backpedal tops out at 6.5 m/s; a DB's at ~5–6). */
 const BP_MAX = 5;
@@ -56,8 +57,6 @@ const HANDOFF = 1.5, LANE = 1, DEEP_CUSH = 3;
  *  a team mate is MINE m nearer where it comes down. */
 const HANDS_T = 0.45, HANDS_D = 2.5, JUMP_H = 2.15, JUMP_T = 0.3, MINE = 2;
 const DIVE_D: [number, number] = [0.4, 2], DIVE_T = 0.35;
-/** Plant and cut when the wanted direction is PLANT_ANGLE rad off a run faster than PLANT_RUN m/s (as TacklerBrain). */
-const PLANT_ANGLE = 0.6, PLANT_RUN = 2.5, PLANT_HOLD = 0.1, PLANT_GAP = 0.6, TURN_MAX = 6;
 /** Below this ground speed (m/s) the wanted direction is taken at once. */
 const SNAP_V = 2;
 
@@ -91,8 +90,7 @@ export class DefensiveBackBrain implements Brain {
   private history: Perception[] = [];
   /** Frames seen before the one seen now (ACC_DT s of them): how a receiver's run is changing. */
   private past: Perception[] = [];
-  private heading = NaN; private mag = 0;
-  private plantSide: -1 | 1 = 1; private plantUntil = 0; private plantFree = 0;
+  private steer = new Steer();
   private tackler: TacklerBrain; private carrier: CarrierBrain; private blocker: BlockerBrain;
   private err: [number, number] = [0, 0]; private errUntil = -Infinity;
   private ballX = NaN;
@@ -254,21 +252,9 @@ export class DefensiveBackBrain implements Brain {
 
   /** Toward a ground velocity (m/s, world): a wanted direction well off the run is a plant and cut at speed (the
    *  break on a receiver's break), a pivot when slow; else the heading turns no faster than footing allows, and the
-   *  magnitude is filtered (as TacklerBrain.chase / run). */
+   *  magnitude is filtered (Steer.chase, as the tackler). */
   private go(p: Perception, me: AthleteView, vx: number, vz: number, dt: number, c: Commands) {
-    const n = Math.min(FULL, Math.hypot(vx, vz)), sp = Math.hypot(me.comVel[0], me.comVel[2]);
-    const off = n > 1 && sp > 0.5 && (me.comVel[0] * vx + me.comVel[2] * vz) / (sp * Math.hypot(vx, vz)) < Math.cos(PLANT_ANGLE);
-    const plant = off && sp > PLANT_RUN && p.time >= this.plantFree;
-    if (plant) { this.plantSide = me.comVel[2] * vx - me.comVel[0] * vz > 0 ? 1 : -1; this.plantUntil = p.time + PLANT_HOLD; this.plantFree = p.time + PLANT_GAP; }
-    if (p.time < this.plantUntil) c.plantCut = this.plantSide;
-    if (Number.isNaN(this.heading)) this.heading = me.heading;
-    if (n > 1e-3) {
-      const e = wrapAngle(Math.atan2(vx, vz) - this.heading), w = (off && sp <= PLANT_RUN ? TURN_MAX : turnRate(sp)) * dt;
-      // near a stand a step goes any way at once (the backpedal's first step turns him round)
-      this.heading = wrapAngle(this.heading + (plant || sp < SNAP_V ? e : clamp(e, -w, w)));
-    }
-    this.mag += (n / FULL - this.mag) * (1 - Math.exp(-dt / MOVE_TAU));
-    c.move = { x: Math.sin(this.heading) * this.mag, z: Math.cos(this.heading) * this.mag };
+    this.steer.chase(p, me, vx, vz, dt, c, SNAP_V);
     c.gait = 'sprint';
   }
 }

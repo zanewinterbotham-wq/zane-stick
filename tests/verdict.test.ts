@@ -32,4 +32,9 @@ describe('result words from each side', () => {
     const [k0, k1] = await ended('keepaway', 'stripped', 1);
     expect([k0, k1]).toEqual(['The ball was taken', 'You took the ball']);
   }, 120_000);
+
+  it('a kick mode words the spot from each side (the tee is team 0\'s 35)', async () => {
+    const [w0, w1] = await ended('kickoff', 'down', 0);
+    expect(w0).toMatch(/at your 35$/); expect(w1).toMatch(/at their 35$/);
+  }, 60_000);
 });

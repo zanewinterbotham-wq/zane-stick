@@ -2,6 +2,7 @@
 // → WorldSetup.jump → BodyView.jump for the animator, and the world's launch). Defaults are the realism-calibrated jump
 // (docs/realism-sources.md S4); every knob changes the commanded motion or the launch's cap, never adds a force in
 // contact with another player.
+import { tuned } from '../tuning';
 
 export interface JumpTuning {
   /** Standing take-off strength, × the default launch cap (the COM rise grows with it; 1 ≈ a 0.55–0.6 m vertical). */
@@ -48,15 +49,7 @@ export const JUMP_RANGES: Record<keyof JumpTuning, [number, number, number]> = {
 
 /** Defaults with `p`'s valid knobs on top: unknown keys and non-numbers are dropped, numbers clamped to their range
  *  (saved settings and a host's start message are trust boundaries). */
-export function jumpTuning(p: Partial<JumpTuning> | undefined | null): JumpTuning {
-  const out = { ...JUMP_DEFAULTS };
-  if (!p || typeof p !== 'object') return out;
-  for (const k of Object.keys(JUMP_RANGES) as (keyof JumpTuning)[]) {
-    const v = (p as Record<string, unknown>)[k];
-    if (typeof v === 'number' && Number.isFinite(v)) out[k] = Math.min(JUMP_RANGES[k][1], Math.max(JUMP_RANGES[k][0], v));
-  }
-  return out;
-}
+export const jumpTuning = (p: Partial<JumpTuning> | undefined | null): JumpTuning => tuned(JUMP_DEFAULTS, JUMP_RANGES, p);
 
 /** A running take-off (faster than `from`, m/s: no counter-movement, off the next foot down) pushes for `stance` s from
  *  that foot's touchdown, while a foot is on the turf or was a moment ago. A one-foot take-off's contact lasts ~0.1 s

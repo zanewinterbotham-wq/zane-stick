@@ -1,6 +1,7 @@
 // QB tuning (owner request 2026-10-19: a setting to make the bot QB better; tweakable in the Tuning panel and exported
 // with the rest). Skill is the bot QB's reaction and precision over the full range (difficulty = reaction / decision /
 // precision only, CLAUDE.md); the other knobs are his decision habits. Game-design values, not measurements.
+import { tuned } from '../../tuning';
 import type { BotDifficulty } from '../carrier';
 
 export interface QbTuning {
@@ -26,14 +27,7 @@ export const QB_RANGES: Record<keyof QbTuning, [number, number, number]> = {
 };
 
 /** Defaults with valid overrides applied (unknown keys and bad values dropped, values clamped to their range). */
-export function qbTuning(o: unknown): QbTuning {
-  const out = { ...QB_DEFAULTS };
-  if (o && typeof o === 'object') for (const k of Object.keys(QB_DEFAULTS) as (keyof QbTuning)[]) {
-    const v = (o as Record<string, unknown>)[k];
-    if (typeof v === 'number' && Number.isFinite(v)) out[k] = Math.min(QB_RANGES[k][1], Math.max(QB_RANGES[k][0], v));
-  }
-  return out;
-}
+export const qbTuning = (o: unknown): QbTuning => tuned(QB_DEFAULTS, QB_RANGES, o);
 
 /** The bot QB's reaction and noise at a skill: 0.5 is about what he had from the juking setting at its default
  *  (reaction 0.35 s, noise 0.35); 1 reads the field 0.05 s late with almost no noise. */

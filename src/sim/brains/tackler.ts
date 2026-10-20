@@ -7,11 +7,12 @@
 import { GAIT_SPEED } from '../control/hand';
 import { neutralCommands, type Commands } from '../control/types';
 import { HOBBLE } from '../injury';
-import { clamp, wrapAngle, type Vec3 } from '../math';
+import { clamp, type Vec3 } from '../math';
 import type { Rng } from '../rng';
 import type { BotDifficulty } from './carrier';
 import { catchPoint, incoming } from './returner';
 import { blockerInWay, shed, shedSide } from './shed';
+import { LAT_ACCEL, Steer } from './steer';
 import { leadShoulder, type AthleteView, type Brain, type Perception } from './types';
 
 /** Speed the intercept is planned at (m/s) and its longest lead (s); aim this far to the carrier's goal side
@@ -37,21 +38,13 @@ const DIVE_D: [number, number] = [0.3, 2.2], DIVE_T = 0.4, DIVE_SIDE = 0.8, DIVE
 const BALL_LEAD = 0.5, BALL_BRAKE = 5, BALL_V = 1.2, BALL_REACH = 1.6, BALL_SHORT = 0.25;
 /** A loose ball higher than this (m) is caught in the air, the hands this far below the head (m, the chest). */
 const BALL_HIGH = 1, CHEST_BELOW_HEAD = 0.3;
-/** Closing speed while breaking down and while striking (m/s); the move command's filter time (s). */
-const BREAK_V = 3, STRIKE_V = 6, MOVE_TAU = 0.08;
+/** Closing speed while breaking down and while striking (m/s). */
+const BREAK_V = 3, STRIKE_V = 6;
 const FULL = GAIT_SPEED.sprint;
-/** Plant and cut (as a carrier does) when the wanted direction is PLANT_ANGLE rad off a run faster than
- *  PLANT_RUN m/s; the command is held PLANT_HOLD s, and the next one waits PLANT_GAP s (the cut lasts 0.45 s). */
-const PLANT_ANGLE = 0.6, PLANT_RUN = 2.5, PLANT_HOLD = 0.1, PLANT_GAP = 0.6;
 
-/** Sideways acceleration a run can turn with (m/s², ~0.6 g) and the fastest heading change (rad/s): at speed a
- *  heading swung faster than the feet can follow leaves the body facing off its run, and it falls. */
-const LAT_ACCEL = 3.5, TURN_MAX = 6;
 /** AI tackling skill 0..1 (difficulty): how late the tackler sees a cut (reaction, s) and how noisy his angles and
  *  reads are. 0.5 is about the old fixed bot; 1 reads a juke within ~0.12 s. Nothing else about him changes. */
 export const tacklerSkill = (k: number): BotDifficulty => ({ reaction: 0.12 + 0.28 * (1 - k), noise: 0.08 + 0.4 * (1 - k) });
-
-export const turnRate = (speed: number) => Math.min(TURN_MAX, LAT_ACCEL / Math.max(speed, 1));
 
 type Phase = 'pursue' | 'breakdown' | 'strike';
 
@@ -64,10 +57,9 @@ export function predict(a: AthleteView, dt: number): AthleteView {
 
 export class TacklerBrain implements Brain {
   private history: Perception[] = [];
-  private heading = NaN; private mag = 0;
+  private steer = new Steer();
   private aimErr = 0; private aimUntil = 0;
   private dived = false; private wasDown = false;
-  private plantSide: -1 | 1 = 1; private plantUntil = 0; private plantFree = 0;
   private side: -1 | 1 = 1;
   phase: Phase = 'pursue';
   private phaseUntil = 0;
@@ -95,7 +87,7 @@ export class TacklerBrain implements Brain {
         // a blocker between us: get off him first (shed.ts)
         this.side = shedSide(me, b, t, this.side); this.phase = 'pursue';
         const [vx, vz] = shed(me, b, t, this.side, c);
-        this.run(me, vx, vz, dt, c);
+        this.steer.run(me, vx, vz, dt, c);
       } else if (t.down) this.touch(me, t, dt, c); else this.tackle(p, me, t, dt, c);
     }
     else if (seen.ball) this.recover(me, seen.ball, p.time - seen.time, dt, c);
@@ -107,7 +99,7 @@ export class TacklerBrain implements Brain {
   private touch(me: AthleteView, t: AthleteView, dt: number, c: Commands) {
     const dx = t.com[0] - me.com[0], dz = t.com[2] - me.com[2], d = Math.hypot(dx, dz) || 1e-6;
     const v = Math.min(FULL, 1.5 + 1.2 * d); // flat out from afar, easing in to land on him under control
-    this.run(me, dx / d * v, dz / d * v, dt, c);
+    this.steer.run(me, dx / d * v, dz / d * v, dt, c);
     c.gait = 'sprint'; c.contactMode = d < 4; c.face = { x: dx / d, z: dz / d };
     if (d < 2) { c.sink = 0.8; c.lean.fwd = 0.6; c.armL = c.armR = 1; c.gripL = c.gripR = true; c.aim = t.pelvis; }
   }
@@ -144,11 +136,11 @@ export class TacklerBrain implements Brain {
       // he cannot run on through the wall: a lead point far out of bounds sent the chase straight into it
       ax = clamp(me.com[0] + ax, -p.field.halfWidth - OUT_LEAD, p.field.halfWidth + OUT_LEAD) - me.com[0];
       const n = Math.hypot(ax, az) || 1e-6;
-      this.chase(p, me, ax / n * FULL, az / n * FULL, dt, c);
+      this.steer.chase(p, me, ax / n * FULL, az / n * FULL, dt, c);
     } else {
       const along = t.comVel[0] * ux + t.comVel[2] * uz, close = this.phase === 'breakdown' ? BREAK_V : STRIKE_V;
       const mine = Math.max(close, along + close);
-      this.chase(p, me, t.comVel[0] - along * ux + ux * mine, t.comVel[2] - along * uz + uz * mine, dt, c);
+      this.steer.chase(p, me, t.comVel[0] - along * ux + ux * mine, t.comVel[2] - along * uz + uz * mine, dt, c);
     }
     c.gait = 'sprint';
     c.contactMode = d < 4;
@@ -184,7 +176,7 @@ export class TacklerBrain implements Brain {
     // stop BALL_SHORT short of it (the stoop reaches that far); on the way slow only as far as needed
     const ds = Math.max(d - BALL_SHORT, 0);
     const v = ds < 0.05 ? 0 : clamp(Math.min(FULL, Math.sqrt(2 * BALL_BRAKE * ds), Math.sqrt(LAT_ACCEL * d / Math.max(2 * sin, 0.3))), ds > 0.8 ? BALL_V : 0.3, FULL);
-    this.run(me, dx / d * v, dz / d * v, dt, c);
+    this.steer.run(me, dx / d * v, dz / d * v, dt, c);
     c.gait = v > 6 ? 'sprint' : 'jog';
     if (d < BALL_REACH) {
       // hands to the ball, hips down: the world aims each hand at it and closes on it
@@ -201,20 +193,6 @@ export class TacklerBrain implements Brain {
     if (!this.dived && rolling && sp > 4 && sp * sp > 2 * (BALL_BRAKE - 1) * d && this.onLine(me, x, z, sp)) { c.dive = true; this.dived = true; }
   }
 
-  /** Run after the carrier toward a ground velocity: a way to go that swings well off the run (a juke, a miss) is
-   *  answered with a plant and cut at speed, and turned to at once when slow, never bent in over a long arc. */
-  private chase(p: Perception, me: AthleteView, vx: number, vz: number, dt: number, c: Commands) {
-    const sp = Math.hypot(me.comVel[0], me.comVel[2]), vn = Math.hypot(vx, vz);
-    const off = vn > 1 && sp > 0.5 && (me.comVel[0] * vx + me.comVel[2] * vz) / (sp * vn) < Math.cos(PLANT_ANGLE);
-    const plant = off && sp > PLANT_RUN && p.time >= this.plantFree;
-    if (plant) {
-      this.plantSide = me.comVel[2] * vx - me.comVel[0] * vz > 0 ? 1 : -1;
-      this.plantUntil = p.time + PLANT_HOLD; this.plantFree = p.time + PLANT_GAP;
-    }
-    if (p.time < this.plantUntil) c.plantCut = this.plantSide;
-    this.run(me, vx, vz, dt, c, plant, off && sp <= PLANT_RUN);
-  }
-
   /** Whether a point (relative x, z) lies DIVE_D ahead along the current run and within DIVE_SIDE of its line. */
   private onLine(me: AthleteView, x: number, z: number, sp: number) {
     const ux = me.comVel[0] / sp, uz = me.comVel[2] / sp, along = x * ux + z * uz;
@@ -229,18 +207,5 @@ export class TacklerBrain implements Brain {
     const disc = b * b - 4 * a * cc;
     if (b >= 0 || disc < 0) return LEAD_MAX;
     return Math.min(LEAD_MAX, a < 1e-9 ? -cc / b : (-b - Math.sqrt(disc)) / (2 * a));
-  }
-
-  /** Move toward a ground velocity (m/s, world): the heading turns no faster than footing allows at this speed
-   *  (or jumps, on a plant) and the magnitude is filtered, so the command does not chatter. */
-  private run(me: AthleteView, vx: number, vz: number, dt: number, c: Commands, snap = false, pivot = false) {
-    const n = Math.hypot(vx, vz);
-    if (Number.isNaN(this.heading)) this.heading = me.heading;
-    if (n > 1e-3) {
-      const d = wrapAngle(Math.atan2(vx, vz) - this.heading), w = (pivot ? TURN_MAX : turnRate(Math.hypot(me.comVel[0], me.comVel[2]))) * dt;
-      this.heading = wrapAngle(this.heading + (snap ? d : clamp(d, -w, w)));
-    }
-    this.mag += (Math.min(1, n / FULL) - this.mag) * (1 - Math.exp(-dt / MOVE_TAU));
-    c.move = { x: Math.sin(this.heading) * this.mag, z: Math.cos(this.heading) * this.mag };
   }
 }

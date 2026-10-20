@@ -1,6 +1,7 @@
 // Catch tuning (owner decisions 2026-10-18 / 2026-10-19: catching is an arcade rule, "make catching way easier" with
 // settings for what makes it easier or harder). The same numbers for every athlete; game-design values, not
 // measurements. Play.catchTry and Play.loose read them (PlayConfig.catching overrides any of them).
+import { tuned } from '../tuning';
 
 export interface CatchTuning {
   /** A raised hand this close to the ball (m, hand surface to ball tip), or two raised hands with the ball this close
@@ -26,17 +27,11 @@ export const DEFAULT_CATCHING: CatchTuning = {
   reach: 0.45, twoHands: 0.98, oneHand: 0.85, body: 0.55, edge: 0.8, hard: 0.85, moving: 0.95, air: 0.92, contact: 0.65, blind: 0.7,
 };
 
-/** Each knob's range (the settings sliders and validation of stored values). */
-export const CATCH_RANGES: Record<keyof CatchTuning, [number, number]> = {
-  reach: [0.15, 0.8], twoHands: [0.3, 1], oneHand: [0.1, 1], body: [0, 1], edge: [0.2, 1], hard: [0.2, 1], moving: [0.5, 1], air: [0.3, 1], contact: [0, 1], blind: [0, 1],
+/** Each knob's [min, max, step] (the settings sliders and validation of stored values). */
+export const CATCH_RANGES: Record<keyof CatchTuning, [number, number, number]> = {
+  reach: [0.15, 0.8, 0.01], twoHands: [0.3, 1, 0.01], oneHand: [0.1, 1, 0.01], body: [0, 1, 0.01], edge: [0.2, 1, 0.01], hard: [0.2, 1, 0.01],
+  moving: [0.5, 1, 0.01], air: [0.3, 1, 0.01], contact: [0, 1, 0.01], blind: [0, 1, 0.01],
 };
 
 /** Defaults with valid overrides applied (unknown keys and bad values dropped, values clamped to their range). */
-export function catchTuning(o: unknown): CatchTuning {
-  const out = { ...DEFAULT_CATCHING };
-  if (o && typeof o === 'object') for (const k of Object.keys(DEFAULT_CATCHING) as (keyof CatchTuning)[]) {
-    const v = (o as Record<string, unknown>)[k];
-    if (typeof v === 'number' && Number.isFinite(v)) out[k] = Math.min(CATCH_RANGES[k][1], Math.max(CATCH_RANGES[k][0], v));
-  }
-  return out;
-}
+export const catchTuning = (o: unknown): CatchTuning => tuned(DEFAULT_CATCHING, CATCH_RANGES, o);

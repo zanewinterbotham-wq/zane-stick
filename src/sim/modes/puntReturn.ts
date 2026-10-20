@@ -1,13 +1,13 @@
 // Punt return: the bots punt from their own side of the field, higher and shorter than a kickoff, with gunners
 // racing down outside. Field it and return it; a punt that touches your end zone is a touchback (NFL), and one the
 // gunners get to first is downed where they take it.
-import { lob, ownYard, returnPlay } from './kicks';
+import { lob, ownYard, PUNTER, returnPlay } from './kicks';
 import { attackDir, END_LINE, nth, side, YD } from './rules';
 import type { ModeDef, PlayerSpec } from './types';
 
-/** The punter's depth behind the line of scrimmage (yd), the drop (m: in front of him, off the foot), hang time (s)
- *  for a punt of d yd from the line (4.25 s for 45 yd), and the returner this far deeper than the landing (m). */
-const DEPTH = 14, FOOT: [number, number] = [0.7, 0.5], hang = (d: number) => 2 + 0.05 * d, DEEP = 2;
+/** Hang time (s) for a punt of d yd from the line (4.25 s for 45 yd), and the returner this far deeper than the
+ *  landing (m). */
+const hang = (d: number) => 2 + 0.05 * d, DEEP = 2, { depth: DEPTH, foot: FOOT } = PUNTER;
 /** Punt spread: direction (rad) and distance (fraction), 1 sd; spiral spin (rad/s about the long axis). */
 const AIM_SD = 0.07, DIST_SD = 0.06, SPIRAL = 40;
 /** Gunners line up this wide, jammers just across the line from them. */

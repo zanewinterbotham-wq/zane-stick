@@ -4,8 +4,9 @@
 // uprights and above the crossbar, before it touches the turf. A kick that hits a rusher, or never gets away, is
 // blocked: a loose ball, live for both teams.
 import { BlockerBrain } from '../brains/blocker';
+import { IdleBrain } from '../brains/idle';
 import type { Rng } from '../rng';
-import { BALL_REST_Y, ballTouches, goalposts, hold, KICK_RULES, kick, near, POST, rethink, row, SMOTHER, spotVerdict } from './kicks';
+import { BALL_REST_Y, ballTouches, FLIGHT_MIN, goalposts, KICK_RULES, kick, near, POST, row, SMOTHER, spotVerdict } from './kicks';
 import { END_LINE, YD } from './rules';
 import type { ModeDef, ModeOptions, PlayerSpec, PlaySetup } from './types';
 
@@ -30,7 +31,7 @@ export function fieldGoal(o: ModeOptions, rng: Rng, aim?: number): PlaySetup {
     // until the kick is up, the kicker waits and the protection guards the ball; after it the ball is everyone's
     brain(play, i, rng) {
       if (kicked && !flight || play.team(i) !== K) return null;
-      return i === kicker ? hold(rng) : new BlockerBrain(rng, play.cfg.difficulty);
+      return i === kicker ? new IdleBrain(rng) : new BlockerBrain(rng, play.cfg.difficulty);
     },
     step(play) {
       const w = play.world, b = play.ballPos();
@@ -38,7 +39,7 @@ export function fieldGoal(o: ModeOptions, rng: Rng, aim?: number): PlaySetup {
         if (play.repTime < kickAt) return;
         kicked = true;
         // a rusher on the ball (or holding it): no kick, it is live where it lies
-        if (w.ballCarrier >= 0 || near(play, 0, b, SMOTHER)) { play.note = 'BLOCKED'; return rethink(play); }
+        if (w.ballCarrier >= 0 || near(play, 0, b, SMOTHER)) { play.note = 'BLOCKED'; return play.reassign(); }
         flight = true; kickedAt = play.repTime; prevZ = b[2];
         return kick(play, K, vel, [-10, 0, 0]);
       }
@@ -47,9 +48,9 @@ export function fieldGoal(o: ModeOptions, rng: Rng, aim?: number): PlaySetup {
         return Math.abs(b[0]) < POST.halfGap && b[1] > POST.crossbar ? play.end('fieldgoal', K, play.rules.points.fieldGoal) : play.end('nogood');
       }
       prevZ = b[2];
-      if (!flight || play.repTime - kickedAt <= 0.1) return;
+      if (!flight || play.repTime - kickedAt <= FLIGHT_MIN) return;
       const t = ballTouches(play), bc = w.ballCarrier;
-      if (t.teams[0] || (bc >= 0 && play.team(bc) === 0)) { play.note = 'BLOCKED'; flight = false; if (bc < 0) rethink(play); }
+      if (t.teams[0] || (bc >= 0 && play.team(bc) === 0)) { play.note = 'BLOCKED'; flight = false; if (bc < 0) play.reassign(); }
       else if (t.turf || t.teams[1] || bc >= 0) { flight = false; play.end('nogood'); }
     },
     verdict(play, T) {

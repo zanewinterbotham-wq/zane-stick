@@ -15,13 +15,14 @@ import { clamp, wrapAngle, type Vec3 } from '../../math';
 import type { Rng } from '../../rng';
 import { leadPoint, THROW, throwVelocity } from '../../throw';
 import { CarrierBrain, type BotDifficulty } from '../carrier';
-import { predict, TacklerBrain, turnRate } from '../tackler';
+import { Steer, turnRate } from '../steer';
+import { predict, TacklerBrain } from '../tackler';
 import type { AthleteView, Brain, Perception } from '../types';
 import { ballAt, BREAK_V, carry, CATCH_H, chaseTime, JUKE_REACH, PLANT_ANGLE, DB_SPEED, laneOpen, nearestRush, openness, opponents, REACH, releasePoint, rel, sackTime, toWorld, TURN_BACK } from './sense';
 import { routePath, type RoutePath } from './routes';
 import type { PassAssign, PlayCall } from './types';
 
-const FULL = GAIT_SPEED.sprint, MOVE_TAU = 0.08;
+const FULL = GAIT_SPEED.sprint;
 /** Drop depth behind the QB's start (m) per drop: a 3-step from under centre sets at ~5 yd, a 5-step ~7, a 7-step ~9. */
 export const DROP_DEPTH: Record<PassAssign['drop'], number> = { 0: 0, 3: 3.5, 5: 5.5, 7: 7.5 };
 /** Drop speed (m/s): a back-pedal, and turning and running; it brakes into the set at DROP_BRAKE m/s². Feet set for
@@ -281,7 +282,7 @@ export class QBBrain implements Brain {
   private past: Perception[] = [];
   private tackler: TacklerBrain;
   private runner: CarrierBrain | null = null;
-  private heading = NaN; private mag = 0;
+  private steer = new Steer();
   private routes: KnownRoutes | null = null;
   private dropSpot: Vec3 | null = null; private setAt = NaN; private lookFrom = NaN;
   private look: number;
@@ -391,13 +392,7 @@ export class QBBrain implements Brain {
 
   /** Move toward a ground velocity (m/s, world) as the tackler's run: the heading turns as fast as footing allows. */
   private run(me: AthleteView, vx: number, vz: number, dt: number, c: Commands) {
-    const n = Math.hypot(vx, vz);
-    if (Number.isNaN(this.heading)) this.heading = Math.atan2(vx, vz) || me.heading;
-    if (n > 1e-3) {
-      const d = wrapAngle(Math.atan2(vx, vz) - this.heading), w = (Math.hypot(me.comVel[0], me.comVel[2]) < 2 ? 6 : turnRate(Math.hypot(me.comVel[0], me.comVel[2]))) * dt;
-      this.heading = wrapAngle(this.heading + clamp(d, -w, w));
-    }
-    this.mag += (Math.min(1, n / FULL) - this.mag) * (1 - Math.exp(-dt / MOVE_TAU));
-    c.move = { x: Math.sin(this.heading) * this.mag, z: Math.cos(this.heading) * this.mag };
+    const sp = Math.hypot(me.comVel[0], me.comVel[2]);
+    this.steer.run(me, vx, vz, dt, c, sp < 2 ? 6 : turnRate(sp), false, 1, Math.atan2(vx, vz) || me.heading);
   }
 }
