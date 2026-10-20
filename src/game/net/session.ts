@@ -85,7 +85,7 @@ export class Session {
   allBots() { this.edit(() => L.allBots(this.lobby)); }
   kick(id: string) {
     if (!this.isHost || id === this.selfId) return;
-    this.room.send(id, JSON.stringify({ t: 'kick' } satisfies ToGuest), true);
+    this.tell({ t: 'kick' }, id);
     this.banned.add(id);
     this.gone(id);
     this.sendLobby();
@@ -93,12 +93,14 @@ export class Session {
   }
 
   private say(m: L.ToHost) { this.room.broadcast(JSON.stringify(m), true); }
+  /** Host: a reliable game message to one guest, or (no `to`) to every guest. */
+  private tell(m: ToGuest, to?: string) { const s = JSON.stringify(m); if (to) this.room.send(to, s, true); else this.room.broadcast(s, true); }
   private edit(f: () => void) { if (!this.isHost) return; f(); this.sendLobby(); this.due(); }
   /** Host: start the next rep once its votes are in (asked during a running rep only). */
   private due() { if (this.isHost && this.start && this.play && this.lobby.phase === 'game' && this.tally.due) this.onRestart(); }
   private sendLobby() {
     this.pingSent = this.clock();
-    this.room.broadcast(JSON.stringify({ t: 'lobby', lobby: this.lobby } satisfies ToGuest), true);
+    this.tell({ t: 'lobby', lobby: this.lobby });
     this.onLobby(this.lobby);
   }
 
@@ -110,7 +112,7 @@ export class Session {
     const start: StartMsg = { mode: l.mode, options: { ...l.options }, seed: cfg.seed, rep, assign, cfg, countdown };
     l.phase = 'game'; l.votes = [];
     this.sendLobby();
-    this.room.broadcast(JSON.stringify({ t: 'start', start } satisfies ToGuest), true); // first, so the guests build while the host does
+    this.tell({ t: 'start', start }); // first, so the guests build while the host does
     for (const r of this.remote.values()) r.brain = null;
     const fixed = assign.map((id) => {
       const r = id && id !== this.selfId ? this.remote.get(id) : undefined;
@@ -144,7 +146,7 @@ export class Session {
     }
   }
 
-  event(ev: NetEvent) { if (this.isHost) this.room.broadcast(JSON.stringify({ t: 'ev', ev } satisfies ToGuest), true); }
+  event(ev: NetEvent) { if (this.isHost) this.tell({ t: 'ev', ev }); }
 
   /** Host: back to the lobby (everyone's screens follow the phase). */
   toLobby() {
@@ -180,7 +182,7 @@ export class Session {
       // another build cannot play here (its replica would not match, nor its messages): he is told to reload
       if (m.v !== this.version) {
         const name = this.known.get(from) ?? '';
-        this.room.send(from, JSON.stringify({ t: 'kick', why: 'version' } satisfies ToGuest), true);
+        this.tell({ t: 'kick', why: 'version' }, from);
         this.gone(from); this.sendLobby();
         this.onEvent({ k: 'old', name }); this.event({ k: 'old', name });
         return;
@@ -232,7 +234,7 @@ export class Session {
     for (const p of list) this.known.set(p.id, p.name);
     for (const id of joined) {
       this.remote.set(id, { brain: null, steer: 0.3, seq: -1 });
-      if (this.start && this.play) this.room.send(id, JSON.stringify({ t: 'start', start: { ...this.start, countdown: 0 } } satisfies ToGuest), true); // joined mid-game: he watches this rep
+      if (this.start && this.play) this.tell({ t: 'start', start: { ...this.start, countdown: 0 } }, id); // joined mid-game: he watches this rep
     }
     for (const id of left) this.gone(id, names.get(id) ?? '');
     if (joined.length || left.length || changed || this.clock() - this.pingSent >= PING_EVERY / 1000) this.sendLobby();
