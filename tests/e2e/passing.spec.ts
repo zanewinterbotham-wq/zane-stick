@@ -6,10 +6,10 @@ import { expect, test, type Page } from '@playwright/test';
 type Aim = { aid: { arc?: { loft: number }; meter?: number } } | null;
 type App = { __app: { aim: Aim; human: { latest: { pass?: unknown } | null; think: (...a: unknown[]) => unknown } } };
 
-async function start(page: Page, mode: RegExp) {
+async function start(page: Page, mode: RegExp, settings: Record<string, unknown> = {}) {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.addInitScript(() => { if (!localStorage.getItem('zane-stick-settings-v1')) localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false }, mute: true })); });
+  await page.addInitScript((x) => { if (!localStorage.getItem('zane-stick-settings-v1')) localStorage.setItem('zane-stick-settings-v1', JSON.stringify({ preset: 'minimum', perf: { worker: false }, mute: true, ...x })); }, settings);
   await page.goto('/');
   await page.getByRole('button', { name: /^Play/ }).click({ timeout: 60_000 });
   await page.getByRole('button', { name: mode }).click();

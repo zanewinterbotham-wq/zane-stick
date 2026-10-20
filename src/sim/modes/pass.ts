@@ -124,7 +124,10 @@ export const PASS_MODE: ModeDef = {
             if (play.pass === 'complete') return off ? `Complete for ${yards}` : `Caught for ${yards}`;
             if (play.pass === 'intercepted') return off ? 'Intercepted!' : 'You picked it off';
             return yd < 0 && play.ended === 'down' ? 'Sacked' : `QB run for ${yards}`;
-          case 'time': return play.pass === 'none' ? 'Time: the ball never came out' : '';
+          case 'time':
+            if (play.pass === 'complete') return off ? `Time: complete for ${yards}` : `Time: caught for ${yards}`;
+            if (play.pass === 'intercepted') return off ? 'Time: intercepted' : 'Time: you picked it off';
+            return play.pass === 'none' ? 'Time: the ball never came out' : 'Time';
           default: return '';
         }
       },

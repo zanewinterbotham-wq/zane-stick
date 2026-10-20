@@ -97,7 +97,7 @@ test('title loads, drill starts, mouse and keyboard controls reach the brain, co
   // run at the carrier: contact mode switches itself on
   await page.keyboard.down('KeyW');
   await expect.poll(async () => (await latest(page)).contact, { timeout: 45_000 }).toBe(true); // slow under a full parallel run
-  await expect(page.locator('.status')).toContainText('CONTACT');
+  await expect(page.locator('.status')).toContainText('CONTACT', { timeout: 45_000 }); // the carrier may dodge out of it and back
   await page.mouse.down({ button: 'left' }); await page.mouse.down({ button: 'right' });
   await page.waitForTimeout(600);
   await page.screenshot({ path: 'test-results/02-play.png' });

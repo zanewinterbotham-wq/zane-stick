@@ -64,6 +64,18 @@ AI layer that later runs 11 on 11 (later phases), so they take their job as data
   pure helpers (openness, throwing lane, pursuit angle, intercept point) in one module so every brain uses the same
   football sense. Unit tests per helper, headless tests per brain with 2 receivers and 2 defenders as well as 1 v 1.
 
+## As built (2026-10-19)
+
+- QB 1-on-1 (`src/sim/modes/pass.ts`) builds a PlayCall from its options and runs the football brains (QBBrain,
+  ReceiverBrain, DefensiveBackBrain; one object per athlete for the whole play). Options: your role, receivers 1–3
+  (WR1–3 vs CB1/CB2/S), concept (none / smash / flood / mesh / verts) or WR1's route, coverage man off / man press /
+  zone. The QB leads along the route from the play call (release delay counted) and does not scramble (no rush yet).
+- Shared football sense (openness, throw window, lanes, pursuit, zone spots, man/zone read, the ball's flight, the
+  'pass is mine' rule) lives in `src/sim/brains/football/sense.ts`.
+- Throwing in every mode (NFL): laterals any time (a live ball, fielded not recovered), one forward pass a play.
+- Weak spots: completion rates are low-ish (drops at the edge of the hands, hard throws), interceptions rare without a
+  pass rush, two zone-landmark tables (sense.zoneSpot and the DB's zoneLandmark).
+
 ## Shell: the QB throw control
 
 **Owner decision 2026-10-19: the placement reticle is the only QB control**; the other five schemes (aim & charge,

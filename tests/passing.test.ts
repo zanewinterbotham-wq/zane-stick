@@ -154,7 +154,7 @@ describe('forward pass rules', () => {
       play = await Play.create(mujocoEngine, CFG, PASS_MODE, { ...resolveOptions(PASS_MODE), route: 'curl', coverage: 'off' }, thrower(0.9, (p) => {
         const s = p.world.scene.athletes[cb].state, from = p.world.handPoint(p.world.athletes[0], 1);
         return { at: leadPoint(from, { pos: [s.com[0], 1.4, s.com[2]], vel: [...s.comVel] as Vec3 }, 0.2), loft: 0.2 };
-      }, () => play), rep, { fixed: [null, null, hands()] });
+      }, () => play), rep, { fixed: [null, new ScriptBrain(() => {}), hands()] }); // the receiver stands: the rule, not his coverage of the ball
       while (!play.ended && play.pass !== 'intercepted' && play.repTime < 6) play.step();
       seen.push(play.pass);
       if (play.pass === 'intercepted') picked = play; else play.destroy();
@@ -166,8 +166,8 @@ describe('forward pass rules', () => {
     expect(play.lastCatch?.athlete).toBe(cb);
     run(play);
     expect(play.recoveredBy).toBe(-1);
-    expect(play.verdictFor(0)).toMatch(/Intercepted!|Pick six against you/);
-    expect(play.verdictFor(1)).toMatch(/You picked it off|Pick six!/);
+    expect(play.verdictFor(0)).toMatch(/Intercepted!|Time: intercepted|Pick six against you/);
+    expect(play.verdictFor(1)).toMatch(/You picked it off|Time: you picked it off|Pick six!/);
     play.destroy();
   });
 
