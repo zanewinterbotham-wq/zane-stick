@@ -44,6 +44,9 @@ export interface FieldSpec {
   seed?: number; physics?: PhysicsSettings; diff?: BotDifficulty;
   /** Default: NFL rules with out of bounds off and a 10 min limit (the field never ends a test early). */
   rules?: Partial<Rules>;
+  /** One forward pass allowed from behind the line (PlaySetup.los, as the 'pass' mode): a Commands.pass is thrown by
+   *  the World, and the play ends incomplete on the turf. Default off (a pass command is ignored). */
+  passing?: boolean;
 }
 
 /** One sample of a run: time since the snap (s), every athlete's play-frame position and his separation (m, to the
@@ -86,7 +89,7 @@ export async function buildField(spec: FieldSpec): Promise<Field> {
         const w = toWorld(call.frame, p.depth, p.x), t = i < nOff ? team : (1 - team) as 0 | 1;
         return { team: t, label: `${i < nOff ? 'O' : 'D'}${i}`, pos: [w[0], w[2]], yaw: p.yaw ?? (attackDir(t) > 0 ? 0 : Math.PI), params: p.params };
       }),
-      ball: { holder: spec.ball ?? 0 }, rules,
+      ball: { holder: spec.ball ?? 0 }, rules, los: spec.passing ? los : undefined,
       // one brain per athlete for the whole play (a change of possession keeps it); none: the role brain
       brain: (_play, i, rng) => {
         const p = players[i];
