@@ -49,6 +49,12 @@ const JUKE_REACH = 5, JUKE_MAX = 1.3;
 const JUKE_TTC: [number, number] = [0.55, 0.9], JUKE_D = 4, STUTTER: [number, number] = [0.25, 0.4], STUTTER_P = 0.35;
 /** An opponent with a blocker of mine within HELD m (COM to COM) is engaged: HELD_COST m less of a threat. */
 const HELD = 1.2, HELD_COST = 4;
+/** A path that runs within MATE_CLEAR m (COM to COM) of a standing team mate costs MATE_COST per m short of it: he
+ *  runs off his blocker's hip, not into his back (a bump strips the ball as well as a hit does). */
+const MATE_CLEAR = 0.85, MATE_COST = 6;
+/** Pressing the block: a team mate within MATE_AHEAD m ahead along the run and MATE_SIDE m of its line slows the
+ *  carrier (to MATE_SLOW of his pace at MATE_CLEAR m), so a block driven back does not meet him at full speed. */
+const MATE_AHEAD = 3.2, MATE_SIDE = 0.9, MATE_SLOW = 0.2;
 
 export type CarrierMove = 'run' | 'bend' | 'cut' | 'cutback' | 'sideline' | 'stutter' | 'past';
 
@@ -125,6 +131,13 @@ export class CarrierBrain implements Brain {
         target = goalH + this.plan.off;
       }
     }
+    // press the block: ease off behind a team mate in the way until the path the planner picks gets round him
+    const hx = Math.sin(this.heading), hz = Math.cos(this.heading);
+    for (const [j, b] of p.athletes.entries()) {
+      if (j === p.self || b.team !== me.team || b.down) continue;
+      const rx = b.com[0] - me.com[0], rz = b.com[2] - me.com[2], along = rx * hx + rz * hz, side = Math.abs(rx * hz - rz * hx);
+      if (along > 0 && along < MATE_AHEAD && side < MATE_SIDE) magT = Math.min(magT, clamp(MATE_SLOW + (1 - MATE_SLOW) * (along - MATE_CLEAR) / (MATE_AHEAD - MATE_CLEAR), MATE_SLOW, 1));
+    }
     // stay in bounds: past the tackler nothing else steers, so the sideline does
     const margin = p.field.halfWidth - Math.abs(me.com[0]);
     if (margin < 4) target = wrapAngle(target - Math.sign(me.com[0]) * Math.sign(Math.cos(goalH)) * (4 - margin) * 0.25);
@@ -162,7 +175,8 @@ export class CarrierBrain implements Brain {
   /** Smallest gap (m) the path keeps from the tackler's reachable area, capped, plus progress toward the goal. */
   private score(p: Perception, me: AthleteView, o: AthleteView, h: number, V: number, off: number) {
     const ux = Math.sin(h) * V, uz = Math.cos(h) * V, a = 10 * PLAN_DT;
-    let qx = me.com[0], qz = me.com[2], vx = me.comVel[0], vz = me.comVel[2], m = Infinity;
+    let qx = me.com[0], qz = me.com[2], vx = me.comVel[0], vz = me.comVel[2], m = Infinity, mate = Infinity;
+    const mates = p.athletes.filter((b, j) => j !== p.self && b.team === p.athletes[p.self].team && !b.down);
     for (let t = PLAN_DT; t <= HORIZON + 1e-9; t += PLAN_DT) {
       const ex = ux - vx, ez = uz - vz, e = Math.hypot(ex, ez);
       if (e > a) { vx += ex * a / e; vz += ez * a / e; } else { vx = ux; vz = uz; }
@@ -173,11 +187,12 @@ export class CarrierBrain implements Brain {
       const out = Math.abs(qx) - (p.field.halfWidth - 1);
       if (out > 0) g = Math.min(g, -2 * out);
       m = Math.min(m, g);
+      for (const b of mates) mate = Math.min(mate, Math.hypot(qx - b.com[0] - b.comVel[0] * t, qz - b.com[2] - b.comVel[2] * t));
     }
     // keep the tackler on the off-arm side (ball away from him) when it costs nothing
     const left = (o.com[0] - me.com[0]) * Math.cos(h) - (o.com[2] - me.com[2]) * Math.sin(h); // + = tackler on the left
     const offArm = this.carryArm === 2 ? 1 : -1;
-    return Math.min(m, MARGIN_CAP) + PROGRESS * Math.cos(off) + (left * offArm > 0 ? 0.15 : 0);
+    return Math.min(m, MARGIN_CAP) + PROGRESS * Math.cos(off) + (left * offArm > 0 ? 0.15 : 0) - MATE_COST * Math.max(0, MATE_CLEAR - mate);
   }
 
   /** Ramp the commanded heading toward the target: bend it in, or plant and cut when the change is big. */

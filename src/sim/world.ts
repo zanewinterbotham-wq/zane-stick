@@ -119,6 +119,8 @@ export class Athlete {
   hitDir: [number, number] = [0, 0]; hitPre = 0; hitMem = 0;
   /** Contact force received from other athletes this step (N, world), and its last SUP.window seconds (N·s). */
   hitForce: Vec3 = [0, 0, 0];
+  /** The part of hitForce from opponents: only a hit is boosted by hit power, not a bump into a team mate. */
+  hitOpp: Vec3 = [0, 0, 0];
   hitWindow: Vec3[] = []; hitImpulse: Vec3 = [0, 0, 0];
   /** Carry force applied this step (N, world): tests check it is zero during player contact. */
   carryForce: Vec3 = [0, 0, 0];
@@ -347,7 +349,7 @@ export class World {
    *  force he received last step on top, along it (half on the pelvis, half on the thorax, so it does not spin
    *  him), plus a lift so a big hit takes him off the turf. The hitter driving through gets nothing. */
   private applyHitPower(a: Athlete, hp: number) {
-    const f = a.hitForce, fh = Math.hypot(f[0], f[2]);
+    const f = a.hitOpp, fh = Math.hypot(f[0], f[2]);
     if (fh < 1e-6 || a.downBy || this.commonSpeed(a, f[0] / fh, f[2] / fh) < HIT.minV) return;
     // on at most a real hit's force: past it the contact force is the solver prying apart bodies that met inside one
     // step (a head-on closing at 17 m/s), and multiplying that launched the pushed man tens of m/s into the air
@@ -497,7 +499,7 @@ export class World {
       a.downBy = null; a.handTouch = [null, null];
       a.playerContactNow = false;
       a.touching = [];
-      a.hitForce = [0, 0, 0];
+      a.hitForce = [0, 0, 0]; a.hitOpp = [0, 0, 0];
     }
     let hit = 0;
     const pairs = new Map<string, HitEvent & { n: Vec3 }>();
@@ -525,6 +527,8 @@ export class World {
         // the contact normal points from the first geom to the second: b is pushed along it, a against it
         const fa = this.athletes[c.a.athlete].hitForce, fb = this.athletes[c.b.athlete].hitForce;
         for (let j = 0; j < 3; j++) { fa[j] -= c.normal[j] * c.force; fb[j] += c.normal[j] * c.force; }
+        const A = this.athletes[c.a.athlete], B = this.athletes[c.b.athlete];
+        if (A.setup.team !== B.setup.team) for (let j = 0; j < 3; j++) { A.hitOpp[j] -= c.normal[j] * c.force; B.hitOpp[j] += c.normal[j] * c.force; }
         const key = `${c.a.athlete}:${c.a.seg}:${c.b.athlete}:${c.b.seg}`;
         let e = pairs.get(key);
         if (!e) {
