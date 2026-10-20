@@ -231,3 +231,15 @@ table.controls .bind:hover { background: #2c4431; }
 .roster-hud { top: 50%; left: 50%; transform: translate(-50%, -50%); min-width: min(440px, 90vw); pointer-events: none; }
 .roster-hud .row { display: grid; grid-template-columns: 1fr auto auto; gap: 18px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
 .countdown { position: fixed; top: 38%; left: 50%; transform: translate(-50%, -50%); font-size: 120px; font-weight: 800; color: var(--accent); text-shadow: 0 4px 18px #000; pointer-events: none; }
+/* touch controls (input/touch.ts): under the menus, over the field */
+#view { touch-action: none; }
+.touch { position: fixed; inset: 0; z-index: 5; pointer-events: none; user-select: none; -webkit-user-select: none; }
+.tbtn, .tstick { position: fixed; pointer-events: auto; touch-action: none; transform: translate(-50%, -50%); display: grid; place-items: center; }
+.tbtn { width: 62px; height: 62px; border-radius: 50%; background: rgba(10, 20, 14, 0.45); border: 2px solid rgba(255, 255, 255, 0.5); color: #fff; font: 600 13px system-ui, sans-serif; }
+.tbtn.small { width: auto; height: 36px; padding: 0 12px; border-radius: 18px; }
+.tbtn.on { background: rgba(255, 255, 255, 0.4); }
+.tstick { width: 140px; height: 140px; border-radius: 50%; background: rgba(10, 20, 14, 0.3); border: 2px solid rgba(255, 255, 255, 0.4); }
+.tstick .knob { width: 56px; height: 56px; border-radius: 50%; background: rgba(255, 255, 255, 0.5); }
+.tbtn[hidden] { display: none; }
+@media (pointer: coarse) { .keylist { display: none; } } /* the key list means nothing on a touch screen */
+.touch.editing .tbtn:not(.small), .touch.editing .tstick { outline: 2px dashed #ffd23f; outline-offset: 3px; }

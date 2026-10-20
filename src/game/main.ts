@@ -14,6 +14,7 @@ import { autoChoose, chooseBest, reportText, runBenchmark } from './benchmark';
 import { ChaseCamera } from './camera';
 import { SoundCues } from './cues';
 import { HitMeter, hitFeel, MPH, type BigHit, type HitSound } from './feel';
+import { touchControls } from './input/touch';
 import { InputManager, keyName, keysText, type InputFrame } from './input/input';
 import { effectivePreset, PRESETS, type PresetName } from './presets';
 import { GameRenderer } from './render/renderer';
@@ -146,6 +147,7 @@ export class App {
     this.cam.follow = this.input.autoCamera = this.settings.autoCamera;
     this.input.sprintToggle = this.settings.sprintToggle;
     this.input.setKeyboard(this.settings.bindings);
+    touchControls(this.input, canvas);
     this.audio.muted = this.settings.mute;
     this.audio.onVoice = (v) => this.renderer?.voice(v);
     // Alt+Tab (or any switch away): pause, which frees the mouse; Resume or a click on the field captures it again

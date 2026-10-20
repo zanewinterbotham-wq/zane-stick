@@ -118,6 +118,8 @@ export class InputManager {
   /** Keyboard lock list for fullscreen: only the bound keys, so Alt+Tab, the Windows key and Esc keep working. */
   lockKeys(): string[] { return [...this.keyCodes].filter((k) => !k.startsWith('Mouse') && !RESERVED.test(k)); }
 
+  /** Touch look (a drag on the field), in mouse pixels. */
+  addLook(dx: number, dy: number) { if (this.capture) { this.mouse.x += dx; this.mouse.y += dy; } }
   clearLook() { this.mouse.x = this.mouse.y = 0; }
   resetTorso() { this.torso = [0, 0]; this.torsoTarget = [0, 0]; this.mouse.wheel = 0; }
   /** A big hit: lowered pads come back up to the running position (torso 0, eased); a raised torso stays. */
