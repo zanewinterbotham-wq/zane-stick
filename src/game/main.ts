@@ -578,7 +578,8 @@ class App {
     }
     if (!this.drill) return;
     if (e.code === 'Tab' && this.net) { this.rosterOn = true; e.preventDefault(); return; } // held: who is in the room
-    const k = this.input.bindings.keyboard;
+    if (e.repeat) return; // a held key restarts, votes or toggles once
+    const k =this.input.bindings.keyboard;
     if (k.pause.includes(e.code)) this.pauseMenu();
     else if (k.reset.includes(e.code)) void this.newRep();
     else if (k.overlay.includes(e.code)) { this.settings.overlay = !this.settings.overlay; this.save(); }
