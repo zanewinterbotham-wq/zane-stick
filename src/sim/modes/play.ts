@@ -36,7 +36,7 @@ import type { ModeDef, ModeOptions, PlayConfig, PlaySetup, Rules } from './types
 export interface Seats { human?: number; fixed?: readonly (Brain | null | undefined)[] }
 
 /** Stands still: a placeholder brain until the bots get theirs. */
-const STILL: Brain = { think: () => neutralCommands() };
+export const STILL: Brain = { think: () => neutralCommands() };
 
 export type RepEnd = 'down' | 'touchdown' | 'safety' | 'touchback' | 'out' | 'time' | 'fieldgoal' | 'incomplete' | (string & {}) | null;
 /** A play's forward pass: not thrown, in the air, caught by the passing team, by the other, or dead on the turf. */
@@ -66,8 +66,8 @@ const CONTACT_MEM = 1;
 /** Untouched on the turf this long (s, flickers shorter than UP_TIME included) he has given himself up: a get-up
  *  takes about 2.5 s. */
 const GIVE_UP = 4;
-/** A loose ball this low (m, centre) beyond a line is on the turf out of bounds. */
-const BALL_ON_TURF = 0.25;
+/** A loose ball this low (m, centre) is on the turf (beyond a line: out of bounds). */
+export const BALL_ON_TURF = 0.25;
 
 export class Play {
   rep = 0;

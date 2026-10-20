@@ -2,14 +2,15 @@
 // off the punter's foot after the snap-to-kick time unless a rusher is on the ball by then. A punt that hits a
 // rusher, or never gets away, is blocked: a loose ball, live for both teams (scoop it and score). One that clears
 // the line untouched is away; a punter brought down with the ball is a stop.
+import { IdleBrain } from '../brains/idle';
 import type { Vec3 } from '../math';
-import { ballTouches, goalposts, hold, KICK_RULES, kick, lob, near, ownYard, rethink, row, SMOTHER, spotVerdict } from './kicks';
+import { ballTouches, FLIGHT_MIN, goalposts, KICK_RULES, kick, lob, near, ownYard, PUNTER, row, SMOTHER, spotVerdict } from './kicks';
 import { attackDir, YD } from './rules';
 import type { ModeDef, PlayerSpec } from './types';
 
-/** Line of scrimmage (the punting team's own yd line), punter depth (yd), the drop (m: ahead, up), the punt (yd past
- *  the line, hang s), and the ball past the line by this much (m) is away. */
-const LOS = 30, DEPTH = 14, FOOT: [number, number] = [0.7, 0.5], PUNT = 45, HANG = 4.25, AWAY = 2;
+/** Line of scrimmage (the punting team's own yd line), the punt (yd past the line, hang s), and the ball past the
+ *  line by this much (m) is away. */
+const LOS = 30, PUNT = 45, HANG = 4.25, AWAY = 2, { depth: DEPTH, foot: FOOT } = PUNTER;
 
 export const PUNT_BLOCK: ModeDef = {
   id: 'puntBlock', title: 'Punt Block', preview: 'modes/puntBlock.jpg',
@@ -31,7 +32,7 @@ export const PUNT_BLOCK: ModeDef = {
     return {
       players, ball: { holder: P }, rules: KICK_RULES, props: goalposts(),
       // the punter waits for the snap-to-kick time; afterwards everyone plays the ball
-      brain: (play, i, rng) => (i === P && !kicked && play.world.ballCarrier === P ? hold(rng) : null),
+      brain: (play, i, rng) => (i === P && !kicked && play.world.ballCarrier === P ? new IdleBrain(rng) : null),
       step(play) {
         const w = play.world;
         if (!kicked) {
@@ -44,11 +45,11 @@ export const PUNT_BLOCK: ModeDef = {
           flight = true; kickedAt = play.repTime;
           return kick(play, K, lob(PUNT * YD + Math.abs(from[2] - los), HANG, FOOT[1], [Math.sin(e), s * Math.cos(e)]), [0, 0, 40], from);
         }
-        if (!flight || play.repTime - kickedAt <= 0.1) return;
+        if (!flight || play.repTime - kickedAt <= FLIGHT_MIN) return;
         const t = ballTouches(play), bc = w.ballCarrier;
-        if (t.teams[0] || (bc >= 0 && play.team(bc) === 0)) { play.note = 'BLOCKED'; flight = false; if (bc < 0) rethink(play); }
+        if (t.teams[0] || (bc >= 0 && play.team(bc) === 0)) { play.note = 'BLOCKED'; flight = false; if (bc < 0) play.reassign(); }
         else if (s * (play.ballPos()[2] - los) > AWAY) play.end('punt');
-        else if (t.turf || t.teams[1] || bc >= 0) { flight = false; if (bc < 0) rethink(play); }
+        else if (t.turf || t.teams[1] || bc >= 0) { flight = false; if (bc < 0) play.reassign(); }
       },
       verdict(play, T) {
         const spot = spotVerdict(play, T);

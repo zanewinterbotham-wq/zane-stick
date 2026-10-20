@@ -6,24 +6,18 @@
 import { BALL } from '../anatomy/equipment';
 import { BlockerBrain } from '../brains/blocker';
 import { CoverBrain, type CoverLane } from '../brains/cover';
-import { IdleBrain } from '../brains/idle';
 import { ReturnerBrain } from '../brains/returner';
-import type { Brain } from '../brains/types';
-import { neutralCommands } from '../control/types';
 import type { Vec3 } from '../math';
 import type { PropDesc } from '../physics/engine';
-import type { Rng } from '../rng';
-import type { Play } from './play';
+import { BALL_ON_TURF, STILL, type Play } from './play';
 import { attackDir, END_LINE, GOAL_LINE, inOwnEndZone, NFL, nth, YD } from './rules';
 import type { PlayerSpec, PlaySetup, Rules } from './types';
 
 const G = 9.81;
 /** A ball lying on its side on the turf (centre). */
 export const BALL_REST_Y = BALL.diameter / 2 + 0.005;
-/** A loose ball this low (m, centre) is on the turf. */
-const ON_TURF = 0.25;
 /** Ball contacts this soon after the kick (s) are the ones it is leaving (the turf it lay on). */
-const FLIGHT_MIN = 0.1;
+export const FLIGHT_MIN = 0.1;
 /** A rusher with any segment this close to the kick point (m) when the ball should go is on it: no kick. */
 export const SMOTHER = 0.45;
 /** NFL goalposts (m): crossbar height, half the gap inside the uprights, uprights above the crossbar, tube radius,
@@ -32,10 +26,8 @@ export const POST = { crossbar: 3.05, halfGap: 2.82, above: 10.67, r: 0.06, base
 /** Plays with kicks end here at the latest (s). */
 export const KICK_RULES: Rules = { ...NFL, timeLimit: 40 };
 
-/** Waits where he lined up (IdleBrain): the kicker and the punter until the ball is away. */
-export const hold = (rng: Rng): Brain => new IdleBrain(rng);
-/** Everyone set, still, for the moment before a kickoff or a return's kick (KICK_AT: too short to idle in). */
-const SET: Brain = { think: () => neutralCommands() };
+/** The punter's depth behind the line of scrimmage (yd) and the drop (m: in front of him, up), off the foot. */
+export const PUNTER = { depth: 14, foot: [0.7, 0.5] } as const;
 
 /** z of a team's own yard line `yd` (0: its own goal line, 50: midfield). */
 export const ownYard = (team: 0 | 1, yd: number) => attackDir(team) * (yd * YD - GOAL_LINE);
@@ -99,9 +91,6 @@ export function near(play: Play, team: 0 | 1, at: Vec3, r: number) {
   });
 }
 
-/** Every bot thinks again: the kick came down, so roles change without a change of possession. */
-export function rethink(play: Play) { play.reassign(); }
-
 /** n players of `team` in a row across the field at z: from x0 outward, alternating sides, `gap` m apart; labelled
  *  `label`, numbered when there are several, in `group`. */
 export function row(team: 0 | 1, n: number, z: number, gap: number, x0: number, label: string, group?: string): PlayerSpec[] {
@@ -164,7 +153,7 @@ export function returnPlay(s: ReturnSpec): PlaySetup {
     rules: KICK_RULES,
     props: goalposts(),
     brain(play, i, rng) {
-      if (!kicked) return SET;
+      if (!kicked) return STILL; // everyone set for the moment before the kick (KICK_AT: too short to idle in)
       const bc = play.world.ballCarrier, lane = lanes[i];
       if (lane && (bc < 0 ? flight : play.team(bc) === R)) return new CoverBrain(rng, play.cfg.defense ?? play.cfg.difficulty, lane);
       // a catch changes possession before this play's step sees the flight is over
@@ -182,7 +171,8 @@ export function returnPlay(s: ReturnSpec): PlaySetup {
       if (bc >= 0 && play.team(bc) === R) received = true;
       if (flight && play.repTime - kickedAt > FLIGHT_MIN) {
         const t = ballTouches(play);
-        if (bc >= 0 || t.turf || t.teams[0] || t.teams[1]) { flight = false; if (bc < 0) rethink(play); }
+        // the kick came down: roles change without a change of possession
+        if (bc >= 0 || t.turf || t.teams[0] || t.teams[1]) { flight = false; if (bc < 0) play.reassign(); }
       }
       if (received) return;
       if (bc >= 0 && play.team(bc) === K) {
@@ -191,7 +181,7 @@ export function returnPlay(s: ReturnSpec): PlaySetup {
         if (punt) return play.end('touchback');
         return;
       }
-      if (bc < 0 && b[1] < ON_TURF && inOwnEndZone(r, R, b[2])) {
+      if (bc < 0 && b[1] < BALL_ON_TURF && inOwnEndZone(r, R, b[2])) {
         const v = play.world.scene.propVel(play.ball);
         if (punt || Math.hypot(v[0], v[1], v[2]) < 1) play.end('touchback');
       }
