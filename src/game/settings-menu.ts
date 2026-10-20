@@ -1,7 +1,7 @@
 // The Settings screen: one tabbed panel for every setting (title menu and pause menu both open it).
 // To add a setting, add a row to GAMEPLAY_ROWS (or the matching tab builder) and a field to Settings.
 import { CATCH_RANGES, catchTuning, type CatchTuning } from '../sim/modes/catching';
-import { JUMP_DEFAULTS, JUMP_RANGES, jumpTuning, type JumpTuning } from '../sim/anim/jump';
+import { JUMP_RANGES, jumpTuning, type JumpTuning } from '../sim/anim/jump';
 import { QB_RANGES, qbTuning, type QbTuning } from '../sim/brains/football/qbTuning';
 import type { SupportSettings } from '../sim/anim/types';
 import { DEFAULT_GAINS } from '../sim/control/hand';
@@ -57,7 +57,6 @@ export type GameplayRow =
   | { kind: 'toggle'; label: string; desc: string; get(s: Settings): boolean; set(s: Settings, v: boolean): void };
 
 const sec = (v: number) => `${v.toFixed(2)} s`, m = (v: number) => `${v.toFixed(2)} m`;
-/** The Advanced tab's Jump section: [knob, label, description, format]; ranges are JUMP_RANGES. */
 /** The bot QB knobs on the Advanced tab: [field, label, what it does, format]. */
 const QB_ROWS: [keyof QbTuning, string, string, (v: number) => string][] = [
   ['skill', 'Bot QB skill', 'How fast he reads the field and how precise his reads and leads are (default 50 %; 100 % is elite).', (v) => `${Math.round(v * 100)} %`],
@@ -69,6 +68,7 @@ const QB_ROWS: [keyof QbTuning, string, string, (v: number) => string][] = [
   ['misread', 'Misreads', 'How much he misjudges how open a receiver is.', (v) => `${v.toFixed(2)}×`],
   ['open', 'How open before he throws', 'How open a receiver must look before he throws to him (lower: riskier throws).', (v) => `${Math.round(v * 100)} %`],
 ];
+/** The jump knobs on the Advanced tab: [knob, label, what it does, format]. */
 const JUMP_ROWS: [keyof JumpTuning, string, string, (v: number) => string][] = [
   ['height', 'Jump height', 'Standing take-off strength (higher jumps higher).', x],
   ['runHeight', 'Running jump height', 'One-foot take-off strength off a run.', x],
@@ -198,19 +198,42 @@ function gameplayTab({ host, status, reopen }: Ctx) {
   return [rows];
 }
 
-/** The catching knobs on the Advanced tab: [field, label, what it does]. */
-const CATCH_ROWS: [keyof CatchTuning, string, string][] = [
-  ['reach', 'Catch reach', 'How close the ball must come to a raised hand (or between both) to be caught.'],
-  ['twoHands', 'Two-hand chance', 'Both hands up (the diamond): the chance before the factors below.'],
-  ['oneHand', 'One-hand chance', 'One hand up.'],
-  ['body', 'Body catch chance', 'The ball hits the chest or stomach with no hand to it.'],
-  ['edge', 'Off-centre catches', 'A ball at the very edge of the reach (100% = no harder than one into the hands).'],
-  ['hard', 'Hard throws', 'A very hard throw (100% = as easy as a soft one).'],
-  ['moving', 'Catching at full speed', 'Running flat out (100% = as easy as standing).'],
-  ['air', 'Catching in the air', 'Jumping or diving for it.'],
-  ['contact', 'Catching in contact', 'With a defender on you.'],
-  ['blind', 'Not looking at the ball', 'A ball you are not looking at (100% = no harder).'],
+/** The catching knobs on the Advanced tab: [field, label, what it does, format]. */
+const CATCH_ROWS: [keyof CatchTuning, string, string, (v: number) => string][] = [
+  ['reach', 'Catch reach', 'How close the ball must come to a raised hand (or between both) to be caught.', m],
+  ['twoHands', 'Two-hand chance', 'Both hands up (the diamond): the chance before the factors below.', pct],
+  ['oneHand', 'One-hand chance', 'One hand up.', pct],
+  ['body', 'Body catch chance', 'The ball hits the chest or stomach with no hand to it.', pct],
+  ['edge', 'Off-centre catches', 'A ball at the very edge of the reach (100% = no harder than one into the hands).', pct],
+  ['hard', 'Hard throws', 'A very hard throw (100% = as easy as a soft one).', pct],
+  ['moving', 'Catching at full speed', 'Running flat out (100% = as easy as standing).', pct],
+  ['air', 'Catching in the air', 'Jumping or diving for it.', pct],
+  ['contact', 'Catching in contact', 'With a defender on you.', pct],
+  ['blind', 'Not looking at the ball', 'A ball you are not looking at (100% = no harder).', pct],
 ];
+
+/** The Advanced tab's tuning groups: a Settings field holding only the knobs moved, over the defaults its `tune` fills
+ *  in (and clamps). `ranges`: [min, max, step?] per knob (no step: 0.01). To add a group, add a row here. */
+interface TuningGroup { key: 'jump' | 'qb' | 'catching'; title: string; note?: string; rows: [string, string, string, (v: number) => string][]; ranges: Record<string, readonly number[]>; tune(o: unknown): object; reset: string }
+const TUNING: TuningGroup[] = [
+  { key: 'jump', title: 'Jump', rows: JUMP_ROWS, ranges: JUMP_RANGES, tune: jumpTuning, reset: 'Reset jump to defaults' },
+  { key: 'qb', title: 'Bot QB', rows: QB_ROWS, ranges: QB_RANGES, tune: qbTuning, reset: 'Reset QB to defaults' },
+  { key: 'catching', title: 'Catching', note: 'How easy catching is, for you and the bots alike: the base chance for the hands times the factors below.', rows: CATCH_ROWS, ranges: CATCH_RANGES, tune: catchTuning, reset: 'Catching: back to the defaults' },
+];
+const tuned = (g: TuningGroup, s: Settings) => g.tune(s[g.key]) as Record<string, number>;
+
+/** One tuning group's heading, sliders and reset (in place); `changed` runs after a reset. */
+function tuningSection(host: SettingsHost, g: TuningGroup, changed: () => void): HTMLElement[] {
+  const s = host.settings, list = el('div', { class: 'set-list' });
+  const draw = () => list.replaceChildren(...g.rows.map(([k, label, desc, fmt]) => {
+    const [min, max, step = 0.01] = g.ranges[k];
+    return setRow(label, desc, ...range(label, tuned(g, s)[k], min, max, step, (v) => Object.assign(s, { [g.key]: { ...s[g.key], [k]: v } }), fmt, () => host.save()));
+  }));
+  draw();
+  const reset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm', text: g.reset });
+  reset.addEventListener('click', () => { Object.assign(s, { [g.key]: {} }); host.save(); draw(); changed(); });
+  return [el('h2', { class: 'set-h', text: g.title }), ...(g.note ? [el('p', { class: 'sub', text: g.note })] : []), list, el('div', { class: 'items' }, reset)];
+}
 
 function controlsTab({ host, status, reopen }: Ctx) {
   const s = host.settings;
@@ -346,7 +369,7 @@ function advancedTab({ host, status, reopen }: Ctx) {
   // every tweakable on this tab, with the defaults filled in: the JSON to make the new defaults
   const update = () => (exp.value = JSON.stringify({ support: sup, speed: PLAYER_BASE.speed * s.speed, strength: PLAYER_BASE.strength * s.strength, assist: s.assist, traction: s.traction,
     boneStrength: s.boneStrength, aiBoneStrength: s.aiBoneStrength, steerAssist: s.steerAssist, gains: { ...DEFAULT_GAINS, ...s.gains },
-    jump: jumpTuning(s.jump), qb: qbTuning(s.qb), catching: catchTuning(s.catching) }, null, 2));
+    ...Object.fromEntries(TUNING.map((g) => [g.key, tuned(g, s)])) }, null, 2));
   update();
   const copy = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Copy values');
   copy.addEventListener('click', () => { void navigator.clipboard?.writeText(exp.value).then(() => host.hud.flash('Copied'), () => { exp.select(); }); });
@@ -355,35 +378,8 @@ function advancedTab({ host, status, reopen }: Ctx) {
     for (const k of ['gains', 'assist', 'traction', 'support', 'speed', 'strength', 'boneStrength', 'aiBoneStrength', 'steerAssist'] as const) Object.assign(s, { [k]: structuredClone(DEFAULT_SETTINGS[k]) });
     host.save(); reopen();
   });
-  // Jump: one slider per JumpTuning knob over the defaults (s.jump holds only the ones moved)
-  const jumpRows = JUMP_ROWS.map(([k, label, desc, fmt]) => {
-    const [min, max, step] = JUMP_RANGES[k];
-    return setRow(label, desc, ...range(label, s.jump[k] ?? JUMP_DEFAULTS[k], min, max, step, (v) => (s.jump[k] = v), fmt, () => host.save()));
-  });
-  const jumpReset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset jump to defaults');
-  jumpReset.addEventListener('click', () => { s.jump = {}; host.save(); reopen(); });
-  // Bot QB: the quarterback's skill and habits (qbTuning.ts; s.qb holds only the knobs moved)
-  const qbRows = QB_ROWS.map(([k, label, desc, fmt]) => {
-    const [min, max, step] = QB_RANGES[k];
-    return setRow(label, desc, ...range(label, qbTuning(s.qb)[k], min, max, step, (v) => (s.qb = { ...s.qb, [k]: v }), fmt, () => host.save()));
-  });
-  const qbReset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Reset QB to defaults');
-  qbReset.addEventListener('click', () => { s.qb = {}; host.save(); reopen(); });
-  // catching (catching.ts): every knob, the same for you and the bots; empty = the defaults
-  const c = () => catchTuning(s.catching), catchRows = el('div', { class: 'set-list' });
-  const drawCatch = () => catchRows.replaceChildren(...CATCH_ROWS.map(([k, label, desc]) => {
-    const [lo, hi] = CATCH_RANGES[k], fmt = k === 'reach' ? (v: number) => `${v.toFixed(2)} m` : pct;
-    const [input, out] = range(label, c()[k], lo, hi, 0.01, (v) => { s.catching = { ...s.catching, [k]: v }; }, fmt, () => host.save());
-    return setRow(label, desc, input, out);
-  }));
-  drawCatch();
-  const resetCatch = el('button', { type: 'button', class: 'item', 'data-sfx': 'ui_back', text: 'Catching: back to the defaults' });
-  resetCatch.addEventListener('click', () => { s.catching = {}; host.save(); drawCatch(); update(); });
-  const body = el('div', {},
-    el('h2', { class: 'set-h', text: 'Tuning' }), grid,
-    el('h2', { class: 'set-h', text: 'Jump' }), el('div', { class: 'set-list' }, ...jumpRows), el('div', { class: 'items' }, jumpReset),
-    el('h2', { class: 'set-h', text: 'Bot QB' }), el('div', { class: 'set-list' }, ...qbRows), el('div', { class: 'items' }, qbReset),
-    el('h2', { class: 'set-h', text: 'Catching' }), el('p', { class: 'sub', text: 'How easy catching is, for you and the bots alike: the base chance for the hands times the factors below.' }), catchRows, el('div', { class: 'items' }, resetCatch));
+  // Jump, Bot QB, Catching: each knob over its defaults, the same for you and the bots
+  const body = el('div', {}, el('h2', { class: 'set-h', text: 'Tuning' }), grid, ...TUNING.flatMap((g) => tuningSection(host, g, update)));
   body.addEventListener('input', update); // the export follows every slider on the tab
   return [
     el('div', { class: 'set-list' }, setRow('Performance overlay', 'Frame rate and physics cost, top right (also the ` key).', onOff('Performance overlay', () => s.overlay, (v) => { s.overlay = v; host.save(); }))),

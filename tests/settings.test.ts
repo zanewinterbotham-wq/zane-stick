@@ -22,6 +22,14 @@ it('fresh settings are 1x with the owner carry acceleration', () => {
   saveSettings(s); expect(loadSettings().strength).toBe(1);
 });
 
+it('catching and bot QB overrides: saved knobs kept and clamped, junk and unknown keys dropped (as jump)', () => {
+  store.set('zane-stick-settings-v1', JSON.stringify({ version: 8, catching: { reach: 0.5, twoHands: 'x', bogus: 1 }, qb: { skill: 7, look: null } }));
+  const s = loadSettings();
+  expect([s.catching, s.qb]).toEqual([{ reach: 0.5 }, { skill: 1 }]);
+  store.set('zane-stick-settings-v1', JSON.stringify({ version: 8, catching: 'x', qb: 3 }));
+  expect([loadSettings().catching, loadSettings().qb]).toEqual([{}, {}]);
+});
+
 it('loaded settings are copies: editing them never changes the defaults', () => {
   for (const saved of [null, '{"version":8}']) {
     store.clear(); if (saved) store.set('zane-stick-settings-v1', saved);

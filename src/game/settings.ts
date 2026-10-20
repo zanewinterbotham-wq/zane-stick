@@ -100,16 +100,21 @@ export function loadSettings(): Settings {
       // version 6: more levels; an unknown one (an edited or newer file) is chosen again by the benchmark
       if (s.preset != null && !(s.preset in PRESETS)) s.preset = null;
       s.perf = cleanPerf(s.perf);
-      // only known catching knobs, in range (catchTuning clamps), kept as overrides
-      s.catching = s.catching && typeof s.catching === 'object' ? Object.fromEntries(Object.entries(catchTuning(s.catching)).filter(([k]) => k in s.catching)) : {};
-      s.qb = s.qb && typeof s.qb === 'object' ? Object.fromEntries(Object.entries(qbTuning(s.qb)).filter(([k]) => k in s.qb)) : {};
-      // version 8: the jump knobs; only valid ones are kept (clamped to their ranges), the rest are the defaults
-      const jt = jumpTuning(s.jump), jump = Object.fromEntries(Object.keys(jt).filter((k) => typeof s.jump?.[k] === 'number' && Number.isFinite(s.jump[k])).map((k) => [k, jt[k as keyof JumpTuning]]));
+      // the tuning groups (catching, bot QB, version 8: jump): only valid knobs are kept, clamped; the rest are the defaults
+      s.catching = overrides(s.catching, catchTuning(s.catching));
+      s.qb = overrides(s.qb, qbTuning(s.qb));
+      const jump = overrides(s.jump, jumpTuning(s.jump));
       // (a copy of the defaults: a field the file lacks must not share, and later mutate, DEFAULT_SETTINGS')
       return { ...structuredClone(DEFAULT_SETTINGS), ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support }, jump };
     }
   } catch { /* storage unavailable: use defaults */ }
   return structuredClone(DEFAULT_SETTINGS);
+}
+
+/** A tuning group's stored overrides: the known knobs saved as finite numbers, at their validated values (`tuned`). */
+function overrides<T extends object>(raw: unknown, tuned: T): Partial<T> {
+  if (!raw || typeof raw !== 'object') return {};
+  return Object.fromEntries(Object.entries(tuned).filter(([k]) => Number.isFinite((raw as Record<string, unknown>)[k]))) as Partial<T>;
 }
 
 /** v4 → v5 keyboard rebinds: Space leaves a saved thrust rebind (dropped if nothing is left), and a key another saved
