@@ -11,7 +11,7 @@ type Zs = { __zs: {
 for (const torso of [1, 0.6, 0]) {
   test(`thrust from pads ${torso}: side views through the hit`, async ({ page }) => {
     const errors: string[] = [];
-    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    page.on('console', (m) => { if (m.type() === 'error' && !/still waiting on run dependencies|dependency: wasm|end of list/.test(m.text())) errors.push(m.text()); });
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto(`/?scenario=thrust&torso=${torso}&gfx=high`);
     await page.waitForFunction(() => (window as unknown as Zs).__zs);

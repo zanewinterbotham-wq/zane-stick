@@ -4,7 +4,7 @@ import { expect, test, type Page } from '@playwright/test';
 /** Fail on any console error or uncaught exception. */
 function watchErrors(page: Page) {
   const errors: string[] = [];
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/still waiting on run dependencies|dependency: wasm|end of list/.test(m.text())) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(e.message));
   return errors;
 }

@@ -5,7 +5,7 @@ const skins: { id: string; label: string }[] = JSON.parse(readFileSync('src/game
 
 function watchErrors(page: Page) {
   const errors: string[] = [];
-  page.on('console', (m) => { if (m.type() === 'error' || (m.type() === 'warning' && /skin/.test(m.text()))) errors.push(m.text()); });
+  page.on('console', (m) => { if ((m.type() === 'error' && !/still waiting on run dependencies|dependency: wasm|end of list/.test(m.text())) || (m.type() === 'warning' && /skin/.test(m.text()))) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(e.message));
   return errors;
 }

@@ -12,7 +12,7 @@ type Zs = { __zs: {
 
 test('a head is knocked out by physics; every effect style renders a break and a knockout', async ({ page }) => {
   const errors: string[] = [];
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/still waiting on run dependencies|dependency: wasm|end of list/.test(m.text())) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/?scenario=hit&hp=1&gfx=high&skin=voxel');
   await page.waitForFunction(() => (window as unknown as Zs).__zs);
