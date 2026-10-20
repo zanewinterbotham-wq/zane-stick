@@ -17,7 +17,8 @@ import type { Brain, Perception } from './types';
 const CATCH_H = 1.2, CHEST = 0.15, HANDS_T = 0.5, BRAKE = 4;
 const G = 9.81, FULL = GAIT_SPEED.sprint;
 
-/** Time (s) until a ball in flight comes down through height h, or −1 if it is below h already. */
+/** Time (s) until a ball in flight comes down through height h (negative: it already has), or −1 if it never
+ *  comes up to h. */
 export function fallTime(pos: readonly number[], vel: readonly number[], h: number): number {
   const disc = vel[1] * vel[1] + 2 * G * (pos[1] - h);
   return disc < 0 ? -1 : (vel[1] + Math.sqrt(disc)) / G;

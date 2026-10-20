@@ -3,6 +3,7 @@
 // functions of the Perception, so every brain reads the field the same way. Unit tests: tests/football-sense.test.ts.
 import { GAIT_SPEED } from '../../control/hand';
 import { clamp, type Vec3 } from '../../math';
+import { fallTime } from '../returner';
 import { predict } from '../tackler';
 import type { AthleteView, Perception } from '../types';
 import type { PlayFrame } from './types';
@@ -165,9 +166,10 @@ export function ballSpot(b: { pos: Vec3; vel: Vec3 }, from: Vec3, vel: Vec3 = [0
   return { ...(last ?? { at: b.pos, t: 0 }), late: true };
 }
 
-/** Where a ball in flight comes down through height `h` (m; on the ground plane, world). */
+/** Where a ball in flight comes down through height `h` (m; on the ground plane, world): where it is if it never
+ *  does or already has. */
 export function landing(b: { pos: Vec3; vel: Vec3 }, h = CATCH_H): Vec3 {
-  const disc = b.vel[1] * b.vel[1] + 2 * G * (b.pos[1] - h), t = disc < 0 ? 0 : (b.vel[1] + Math.sqrt(disc)) / G;
+  const t = Math.max(0, fallTime(b.pos, b.vel, h));
   return [b.pos[0] + b.vel[0] * t, 0, b.pos[2] + b.vel[2] * t];
 }
 

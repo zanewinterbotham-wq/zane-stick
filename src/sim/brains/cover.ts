@@ -9,7 +9,7 @@ import { neutralCommands, type Commands } from '../control/types';
 import { clamp, type Vec3 } from '../math';
 import type { Rng } from '../rng';
 import type { BotDifficulty } from './carrier';
-import { fallTime } from './returner';
+import { landing } from './football/sense';
 import { blockerInWay, shed, shedSide } from './shed';
 import { Steer } from './steer';
 import { predict, TacklerBrain } from './tackler';
@@ -50,7 +50,7 @@ export class CoverBrain implements Brain {
     // the ball: the returner, or where the kick comes down
     let at: Vec3;
     if (ci >= 0) at = predict(seen.athletes[ci], age).com;
-    else if (b) { const t = Math.max(0, fallTime(b.pos, b.vel, CATCH_H)); at = [b.pos[0] + b.vel[0] * t, CATCH_H, b.pos[2] + b.vel[2] * t]; }
+    else if (b) at = landing(b, CATCH_H);
     else return c;
     const down = me.team === 0 ? 1 : -1, held = ci >= 0;
     const d = Math.hypot(at[0] - me.com[0], at[2] - me.com[2]), past = (at[2] - me.com[2]) * down < -1;
