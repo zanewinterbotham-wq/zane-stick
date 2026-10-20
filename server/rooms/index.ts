@@ -122,6 +122,12 @@ export class RoomDO {
     try { m = JSON.parse(msg); } catch { return; }
     if (m?.t === 'ping') say(ws, { t: 'pong', ts: Number(m.ts) || 0 });
     else if (m?.t === 'signal') { const to = this.target(me, m.to); if (to) say(to, { t: 'signal', from: me.id, data: m.data }); }
+    else if (m?.t === 'kick' && me.host) {
+      const to = this.target(me, m.to);
+      if (!to || to === ws) return;
+      try { to.close(CLOSE.kicked, CLOSE_REASON[CLOSE.kicked]); } catch { /* gone */ }
+      this.announce(to, true); // now: his close event may never come (the close handshake can stall)
+    }
   }
 
   async webSocketClose(ws: CfSocket) {

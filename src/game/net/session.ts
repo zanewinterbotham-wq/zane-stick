@@ -85,9 +85,11 @@ export class Session {
   allBots() { this.edit(() => L.allBots(this.lobby)); }
   kick(id: string) {
     if (!this.isHost || id === this.selfId) return;
-    this.tell({ t: 'kick' }, id);
-    this.banned.add(id);
+    this.tell({ t: 'kick' }, id); // an older room server has no kick: the message alone sends an honest guest away
+    this.banned.add(id); // until the server's leave arrives
     this.gone(id);
+    // shortcut: he can rejoin at once under a new id (a new socket), until rooms get a lock or a ban list
+    this.room.kick(id);
     this.sendLobby();
     this.due();
   }

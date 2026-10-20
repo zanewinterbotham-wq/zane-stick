@@ -14,6 +14,8 @@ export interface NetRoom {
   onMessage(cb: (from: string, data: ArrayBuffer | string) => void): void;
   onPeers(cb: (peers: PeerInfo[]) => void): void;        // join, leave, path or rtt change
   onClose(cb: (reason: string) => void): void;           // 'host-left' | 'kicked' | 'disconnected' | 'closed' (own close())
+  /** Host: the server closes that guest's socket (his onClose: 'kicked'). */
+  kick(id: string): void;
   close(): void;
 }
 
@@ -90,6 +92,7 @@ class Room implements NetRoom {
   onPeers(cb: (peers: PeerInfo[]) => void) { this.peerCbs.push(cb); }
   onClose(cb: (reason: string) => void) { this.closeCbs.push(cb); }
   close() { this.end('closed'); }
+  kick(id: string) { if (this.isHost) this.toServer({ t: 'kick', to: id }); }
 
   send(to: string, data: ArrayBuffer | string, reliable: boolean) {
     const l = this.links.get(to);

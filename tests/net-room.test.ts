@@ -178,6 +178,20 @@ describe('room server over the relay path', () => {
     await until(() => host.peers().length === MAX_PEERS - 1);
   });
 
+  it('the host kicks a guest through the server: his socket closes "kicked"; a guest cannot kick', async () => {
+    ns = namespace();
+    const host = await room(createRoom('H', SERVER));
+    const a = await room(joinRoom(host.code, 'A', SERVER)), b = await room(joinRoom(host.code, 'B', SERVER));
+    await until(() => host.peers().length === 2);
+    const why: string[] = [];
+    a.onClose((r) => why.push('a:' + r)); b.onClose((r) => why.push('b:' + r)); host.onClose((r) => why.push('h:' + r));
+    (b as unknown as { ws: FakeWebSocket }).ws.send(JSON.stringify({ t: 'kick', to: host.selfId })); // a guest's kick: ignored
+    host.kick(a.selfId);
+    await until(() => why.length === 1 && host.peers().length === 1);
+    await new Promise((r) => setTimeout(r, 20));
+    expect([why, host.peers().map((p) => p.name)]).toEqual([['a:kicked'], ['B']]);
+  });
+
   it('a code with a host in it is never handed out twice', async () => {
     ns = namespace();
     const up = () => new Request('https://room/ABCDE/create', { headers: { Upgrade: 'websocket' } });

@@ -41,6 +41,7 @@ export interface NetRoom {
   onMessage(cb: (from: string, data: ArrayBuffer | string) => void): void;
   onPeers(cb: (peers: PeerInfo[]) => void): void;        // join, leave, path or rtt change
   onClose(cb: (reason: string) => void): void;
+  kick(id: string): void;                                // host: the server closes that guest's socket
   close(): void;
 }
 export function createRoom(name: string, server?: string): Promise<NetRoom>;
@@ -78,7 +79,8 @@ Implementation notes (src/net/, server/rooms/):
   'BLOCKED', the pass state and the last throw), every injury so far.
 - `ev` (host → all, reliable, JSON): big hits (feel.ts: impulse and closing speed, so guests get the banner, shake
   and rumble from the host's numbers, not from replica contact forces) and a player leaving mid-rep.
-- `kick` (host → one guest): he is removed (the host ignores him from then on).
+- `kick` (host → one guest): he is removed (the host ignores him from then on), and the host has the room server
+  close his socket (`NetRoom.kick`, a `{t:'kick', to}` to the server). He can rejoin under a new id.
 
 ## What is built (game side, src/game/net/)
 

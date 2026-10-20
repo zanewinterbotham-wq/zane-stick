@@ -41,7 +41,8 @@ export type ServerMsg =
   /** The room is over (the host left): sent before the close frame, which a hibernating socket's runtime may never
    *  finish delivering. */
   | { t: 'bye'; reason: 'host-left' };
-export type ClientMsg = { t: 'signal'; to: string; data: unknown } | { t: 'ping'; ts: number };
+/** kick: the host has the server close that guest's socket. */
+export type ClientMsg = { t: 'signal'; to: string; data: unknown } | { t: 'ping'; ts: number } | { t: 'kick'; to: string };
 
 // Relay frames (binary WebSocket frames): [kind u8][id length u8][id utf-8][payload]. The sender puts the target id
 // in the header, the server swaps in the sender's id and forwards the payload untouched.
