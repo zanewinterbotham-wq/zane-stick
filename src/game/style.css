@@ -253,3 +253,5 @@ html, body { overscroll-behavior: none; }
 .tbtn[hidden] { display: none; }
 @media (pointer: coarse) { .keylist { display: none; } } /* the key list means nothing on a touch screen */
 .touch.editing .tbtn:not(.small), .touch.editing .tstick, .touch.editing .tslider { outline: 2px dashed #ffd23f; outline-offset: 3px; }
+.title-logo { display: block; width: min(180px, 40vw); height: auto; margin: 0 auto 4px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

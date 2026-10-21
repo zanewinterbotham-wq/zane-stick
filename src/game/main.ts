@@ -212,14 +212,17 @@ export class App {
   title() {
     this.menus();
     const last = modeById(this.settings.mode ?? 'tackle');
-    this.layer.show(menu('ZANE STICK', [
+    const box = menu('ZANE STICK', [
       { label: `Quick play: ${last.title}`, hint: 'Enter / A', action: () => void this.startDrill(last, savedOptions(this.settings, last)) },
       { label: 'Play', hint: 'choose a game mode', action: () => this.modes() },
       { label: 'Multiplayer', hint: 'host, or join with a code', action: () => this.multiplayer() },
       { label: 'Settings', action: () => this.settingsMenu(() => this.title()) },
       { label: 'Inventory', hint: 'skins, stadiums', action: () => this.inventory() },
       { label: 'Benchmark', action: () => this.benchmark() },
-    ], 'Physics football. Every movement is muscles on a simulated body.'));
+    ], 'Physics football. Every movement is muscles on a simulated body.');
+    // the logo (temporary, art/logos/opus/09b.svg) stands in for the heading; its name stays for screen readers
+    box.querySelector('h1')!.replaceChildren(el('img', { class: 'title-logo', src: 'logo.svg', alt: '' }), el('span', { class: 'sr-only', text: 'ZANE STICK' }));
+    this.layer.show(box);
   }
 
   /** The Play screen: game modes, each with its setup. */

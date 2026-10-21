@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<title>Football with Z laces (seam version)</title>
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8a50"/><stop offset="1" stop-color="#f4511e"/></linearGradient>
+<linearGradient id="ball" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9a5a2e"/><stop offset="1" stop-color="#5a2f14"/></linearGradient>
+<clipPath id="c"><path d="M64 230 C80 92 432 92 448 230 C432 368 80 368 64 230 Z"/></clipPath>
+</defs>
+<rect width="512" height="512" rx="96" fill="url(#bg)"/>
+<g transform="rotate(-24 256 230)">
+<path d="M64 230 C80 92 432 92 448 230 C432 368 80 368 64 230 Z" fill="#2b1408" transform="translate(8 10)" opacity=".35"/>
+<path d="M64 230 C80 92 432 92 448 230 C432 368 80 368 64 230 Z" fill="url(#ball)" stroke="#2b1408" stroke-width="10" stroke-linejoin="round"/>
+<g clip-path="url(#c)" fill="none" stroke="#fff" stroke-width="26">
+<path d="M130 138 Q110 230 130 322"/><path d="M382 138 Q402 230 382 322"/>
+</g>
+<path d="M150 168 Q256 120 362 168" fill="none" stroke="#fff" stroke-width="6" opacity=".18" stroke-linecap="round"/>
+<g stroke="#000" fill="none" stroke-linecap="round"><path d="M222 216 v28 M244 216 v28 M266 216 v28 M288 216 v28" stroke-width="12"/></g>
+<g stroke="#000" fill="none" stroke-linejoin="round" stroke-linecap="round"><path d="M227 171 L322 230 L190 230 L285 289" stroke-width="20"/></g>
+<path d="M227 171 L322 230 L190 230 L285 289" fill="none" stroke="#fff" stroke-width="15" stroke-linejoin="round" stroke-linecap="round"/>
+<g stroke="#fff" stroke-width="7" stroke-linecap="round">
+<path d="M222 216 v28 M244 216 v28 M266 216 v28 M288 216 v28"/>
+</g>
+</g>
+<text x="256" y="452" text-anchor="middle" font-family="Impact, Arial Black, sans-serif" font-size="70" fill="#2b1408" letter-spacing="3">ZANE STICK</text>
+</svg>
