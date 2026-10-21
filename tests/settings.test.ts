@@ -1,6 +1,6 @@
 // Stored settings from before the owner's baseline (absolute strength/speed) migrate to multipliers.
 import { beforeEach, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, loadSettings, saveSettings, PLAYER_BASE } from '../src/game/settings';
+import { DEFAULT_SETTINGS, GAME_TUNING, loadSettings, saveSettings, PLAYER_BASE } from '../src/game/settings';
 
 const store = new Map<string, string>();
 beforeEach(() => {
@@ -25,9 +25,9 @@ it('fresh settings are 1x with the owner carry acceleration', () => {
 it('catching and bot QB overrides: saved knobs kept and clamped, junk and unknown keys dropped (as jump)', () => {
   store.set('zane-stick-settings-v1', JSON.stringify({ version: 8, catching: { reach: 0.5, twoHands: 'x', bogus: 1 }, qb: { skill: 7, look: null } }));
   const s = loadSettings();
-  expect([s.catching, s.qb]).toEqual([{ reach: 0.5 }, { skill: 1 }]);
+  expect([s.catching, s.qb]).toEqual([{ ...GAME_TUNING.catching, reach: 0.5 }, { ...GAME_TUNING.qb, skill: 1 }]);
   store.set('zane-stick-settings-v1', JSON.stringify({ version: 8, catching: 'x', qb: 3 }));
-  expect([loadSettings().catching, loadSettings().qb]).toEqual([{}, {}]);
+  expect([loadSettings().catching, loadSettings().qb]).toEqual([GAME_TUNING.catching, GAME_TUNING.qb]);
 });
 
 it('loaded settings are copies: editing them never changes the defaults', () => {
@@ -51,7 +51,8 @@ it('version 4: the sink toggle and sink rebinds are dropped; multipliers saved b
   store.set('zane-stick-settings-v1', JSON.stringify({ version: 3, strength: 1.2, sinkToggle: true, bindings: { sink: ['KeyX'], dive: ['KeyQ'] } }));
   const s = loadSettings() as unknown as Record<string, unknown>;
   // (and v5: dive kept Q, so the new thrust default gives it up)
-  expect([s.strength, 'sinkToggle' in s, s.bindings]).toEqual([1.2, false, { dive: ['KeyQ'], thrust: [] }]);
+  // (and v9: the 1.2 on the old base is rescaled to give the same strength on the new one)
+  expect([s.strength, 'sinkToggle' in s, s.bindings]).toEqual([Math.round(1.2 * 1.5 / PLAYER_BASE.strength * 1e4) / 1e4, false, { dive: ['KeyQ'], thrust: [] }]);
 });
 
 it('version 5: Space leaves a saved thrust rebind for the new jump, and a key another rebind holds leaves the new default', () => {
@@ -78,12 +79,21 @@ it('version 7: the throw key gives way to a saved rebind that holds it; the vaul
   expect([s.bindings, s.throwScheme]).toEqual([{ dive: ['KeyF'], armL: ['KeyV', 'Mouse0'], throw: [] }, undefined]);
 });
 
-it('version 8: the jump knobs start at the defaults ({}); saved knobs are kept, clamped, and junk dropped', () => {
+it('version 8: the jump knobs start at the game values; saved knobs are kept, clamped, and junk dropped', () => {
   store.set('zane-stick-settings-v1', JSON.stringify({ version: 7 }));
-  expect(loadSettings().jump).toEqual({});
+  expect(loadSettings().jump).toEqual(GAME_TUNING.jump);
   store.set('zane-stick-settings-v1', JSON.stringify({ version: 8, jump: { height: 1.4, dip: 9, air: 'x', bogus: 2 } }));
-  expect(loadSettings().jump).toEqual({ height: 1.4, dip: 0.4 });
+  expect(loadSettings().jump).toEqual({ ...GAME_TUNING.jump, height: 1.4, dip: 0.4 });
   const s = loadSettings(); s.jump.charge = 0.5; saveSettings(s);
-  expect(loadSettings().jump).toEqual({ height: 1.4, dip: 0.4, charge: 0.5 });
+  expect(loadSettings().jump).toEqual({ ...GAME_TUNING.jump, height: 1.4, dip: 0.4, charge: 0.5 });
   expect(loadSettings().jump).not.toBe(loadSettings().jump);
+});
+
+it('version 9: the owner tuned values become the 1x defaults; untouched old defaults move to the new ones', () => {
+  store.set('zane-stick-settings-v1', JSON.stringify({ version: 8, speed: 0.75, strength: 1.19, boneStrength: 1.5, aiBoneStrength: 0.9, steerAssist: 1 }));
+  const s = loadSettings();
+  expect([s.speed, s.strength, s.boneStrength, s.aiBoneStrength, s.steerAssist]).toEqual([1, 1, 1, 1, 1]);
+  store.set('zane-stick-settings-v1', JSON.stringify({ version: 8, speed: 1, strength: 1, boneStrength: 1, steerAssist: 0.3 }));
+  const d = loadSettings();
+  expect([d.speed, d.strength, d.boneStrength, d.steerAssist]).toEqual([1, 1, 1, 1]);
 });

@@ -360,7 +360,7 @@ test('tuning panel shows the support, speed and strength sliders; HUD shows spee
   }
   await expect(page.getByRole('slider', { name: 'Support: strength' })).toHaveValue('1');
   await expect(page.getByLabel('Exported values')).toHaveValue(/"support"/);
-  for (const key of ['"boneStrength"', '"steerAssist"', '"jump"', '"qb"', '"catching"', '"fumble"', '"hold": 1,', '"skill": 0.5']) await expect(page.getByLabel('Exported values')).toHaveValue(new RegExp(key));
+  for (const key of ['"boneStrength"', '"steerAssist"', '"jump"', '"qb"', '"catching"', '"fumble"', '"hold": 2,', '"skill": 1,']) await expect(page.getByLabel('Exported values')).toHaveValue(new RegExp(key));
   // a moved slider changes the export at once
   await page.getByRole('slider', { name: 'Bot QB skill' }).fill('0.9');
   await expect(page.getByLabel('Exported values')).toHaveValue(/"skill": 0.9/);

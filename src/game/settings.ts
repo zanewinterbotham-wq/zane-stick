@@ -50,18 +50,29 @@ export interface Settings {
   netName?: string;              // multiplayer display name (the room server trims it to 24 characters)
 }
 
-/** Owner's tuned baseline for Normal (2026-10-18): the player's strength and speed at 1x, and the carry
- *  acceleration. The difficulty sliders are multipliers on these. */
-export const PLAYER_BASE = { strength: 1.5, speed: 1.29 };
+/** Owner's tuned baseline for Normal (2026-10-18, retuned 2026-10-20 from the Tuning export): the player's strength
+ *  and speed at 1x, and the carry acceleration. The difficulty sliders are multipliers on these. */
+export const PLAYER_BASE = { strength: 1.785, speed: 0.9675 };
+/** The bone strength the Player / AI bone strength sliders multiply (owner's export 2026-10-20). */
+export const BONE_BASE = { player: 1.5, ai: 0.9 };
+/** The game's tuning groups at the owner's values (export 2026-10-20); the sim's own defaults stay pure physics and
+ *  the test baseline. A player's stored knobs go on top of these. */
+export const GAME_TUNING = {
+  jump: { height: 1.35, runHeight: 1.65, dip: 0.22, load: 0.1, push: 0.1, charge: 0.25, chargeMin: 0.75, carry: 0.95, air: 1.5, soft: 0.75, recover: 0.3, cooldown: 0.2, buffer: 0.25, arms: 1.3, tuck: 1.15 },
+  qb: { skill: 1, look: 0.02, lookK: 1.2, aim: 0.15, aimPerM: 0.025, nerves: 0.6, misread: 0.2, open: 0.2 },
+  catching: { reach: 0.8, twoHands: 1, oneHand: 0.8, body: 0.9, edge: 0.8, hard: 0.85, moving: 0.95, air: 0.92, contact: 0.65, blind: 0.9 },
+  fumble: { hold: 2, window: 0.05 },
+} satisfies { jump: JumpTuning; qb: QbTuning; catching: CatchTuning; fumble: FumbleTuning };
 export const GAME_SUPPORT = { ...DEFAULT_SUPPORT, carryAccel: 10.5 };
 /** Stored settings layout; 2 = strength/speed are multipliers on PLAYER_BASE; 3 = gore levels, owner's new default
  *  skin and stadium; 4 = no sink control (lowering the pads sinks the hips); 5 = thrust on Q, Space jumps; 6 = the
  *  quality ladder (Potato … Ultra; the stored 'minimum' and 'high' keep their meaning) and its Advanced overrides; 7 = the
- *  QB throw controls (F, R, G, V) and the throw scheme; 8 = jump tuning (Advanced: Jump; absent = the defaults). */
-const VERSION = 8;
+ *  QB throw controls (F, R, G, V) and the throw scheme; 8 = jump tuning (Advanced: Jump; absent = the defaults); 9 = the
+ *  owner's retuned defaults (new PLAYER_BASE / BONE_BASE, steer assist 1, GAME_TUNING). */
+const VERSION = 9;
 
 export const DEFAULT_SETTINGS: Settings = {
-  version: VERSION, preset: null, perf: {}, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, catching: {}, jump: {}, qb: {}, fumble: {}, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
+  version: VERSION, preset: null, perf: {}, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, ...structuredClone(GAME_TUNING), steerAssist: 1, traction: 1.2, gains: {}, mute: false, effortShading: true,
   slowMo: true, autoCamera: false, sprintToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: skins[0]?.id ?? 'classic', goreLevel: 1, stadium: stadiums[0]?.id ?? 'field' // the owner's picks are first in the lists
 };
 
@@ -80,7 +91,7 @@ export const difficultyOf = (s: Settings): DifficultyName =>
  *  to every guest), and what the benches and tests use as "the game's settings". */
 export function gamePlayConfig(s: Settings, p: Preset): PlayConfig {
   return {
-    physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), defense: tacklerSkill(s.tackling), toughness: s.toughness, hitPower: s.hitPower, catching: s.catching, jump: s.jump, qb: s.qb, fumble: s.fumble, boneStrength: s.boneStrength, aiBoneStrength: s.aiBoneStrength, carrierGait: DEFAULT_OPEN_FIELD.carrierGait, activeBots: p.activeBots,
+    physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), defense: tacklerSkill(s.tackling), toughness: s.toughness, hitPower: s.hitPower, catching: s.catching, jump: s.jump, qb: s.qb, fumble: s.fumble, boneStrength: BONE_BASE.player * s.boneStrength, aiBoneStrength: BONE_BASE.ai * s.aiBoneStrength, carrierGait: DEFAULT_OPEN_FIELD.carrierGait, activeBots: p.activeBots,
     human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, bot: DEFAULT_OPEN_FIELD.carrier, traction: s.traction, gains: s.gains,
     support: { ...GAME_SUPPORT, ...s.support },
   };
@@ -95,8 +106,8 @@ export function loadSettings(): Settings {
       const s = JSON.parse(raw);
       // version 1 stored absolute strength/speed; they are multipliers on the owner's baseline now
       if ((s.version ?? 1) < 2) {
-        if (typeof s.strength === 'number') s.strength /= PLAYER_BASE.strength;
-        if (typeof s.speed === 'number') s.speed /= PLAYER_BASE.speed;
+        if (typeof s.strength === 'number') s.strength /= 1.5; // the version-2 base (version 9 rescales it again)
+        if (typeof s.speed === 'number') s.speed /= 1.29;
         if (s.support?.carryAccel === DEFAULT_SUPPORT.carryAccel) s.support.carryAccel = GAME_SUPPORT.carryAccel;
       }
       if ((s.version ?? 1) < 3) {
@@ -104,6 +115,13 @@ export function loadSettings(): Settings {
         delete s.skin; delete s.stadium;
         if (s.gore === false) s.goreLevel = 0;
         delete s.gore;
+      }
+      // version 9: new bases. A value still at the old default moves to the new default; a moved one keeps what it gave
+      if ((s.version ?? 1) < 9) {
+        const keep = (k: string, old: number, now: number) => { if (typeof s[k] === 'number' && s[k] !== 1) s[k] = Math.round((s[k] * old / now) * 1e4) / 1e4; };
+        keep('strength', 1.5, PLAYER_BASE.strength); keep('speed', 1.29, PLAYER_BASE.speed);
+        keep('boneStrength', 1, BONE_BASE.player); keep('aiBoneStrength', 1, BONE_BASE.ai);
+        if (s.steerAssist === 0.3) s.steerAssist = 1;
       }
       if ((s.version ?? 1) < 4) { delete s.sinkToggle; delete s.bindings?.sink; } // the sink control is gone
       // version 5: thrust moved to Q and Space jumps; a saved rebind keeps its key, and the new default it clashes
@@ -117,10 +135,11 @@ export function loadSettings(): Settings {
       if (s.preset != null && !(s.preset in PRESETS)) s.preset = null;
       s.perf = cleanPerf(s.perf);
       // the tuning groups (catching, bot QB, version 8: jump): only valid knobs are kept, clamped; the rest are the defaults
-      s.catching = overrides(s.catching, catchTuning(s.catching));
-      s.qb = overrides(s.qb, qbTuning(s.qb));
-      s.fumble = overrides(s.fumble, fumbleTuning(s.fumble));
-      const jump = overrides(s.jump, jumpTuning(s.jump));
+      // (the game's values, GAME_TUNING, under them)
+      s.catching = { ...GAME_TUNING.catching, ...overrides(s.catching, catchTuning(s.catching)) };
+      s.qb = { ...GAME_TUNING.qb, ...overrides(s.qb, qbTuning(s.qb)) };
+      s.fumble = { ...GAME_TUNING.fumble, ...overrides(s.fumble, fumbleTuning(s.fumble)) };
+      const jump = { ...GAME_TUNING.jump, ...overrides(s.jump, jumpTuning(s.jump)) };
       // (a copy of the defaults: a field the file lacks must not share, and later mutate, DEFAULT_SETTINGS')
       return { ...structuredClone(DEFAULT_SETTINGS), ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support }, jump };
     }

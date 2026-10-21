@@ -10,7 +10,7 @@ import { keyName, keysText, RESERVED, type InputManager } from './input/input';
 import { PERF_KNOBS, PRESET_ORDER, PRESETS, type Preset, type PresetName } from './presets';
 import { GORE_LEVELS } from './render/effects';
 import type { GameRenderer } from './render/renderer';
-import { DEFAULT_SETTINGS, DIFFICULTY_PRESETS, PLAYER_BASE, difficultyOf, type Settings } from './settings';
+import { BONE_BASE, DEFAULT_SETTINGS, DIFFICULTY_PRESETS, PLAYER_BASE, difficultyOf, type Settings } from './settings';
 import { el, range, type Layer } from './ui';
 
 /** What the screen needs from the running game (the App in main.ts implements it). */
@@ -231,7 +231,7 @@ function tuningSection(host: SettingsHost, g: TuningGroup, changed: () => void):
   }));
   draw();
   const reset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm', text: g.reset });
-  reset.addEventListener('click', () => { Object.assign(s, { [g.key]: {} }); host.save(); draw(); changed(); });
+  reset.addEventListener('click', () => { Object.assign(s, { [g.key]: structuredClone(DEFAULT_SETTINGS[g.key]) }); host.save(); draw(); changed(); });
   return [el('h2', { class: 'set-h', text: g.title }), ...(g.note ? [el('p', { class: 'sub', text: g.note })] : []), list, el('div', { class: 'items' }, reset)];
 }
 
@@ -368,7 +368,7 @@ function advancedTab({ host, status, reopen }: Ctx) {
   const exp = el('textarea', { readonly: 'true', 'aria-label': 'Exported values' });
   // every tweakable on this tab, with the defaults filled in: the JSON to make the new defaults
   const update = () => (exp.value = JSON.stringify({ support: sup, speed: PLAYER_BASE.speed * s.speed, strength: PLAYER_BASE.strength * s.strength, assist: s.assist, traction: s.traction,
-    boneStrength: s.boneStrength, aiBoneStrength: s.aiBoneStrength, steerAssist: s.steerAssist, gains: { ...DEFAULT_GAINS, ...s.gains },
+    boneStrength: BONE_BASE.player * s.boneStrength, aiBoneStrength: BONE_BASE.ai * s.aiBoneStrength, steerAssist: s.steerAssist, gains: { ...DEFAULT_GAINS, ...s.gains },
     ...Object.fromEntries(TUNING.map((g) => [g.key, tuned(g, s)])) }, null, 2));
   update();
   const copy = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Copy values');
