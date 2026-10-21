@@ -4,6 +4,7 @@ import type { QbTuning } from '../brains/football/qbTuning';
 import type { CatchTuning } from './catching';
 import type { AthleteParams } from '../anatomy/body';
 import type { JumpTuning } from '../anim/jump';
+import type { FumbleTuning } from '../fumble';
 import type { SupportSettings } from '../anim/types';
 import type { BotDifficulty } from '../brains/carrier';
 import type { Brain } from '../brains/types';
@@ -39,6 +40,8 @@ export interface PlayConfig {
   qb?: Partial<QbTuning>;
   /** Jump tuning for every athlete (WorldSetup.jump; absent / {} = the defaults). */
   jump?: Partial<JumpTuning>;
+  /** Fumble tuning for every athlete (WorldSetup.fumble; absent / {} = the defaults). */
+  fumble?: Partial<FumbleTuning>;
   /** Defenders' difficulty (TacklerBrain: the AI tackling setting); absent = difficulty. */
   defense?: BotDifficulty;
   /** Bone strength of the human and of every bot (AthleteSetup.boneStrength; 1 = the measured tolerances). */

@@ -355,12 +355,12 @@ test('tuning panel shows the support, speed and strength sliders; HUD shows spee
   await page.keyboard.press('KeyT');
   await expect(page.locator('.menu h1')).toHaveText('Settings');
   await expect(page.getByRole('tab', { name: 'Advanced' })).toHaveAttribute('aria-selected', 'true');
-  for (const label of ['Support: strength', 'Support: carry accel (m/s²)', 'Support: weight share', 'Support: tilt fade start', 'Support: tilt fade end', 'Support: big hit (N·s)', 'Support: tracking stiffness ×', 'Player speed ×', 'Muscle strength ×', 'Player bone strength ×', 'AI bone strength ×', 'Steer assist', 'Bot QB skill', 'Read time', 'Jump height', 'Two-hand chance', 'Catch reach']) {
+  for (const label of ['Support: strength', 'Support: carry accel (m/s²)', 'Support: weight share', 'Support: tilt fade start', 'Support: tilt fade end', 'Support: big hit (N·s)', 'Support: tracking stiffness ×', 'Player speed ×', 'Muscle strength ×', 'Player bone strength ×', 'AI bone strength ×', 'Steer assist', 'Bot QB skill', 'Read time', 'Jump height', 'Two-hand chance', 'Catch reach', 'Ball security', 'Jolt window']) {
     await expect(page.getByRole('slider', { name: label, exact: true })).toBeVisible();
   }
   await expect(page.getByRole('slider', { name: 'Support: strength' })).toHaveValue('1');
   await expect(page.getByLabel('Exported values')).toHaveValue(/"support"/);
-  for (const key of ['"boneStrength"', '"steerAssist"', '"jump"', '"qb"', '"catching"', '"skill": 0.5']) await expect(page.getByLabel('Exported values')).toHaveValue(new RegExp(key));
+  for (const key of ['"boneStrength"', '"steerAssist"', '"jump"', '"qb"', '"catching"', '"fumble"', '"hold": 1,', '"skill": 0.5']) await expect(page.getByLabel('Exported values')).toHaveValue(new RegExp(key));
   // a moved slider changes the export at once
   await page.getByRole('slider', { name: 'Bot QB skill' }).fill('0.9');
   await expect(page.getByLabel('Exported values')).toHaveValue(/"skill": 0.9/);

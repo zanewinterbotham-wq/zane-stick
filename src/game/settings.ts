@@ -1,6 +1,7 @@
 // Player settings, remembered per browser. Storage can be unavailable (school-managed profiles, private
 // windows), so every read and write is guarded and the defaults always work.
 import { catchTuning, type CatchTuning } from '../sim/modes/catching';
+import { fumbleTuning, type FumbleTuning } from '../sim/fumble';
 import { qbTuning, type QbTuning } from '../sim/brains/football/qbTuning';
 import { jumpTuning, type JumpTuning } from '../sim/anim/jump';
 import { DEFAULT_SUPPORT, type SupportSettings } from '../sim/anim/types';
@@ -28,6 +29,7 @@ export interface Settings {
   hitPower: number;              // arcade hit power, 1 = pure physics
   catching: Partial<CatchTuning>; // catch tuning overrides (sim/modes/catching.ts); {} = the defaults
   jump: Partial<JumpTuning>;     // jump tuning knobs over the defaults (Advanced: Jump; {} = the defaults)
+  fumble: Partial<FumbleTuning>; // fumble tuning over the defaults (Advanced: Fumbles; {} = the defaults)
   qb: Partial<QbTuning>;         // bot QB tuning over the defaults (Advanced: Bot QB; {} = the defaults)
   steerAssist: number;           // 0..1: the player's run turns this far toward the ball carrier or a loose ball
   traction: number;              // cleat–turf friction (tuning)
@@ -59,7 +61,7 @@ export const GAME_SUPPORT = { ...DEFAULT_SUPPORT, carryAccel: 10.5 };
 const VERSION = 8;
 
 export const DEFAULT_SETTINGS: Settings = {
-  version: VERSION, preset: null, perf: {}, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, catching: {}, jump: {}, qb: {}, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
+  version: VERSION, preset: null, perf: {}, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, catching: {}, jump: {}, qb: {}, fumble: {}, steerAssist: 0.3, traction: 1.2, gains: {}, mute: false, effortShading: true,
   slowMo: true, autoCamera: false, sprintToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: skins[0]?.id ?? 'classic', goreLevel: 1, stadium: stadiums[0]?.id ?? 'field' // the owner's picks are first in the lists
 };
 
@@ -78,7 +80,7 @@ export const difficultyOf = (s: Settings): DifficultyName =>
  *  to every guest), and what the benches and tests use as "the game's settings". */
 export function gamePlayConfig(s: Settings, p: Preset): PlayConfig {
   return {
-    physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), defense: tacklerSkill(s.tackling), toughness: s.toughness, hitPower: s.hitPower, catching: s.catching, jump: s.jump, qb: s.qb, boneStrength: s.boneStrength, aiBoneStrength: s.aiBoneStrength, carrierGait: DEFAULT_OPEN_FIELD.carrierGait, activeBots: p.activeBots,
+    physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), defense: tacklerSkill(s.tackling), toughness: s.toughness, hitPower: s.hitPower, catching: s.catching, jump: s.jump, qb: s.qb, fumble: s.fumble, boneStrength: s.boneStrength, aiBoneStrength: s.aiBoneStrength, carrierGait: DEFAULT_OPEN_FIELD.carrierGait, activeBots: p.activeBots,
     human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, bot: DEFAULT_OPEN_FIELD.carrier, traction: s.traction, gains: s.gains,
     support: { ...GAME_SUPPORT, ...s.support },
   };
@@ -117,6 +119,7 @@ export function loadSettings(): Settings {
       // the tuning groups (catching, bot QB, version 8: jump): only valid knobs are kept, clamped; the rest are the defaults
       s.catching = overrides(s.catching, catchTuning(s.catching));
       s.qb = overrides(s.qb, qbTuning(s.qb));
+      s.fumble = overrides(s.fumble, fumbleTuning(s.fumble));
       const jump = overrides(s.jump, jumpTuning(s.jump));
       // (a copy of the defaults: a field the file lacks must not share, and later mutate, DEFAULT_SETTINGS')
       return { ...structuredClone(DEFAULT_SETTINGS), ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support }, jump };

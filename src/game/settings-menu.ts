@@ -1,6 +1,7 @@
 // The Settings screen: one tabbed panel for every setting (title menu and pause menu both open it).
 // To add a setting, add a row to GAMEPLAY_ROWS (or the matching tab builder) and a field to Settings.
 import { CATCH_RANGES, catchTuning, type CatchTuning } from '../sim/modes/catching';
+import { FUMBLE_RANGES, fumbleTuning, type FumbleTuning } from '../sim/fumble';
 import { JUMP_RANGES, jumpTuning, type JumpTuning } from '../sim/anim/jump';
 import { QB_RANGES, qbTuning, type QbTuning } from '../sim/brains/football/qbTuning';
 import type { SupportSettings } from '../sim/anim/types';
@@ -191,6 +192,12 @@ function gameplayTab({ host, status, reopen }: Ctx) {
 }
 
 /** The catching knobs on the Advanced tab: [field, label, what it does, format]. */
+/** The fumble knobs on the Advanced tab: [knob, label, what it does, format]. */
+const FUMBLE_ROWS: [keyof FumbleTuning, string, string, (v: number) => string][] = [
+  ['hold', 'Ball security', 'How hard the ball is to knock loose: × the force the carrier’s grip on the ball holds (higher: fewer fumbles).', (v) => `${v.toFixed(2)}×`],
+  ['window', 'Jolt window', 'How long a pull on the ball must last to strip it: a longer window lets short jolts pass.', (v) => `${(v * 1000).toFixed(0)} ms`],
+];
+
 const CATCH_ROWS: [keyof CatchTuning, string, string, (v: number) => string][] = [
   ['reach', 'Catch reach', 'How close the ball must come to a raised hand (or between both) to be caught.', m],
   ['twoHands', 'Two-hand chance', 'Both hands up (the diamond): the chance before the factors below.', pct],
@@ -206,11 +213,12 @@ const CATCH_ROWS: [keyof CatchTuning, string, string, (v: number) => string][] =
 
 /** The Advanced tab's tuning groups: a Settings field holding only the knobs moved, over the defaults its `tune` fills
  *  in (and clamps). `ranges`: [min, max, step?] per knob (no step: 0.01). To add a group, add a row here. */
-interface TuningGroup { key: 'jump' | 'qb' | 'catching'; title: string; note?: string; rows: [string, string, string, (v: number) => string][]; ranges: Record<string, readonly number[]>; tune(o: unknown): object; reset: string }
+interface TuningGroup { key: 'jump' | 'qb' | 'catching' | 'fumble'; title: string; note?: string; rows: [string, string, string, (v: number) => string][]; ranges: Record<string, readonly number[]>; tune(o: unknown): object; reset: string }
 const TUNING: TuningGroup[] = [
   { key: 'jump', title: 'Jump', rows: JUMP_ROWS, ranges: JUMP_RANGES, tune: jumpTuning, reset: 'Reset jump to defaults' },
   { key: 'qb', title: 'Bot QB', rows: QB_ROWS, ranges: QB_RANGES, tune: qbTuning, reset: 'Reset QB to defaults' },
   { key: 'catching', title: 'Catching', note: 'How easy catching is, for you and the bots alike: the base chance for the hands times the factors below.', rows: CATCH_ROWS, ranges: CATCH_RANGES, tune: catchTuning, reset: 'Catching: back to the defaults' },
+  { key: 'fumble', title: 'Fumbles', note: 'Fumbles stay physics, the same for you and the bots: the ball comes loose when a hit pulls on it harder than the grip holds.', rows: FUMBLE_ROWS, ranges: FUMBLE_RANGES, tune: fumbleTuning, reset: 'Reset fumbles to defaults' },
 ];
 const tuned = (g: TuningGroup, s: Settings) => g.tune(s[g.key]) as Record<string, number>;
 

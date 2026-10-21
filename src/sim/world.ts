@@ -12,6 +12,7 @@ import { InjuryState, type InjuryEvent } from './injury';
 import { weightSupport, type SupportSettings, type SupportState } from './anim/types';
 import { rootQuat } from './anim/kinematics';
 import { jumpTuning, RUN_TAKEOFF, type JumpTuning } from './anim/jump';
+import { fumbleTuning, type FumbleTuning } from './fumble';
 import { THROW, throwError, throwVelocity, type PassRecord } from './throw';
 
 /** Physics precision of a scene (a quality preset's, set only between reps). The solver options and `lod` are the
@@ -45,7 +46,9 @@ export interface WorldSetup { physics: PhysicsSettings; athletes: AthleteSetup[]
    *  gets (hitPower − 1) × the contact force he receives on top (World.applyHitPower). */
   hitPower?: number;
   /** Jump tuning (owner request 2026-10-19), the same for every athlete; absent / {} = JUMP_DEFAULTS. */
-  jump?: Partial<JumpTuning> }
+  jump?: Partial<JumpTuning>;
+  /** Fumble tuning (fumble.ts): the ball grip's strength and jolt window; absent / {} = FUMBLE_DEFAULTS. */
+  fumble?: Partial<FumbleTuning> }
 
 /** Balance assist timing [design §6.4]. */
 const ASSIST_FADE_OUT = 0.15, ASSIST_STABLE_TIME = 0.3, ASSIST_FADE_IN = 0.3;
@@ -177,12 +180,15 @@ export class World {
   lastPass: PassRecord | null = null;
   /** setup.jump over the defaults, validated. */
   readonly jump: JumpTuning;
+  /** setup.fumble over the defaults, validated. */
+  readonly fumble: FumbleTuning;
 
   private constructor(readonly scene: PhysicsScene, readonly setup: WorldSetup) {
     this.rng = new Rng(setup.seed);
     this.assist = setup.assist;
     this.ballIndex = setup.props?.findIndex((p) => p.name === 'ball') ?? -1;
     this.jump = jumpTuning(setup.jump);
+    this.fumble = fumbleTuning(setup.fumble);
   }
 
   static async create(engine: PhysicsEngine, setup: WorldSetup): Promise<World> {
@@ -689,8 +695,8 @@ export class World {
       const g = a.grips[h];
       g.cooldown = Math.max(0, g.cooldown - dt);
       if (g.active) {
-        // Grip force averaged over ~20 ms; breaks when it exceeds grip (or jersey) strength.
-        const alpha = Math.min(1, dt / 0.02);
+        // Grip force averaged over ~20 ms (the ball grip: the fumble window); breaks when it exceeds grip (or jersey) strength.
+        const alpha = Math.min(1, dt / (this.isBall(g.target) ? this.fumble.window : 0.02));
         g.force += (this.scene.gripForce(a.index, h) - g.force) * alpha;
         if (!want[h] || g.force > g.limit) {
           this.scene.gripOff(a.index, h);
@@ -705,7 +711,7 @@ export class World {
         const tgtAth = t.athlete >= 0 ? this.athletes[t.athlete] : null;
         const segName = tgtAth ? tgtAth.plan.segments[t.seg].name : '';
         g.jersey = /thorax|lumbar|trunk|pelvis/.test(segName);
-        g.limit = g.jersey ? Math.min(GRIP_ECC * a.plan.gripStrength, EQUIPMENT.jersey.tearStrength) : GRIP_ECC * a.plan.gripStrength;
+        g.limit = g.jersey ? Math.min(GRIP_ECC * a.plan.gripStrength, EQUIPMENT.jersey.tearStrength) : GRIP_ECC * a.plan.gripStrength * (this.isBall(t) ? this.fumble.hold : 1);
         this.scene.gripOn(a.index, h, { athlete: t.athlete, seg: t.seg }, t.pos, g.jersey ? GRIP_TIMECONST.jersey : GRIP_TIMECONST.hand);
         g.active = true; g.force = 0; g.target = { athlete: t.athlete, seg: t.seg };
       }
@@ -716,8 +722,11 @@ export class World {
   attachGrip(ai: number, hand: 0 | 1, target: { athlete: number; seg: number }, point: Vec3) {
     const a = this.athletes[ai], g = a.grips[hand];
     this.scene.gripOn(ai, hand, target, point, GRIP_TIMECONST.hand);
-    g.active = true; g.force = 0; g.jersey = false; g.limit = GRIP_ECC * a.plan.gripStrength; g.target = target;
+    g.active = true; g.force = 0; g.jersey = false; g.limit = GRIP_ECC * a.plan.gripStrength * (this.isBall(target) ? this.fumble.hold : 1); g.target = target;
   }
+
+  /** A grip target that is the ball (fumble tuning applies to it). */
+  isBall(t: { athlete: number; seg: number } | null | undefined) { return !!t && t.athlete < 0 && t.seg === this.ballIndex; }
 
   /** The arm is raised to grab (reach button or wrap), so the hand may close on what it nearly touches. */
   raised(a: Athlete, h: 0 | 1) { return a.cmd.wrap || (h === 0 ? a.cmd.armL : a.cmd.armR) > 0.3; }
