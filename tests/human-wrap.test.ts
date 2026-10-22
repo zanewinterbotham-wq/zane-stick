@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { DEFAULT_ATHLETE } from '../src/sim/anatomy/body';
 import { DEFAULT_SUPPORT } from '../src/sim/anim/types';
-import { HumanBrain, timeToContact, type HumanInput } from '../src/sim/brains/human';
+import { HumanBrain, type HumanInput } from '../src/sim/brains/human';
 import { ScriptBrain } from '../src/sim/brains/script';
 import type { AthleteView, Perception } from '../src/sim/brains/types';
 import { TrackingController } from '../src/sim/control/tracking';
@@ -13,35 +13,17 @@ const view = (z: number, vz = 0, team: 0 | 1 = 1, x = 0): AthleteView => ({ com:
 const perceive = (me: AthleteView, him: AthleteView, time = 0): Perception => ({ time, self: 0, athletes: [me, him], field: { halfWidth: 24, goalZ: 50, dirZ: 1 } });
 const input = (armL: number, armR: number): HumanInput => ({ move: { x: 0, y: 1 }, torso: 0, sprint: 0, armL, armR, held: new Set(), cameraYaw: 0, aimPitch: 0 });
 
-describe('timeToContact', () => {
-  it('head on, apart, passing wide, already in', () => {
-    expect(timeToContact(view(0, 8, 0), view(2, -4), 0.55)).toBeCloseTo(1.45 / 12, 9);
-    expect(timeToContact(view(0, -1, 0), view(2, 1), 0.55)).toBe(Infinity);
-    expect(timeToContact(view(0, 8, 0), view(2, 0, 1, 1), 0.55)).toBe(Infinity); // closest approach 1 m to the side
-    expect(timeToContact(view(0, 0, 0), view(0.4), 0.55)).toBe(0);
-  });
-});
-
-describe('HumanBrain auto wrap (bear hug)', () => {
-  it('both arm buttons near an opponent hug him (facing him, grips once the arms are round); one arm or far does not', () => {
+describe('HumanBrain bear hug', () => {
+  it('both arm buttons always hug (round a man ahead, else arms out at the camera aim), hands open; one arm reaches straight', () => {
     const b = new HumanBrain();
     b.latest = input(1, 1);
     let c = b.think(perceive(view(0, 0, 0), view(1)));
-    expect([c.wrap, c.hug, c.gripL, c.aim![2], c.face]).toEqual([true, true, false, 1, { x: 0, z: 1 }]);
-    c = b.think(perceive(view(0, 0, 0), view(1), 0.35));
-    expect([c.gripL, c.gripR]).toEqual([true, true]);
-    c = b.think(perceive(view(0, 0, 0), view(3)));                     // 3 m, standing still: not yet
-    expect([c.wrap, c.hug, c.aim![2]]).toEqual([false, false, 1.5]);   // arms at the camera aim instead
+    expect([c.wrap, c.hug, c.gripL, c.gripR, c.aim![2], c.face]).toEqual([true, true, false, false, 1, { x: 0, z: 1 }]);
+    c = b.think(perceive(view(0, 0, 0), view(30)));                    // nobody near: the ready-to-wrap pose at the camera aim
+    expect([c.wrap, c.hug, c.gripL, c.aim![2]]).toEqual([true, true, false, 1.5]);
     b.latest = input(1, 0);
-    expect(b.think(perceive(view(0, 0, 0), view(1))).wrap).toBe(false);
-  });
-
-  it('predicts contact: starts early enough to be round him at contact', () => {
-    const b = new HumanBrain();
-    b.latest = input(1, 1);
-    expect(b.think(perceive(view(0, 10, 0), view(4))).hug).toBe(true);   // 0.35 s to contact at 10 m/s
-    expect(b.think(perceive(view(0, 10, 0), view(6))).hug).toBe(false);  // 0.55 s
-    expect(b.think(perceive(view(0, 10, 0), view(3, 0, 1, 1.5))).hug).toBe(false); // running past him
+    c = b.think(perceive(view(0, 0, 0), view(1)));
+    expect([c.wrap, c.hug, c.gripL]).toEqual([false, false, true]);
   });
 });
 
@@ -60,9 +42,10 @@ describe('bear hug pose (physics)', () => {
     while (w.time < 0.5) w.step();
     me.latest = { ...input(1, 1), move: { x: 0, y: 0 } };
     while (w.time < 1.3) w.step();
-    return { hands: [rel(s, 'handL'), rel(s, 'handR')], grips: a.grips.map((g) => g.active), inst: w.scene.stats().instabilities };
+    const segs = a.grips.map((g) => (g.target && g.target.athlete === 1 ? w.athletes[1].plan.segments[g.target.seg].name : ''));
+    return { hands: [rel(s, 'handL'), rel(s, 'handR')], grips: a.grips.map((g) => g.active), segs, inst: w.scene.stats().instabilities };
   }
-  it('chest to chest the hands go round his sides past his middle, level, gripping', async () => {
+  it('chest to chest (trunks touching) the hands go round his sides past his middle, level, gripping his trunk', async () => {
     const h = await hug();
     for (const [k, p] of h.hands.entries()) {
       expect((k === 0 ? 1 : -1) * p[0]).toBeGreaterThan(0.2);  // each hand on its own side: left round his right
@@ -70,6 +53,7 @@ describe('bear hug pose (physics)', () => {
       expect(Math.abs(p[1])).toBeLessThan(0.15);                // level with his chest, not up over his shoulders
     }
     expect(h.grips).toEqual([true, true]);
+    for (const n of h.segs) expect(n).toMatch(/thorax|lumbar|trunk|pelvis/); // his back/sides, not an arm
     expect(h.inst).toBe(0);
   });
 });

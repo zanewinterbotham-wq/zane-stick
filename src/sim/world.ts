@@ -95,6 +95,8 @@ export class Athlete {
   playerContactNow = false;
   /** Athletes this one touches (last contact read). */
   touching: number[] = [];
+  /** A trunk segment (thorax, lumbar, pelvis) touches an opponent (last contact read): a hug's hands close then. */
+  trunkTouch = false;
   grips: { active: boolean; force: number; cooldown: number; jersey: boolean; limit: number; target: LinkRef | null }[] = [0, 1].map(() => ({ active: false, force: 0, cooldown: 0, jersey: false, limit: 0, target: null }));
   /** Last contact per hand: target link and point, for grip forming. */
   handTouch: ({ athlete: number; seg: number; pos: Vec3 } | null)[] = [null, null];
@@ -517,7 +519,7 @@ export class World {
       a.feet.forEach((f) => { f.force = 0; f.cop.fill(0); f.touching = false; });
       a.downBy = null; a.handTouch = [null, null];
       a.playerContactNow = false;
-      a.touching = [];
+      a.touching = []; a.trunkTouch = false;
       a.hitForce = [0, 0, 0]; a.hitOpp = [0, 0, 0];
     }
     let hit = 0;
@@ -535,7 +537,8 @@ export class World {
           });
           if (!a.limbEndSegs.has(p.seg)) a.downBy = a.plan.segments[p.seg].name;
         } else {
-          if (o.athlete >= 0 && o.athlete !== p.athlete) { a.playerContactNow = true; if (!a.touching.includes(o.athlete)) a.touching.push(o.athlete); }
+          if (o.athlete >= 0 && o.athlete !== p.athlete) { a.playerContactNow = true; if (!a.touching.includes(o.athlete)) a.touching.push(o.athlete);
+            if (this.athletes[o.athlete].setup.team !== a.setup.team && /thorax|lumbar|trunk|pelvis/.test(a.plan.segments[p.seg].name)) a.trunkTouch = true; }
           const hand = a.handSegs.indexOf(p.seg);
           // a hand closes on props and opponents, never on a teammate (a blocker must not grab his own runner)
           if (hand >= 0 && (o.athlete < 0 || this.athletes[o.athlete].setup.team !== a.setup.team)) a.handTouch[hand] = { athlete: o.athlete, seg: o.seg, pos: c.pos };
@@ -690,7 +693,9 @@ export class World {
   }
 
   private updateGrips(a: Athlete, dt: number) {
-    const want = [a.cmd.gripL || (a.cmd.wrap && !a.cmd.hug) || a.cmd.carry === 1, a.cmd.gripR || (a.cmd.wrap && !a.cmd.hug) || a.cmd.carry === 2].map((x, h) => x && !a.injury.arm[h]);
+    // a hug's hands close once my trunk meets him, and hold while it is held
+    const hug = a.cmd.hug && (a.trunkTouch || a.grips[0].active || a.grips[1].active);
+    const want = [a.cmd.gripL || (a.cmd.wrap && !a.cmd.hug) || hug || a.cmd.carry === 1, a.cmd.gripR || (a.cmd.wrap && !a.cmd.hug) || hug || a.cmd.carry === 2].map((x, h) => x && !a.injury.arm[h]);
     for (const h of [0, 1] as const) {
       const g = a.grips[h];
       g.cooldown = Math.max(0, g.cooldown - dt);
