@@ -240,7 +240,7 @@ html, body { overscroll-behavior: none; }
 .trotate { display: none; }
 @media (orientation: portrait) { .trotate { display: grid; place-items: center; position: absolute; inset: 0; pointer-events: auto; background: rgba(5, 12, 7, 0.85); color: #fff; font: 600 18px system-ui, sans-serif; text-align: center; padding: 24px; } }
 .tbtn, .tstick, .tslider { position: absolute; pointer-events: auto; touch-action: none; transform: translate(-50%, -50%); display: grid; place-items: center; }
-.tbtn { width: 62px; height: 62px; border-radius: 50%; background: rgba(10, 20, 14, 0.45); border: 2px solid rgba(255, 255, 255, 0.5); color: #fff; font: 600 13px system-ui, sans-serif; }
+.tbtn { width: 62px; height: 62px; border-radius: 50%; background: rgba(10, 20, 14, 0.45); border: 2px solid rgba(255, 255, 255, 0.5); color: #fff; font: 600 13px system-ui, sans-serif; text-align: center; line-height: 1.1; }
 .tbtn.small { width: 44px; height: 44px; font-size: 16px; }
 .tbtn.lit { background: rgba(255, 210, 63, 0.55); border-color: #ffd23f; }
 .tbtn.on { background: rgba(255, 255, 255, 0.4); }
