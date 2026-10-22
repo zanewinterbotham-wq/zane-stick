@@ -43,6 +43,9 @@ export type RepEnd = 'down' | 'touchdown' | 'safety' | 'touchback' | 'out' | 'ti
 export type PassState = 'none' | 'air' | 'complete' | 'intercepted' | 'incomplete';
 export const PASS_STATES: readonly PassState[] = ['none', 'air', 'complete', 'intercepted', 'incomplete'];
 
+/** After a fumble nobody recovers the ball for this long (s): the athletes take a moment to realise it is loose (a game-design
+ *  assumption, the same for every athlete); the ball stays loose and physical meanwhile. Not for laterals, passes or kicks. */
+export const FUMBLE_DELAY = 0.35;
 /** Segments that recover a loose ball: the trunk ('trunk' is the minimum body's fused one). */
 const TORSO = /^(pelvis|lumbar|thorax|trunk)$/;
 /** Catch chance (owner decision 2026-10-18, an arcade rule like the hand snap; every number a game-design assumption,
@@ -100,6 +103,8 @@ export class Play {
   /** Per passer: whether the throw passOk last let him start goes forward (decided once, at the windup). */
   private windup = new Map<number, boolean>();
   private clear = false;
+  /** When the last fumble happened (world s): recovery waits FUMBLE_DELAY after it. */
+  private fumbledAt = -Infinity;
   /** The holder: time on the turf (s), time since he last left it (s), last opponent contact (world s), and whether
    *  a dead ball in his own end zone would be a touchback (he got it there from the opponents and has not left). */
   private turfT = 0; private offT = UP_TIME; private touchedAt = -Infinity; private touchback = false;
@@ -224,8 +229,10 @@ export class Play {
       if (a.touching.some((k) => this.team(k) !== T)) this.touchedAt = w.time;
       if (a.downBy) { this.turfT += w.dt; this.offT = 0; } else if ((this.offT += w.dt) >= UP_TIME) this.turfT = 0;
       if (this.touchback && !inOwnEndZone(r, T, bz)) this.touchback = false;
+      // an unconscious carrier's hands let go: the ball is a fumble by the usual rules
+      if (a.injury.ko) { const g = w.gripping(hi, this.ballRef); if (g >= 0) w.releaseGrip(hi, g as 0 | 1); }
       // checked before the grip: a ball that comes out on the step he lands was still held when he went down
-      if (a.downBy && (w.time - this.touchedAt < CONTACT_MEM || this.turfT > GIVE_UP || a.injury.out)) return this.dead(T, bz, 'down');
+      if (!a.injury.ko && a.downBy && (w.time - this.touchedAt < CONTACT_MEM || this.turfT > GIVE_UP || a.injury.out)) return this.dead(T, bz, 'down');
       if (w.gripping(hi, this.ballRef) < 0) this.fumble(hi);
       else if (scores(r, T, bz)) return this.end('touchdown', T, r.points.touchdown);
       else if (r.outOfBounds && this.runnerOut(hi)) return this.dead(T, bz, 'out');
@@ -257,7 +264,7 @@ export class Play {
 
   private fumble(ai: number) {
     this.world.ballCarrier = -1;
-    this.fumbler = ai; this.clear = false; this.fumbles++; this.kicked = false; this.muffed.clear();
+    this.fumbler = ai; this.fumbledAt = this.world.time; this.clear = false; this.fumbles++; this.kicked = false; this.muffed.clear();
     this.reassign();
   }
 
@@ -316,6 +323,7 @@ export class Play {
     };
     const ok = (i: number, h: 0 | 1) => w.raised(w.athletes[i], h) && !w.athletes[i].injury.arm[h]; // a hand that is not raised neither catches nor counts as touching
     w.athletes.forEach((a, i) => {
+      if (a.injury.ko) return; // unconscious: never picks up or catches
       const hp = [w.handPoint(a, 0), w.handPoint(a, 1)];
       // both hands up: a ball between them is in the catch too
       const reach = this.catching.reach, both = ok(i, 0) && ok(i, 1) && segDist(bp, hp[0], hp[1]) - tip < reach;
@@ -334,6 +342,7 @@ export class Play {
     for (const c of w.scene.contacts()) for (const [p, o] of [[c.a, c.b], [c.b, c.a]] as const) {
       if (p.athlete >= 0 || p.seg !== this.ball) continue;
       if (o.athlete < 0 && this.pass === 'air') return this.incomplete();
+      if (o.athlete >= 0 && w.athletes[o.athlete].injury.ko) continue;
       if (o.athlete < 0) { this.turfAt = w.time; this.muffed.clear(); continue; } // a bounce: everyone may try again
       // the trunk, or a raised arm the ball strikes (trapped against the forearms, as a catch often is)
       const name = w.athletes[o.athlete].plan.segments[o.seg].name, arm = /^(?:hand|forearm|upperArm)([LR])$/.exec(name), h = arm?.[1] === 'L' ? 0 : 1;
@@ -346,6 +355,7 @@ export class Play {
     const air = w.time - this.turfAt > CATCH.turf;
     let by = -1;
     for (const [i, hands] of takers) {
+      if (w.time - this.fumbledAt < FUMBLE_DELAY) break;
       if (this.muffed.has(i)) continue;
       if (!air || this.catchTry(i, hands)) { by = i; break; }
       this.muffed.add(i);

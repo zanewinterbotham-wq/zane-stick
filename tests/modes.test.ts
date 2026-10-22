@@ -7,7 +7,7 @@ import { BALL } from '../src/sim/anatomy/equipment';
 import { ScriptBrain } from '../src/sim/brains/script';
 import type { Brain } from '../src/sim/brains/types';
 import type { Commands } from '../src/sim/control/types';
-import { Play } from '../src/sim/modes/play';
+import { FUMBLE_DELAY, Play } from '../src/sim/modes/play';
 import { MODES, resolveOptions } from '../src/sim/modes/registry';
 import { deadBall, END_LINE, GOAL_LINE, HALF_WIDTH, inOwnEndZone, NFL, outside, scores } from '../src/sim/modes/rules';
 import type { BallStart, ModeDef, PlayerSpec } from '../src/sim/modes/types';
@@ -157,4 +157,43 @@ describe('rules (headless)', () => {
     expect(p.world.scene.stats().instabilities).toBe(0);
     p.destroy();
   });
+});
+
+describe('fumble recovery', () => {
+  /** Athlete 1 holds the ball; his teammate (the human, 0) has a hand up with the ball put into it each step from the moment the
+   *  carrier lets go (or is knocked out). Returns when the human recovered it (world s after the fumble; -1: not within 1.5 s). */
+  async function recovery(koHuman: boolean) {
+    const human = script((_t, c) => { c.armR = 1; c.gripR = true; });
+    const p = await play(testMode([{ team: 0, label: 'Human', pos: [0, 0] }, { team: 0, label: 'Carrier', pos: [0, -4] }, FAR], { holder: 1 }, []), human);
+    run(p, 1); // the arm comes up
+    const w = p.world, h = w.athletes[0].handSegs[1];
+    if (koHuman) w.athletes[0].injury.ko = true;
+    w.athletes[1].injury.ko = true; // the carrier is knocked out: his hands let go
+    let t0 = -1, rec = -1;
+    run(p, 3, () => {
+      if (t0 < 0 && p.fumbles > 0) t0 = w.time - w.dt;
+      if (t0 < 0 || rec >= 0 || w.time - t0 > 1.5) return;
+      if (w.ballCarrier === 0) { rec = w.time - t0; return; }
+      const s = w.scene.athletes[0].state;
+      w.scene.placeProp(p.ball, [s.segPos[3 * h], s.segPos[3 * h + 1] + 0.12, s.segPos[3 * h + 2]], [0, 0, 0, 1]);
+    });
+    const out = { rec, fumbles: p.fumbles, by: p.recoveredBy };
+    p.destroy();
+    return out;
+  }
+
+  it('nobody recovers a fumble for FUMBLE_DELAY: the ball lies loose first, then the first athlete takes it', async () => {
+    const r = await recovery(false);
+    console.log('recovery after', r.rec.toFixed(3), 's (delay', FUMBLE_DELAY, ')');
+    expect(r.fumbles).toBe(1);
+    expect(r.rec).toBeGreaterThanOrEqual(FUMBLE_DELAY - 0.02);
+    expect(r.by).toBe(0);
+  }, 60_000);
+
+  it('an unconscious carrier lets go of the ball (a fumble) and an unconscious athlete never recovers a loose ball', async () => {
+    const r = await recovery(true);
+    expect(r.fumbles).toBe(1);
+    expect(r.rec).toBe(-1);
+    expect(r.by).toBe(-1);
+  }, 60_000);
 });
