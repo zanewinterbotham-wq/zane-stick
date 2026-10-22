@@ -38,7 +38,7 @@ export interface Settings {
   effortShading: boolean;
   slowMo: boolean;
   autoCamera: boolean;            // camera follows the athlete (no mouse look needed)
-  sprintToggle: boolean;          // sprint key toggles instead of hold
+  sprintToggle: boolean;          // sprint key toggles instead of hold (default on touch screens only)
   camera: 'chase' | 'helmet';
   bindings: Record<string, string[]>; // the player's keyboard / mouse rebinds, per action, over bindings.json
   overlay: boolean;
@@ -73,7 +73,7 @@ const VERSION = 9;
 
 export const DEFAULT_SETTINGS: Settings = {
   version: VERSION, preset: null, perf: {}, assist: 0.2, support: GAME_SUPPORT, strength: 1, speed: 1, toughness: 1, juking: 0.5, tackling: 0.5, boneStrength: 1, aiBoneStrength: 1, hitPower: 1.5, ...structuredClone(GAME_TUNING), steerAssist: 1, traction: 1.2, gains: {}, mute: false, effortShading: true,
-  slowMo: true, autoCamera: false, sprintToggle: false, camera: 'chase', bindings: {}, overlay: false, skin: skins[0]?.id ?? 'classic', goreLevel: 1, stadium: stadiums[0]?.id ?? 'field' // the owner's picks are first in the lists
+  slowMo: true, autoCamera: false, sprintToggle: typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches, camera: 'chase', bindings: {}, overlay: false, skin: skins[0]?.id ?? 'classic', goreLevel: 1, stadium: stadiums[0]?.id ?? 'field' // the owner's picks are first in the lists
 };
 
 /** Difficulty presets: each axis moves on its own (AI toughness, AI juking, the player's strength and speed). */
