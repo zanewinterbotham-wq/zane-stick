@@ -2,6 +2,9 @@
 // To add a setting, add a row to GAMEPLAY_ROWS (or the matching tab builder) and a field to Settings.
 import { CATCH_RANGES, catchTuning, type CatchTuning } from '../sim/modes/catching';
 import { FUMBLE_RANGES, fumbleTuning, type FumbleTuning } from '../sim/fumble';
+import { GRAB_RANGES, grabTuning, type GrabTuning } from '../sim/grab';
+import { HIT_RANGES, hitTuning, type HitTuning } from '../sim/hits';
+import { BONE_RANGES, boneTuning, KO_RANGES, koTuning, type BoneTuning, type KoTuning } from '../sim/injury';
 import { JUMP_RANGES, jumpTuning, type JumpTuning } from '../sim/anim/jump';
 import { QB_RANGES, qbTuning, type QbTuning } from '../sim/brains/football/qbTuning';
 import type { SupportSettings } from '../sim/anim/types';
@@ -212,14 +215,67 @@ const CATCH_ROWS: [keyof CatchTuning, string, string, (v: number) => string][] =
   ['blind', 'Not looking at the ball', 'A ball you are not looking at (100% = no harder).', pct],
 ];
 
+/** The grabbing, contact, bone and knockout knobs on the Advanced tab: [knob, label, what it does, format]. */
+const ms = (v: number) => `${(v * 1000).toFixed(0)} ms`, rad = (v: number) => `${v.toFixed(2)} rad`;
+const GRAB_ROWS: [keyof GrabTuning, string, string, (v: number) => string][] = [
+  ['grip', 'Grip strength', '× how hard a hand holds on (jersey, arms, legs, the ball).', x],
+  ['tear', 'Jersey strength', '× how hard a jersey can be pulled before it tears out of the hand.', x],
+  ['window', 'Grip jolt window', 'How long a pull must last to break a grip: longer lets short jolts pass.', ms],
+  ['cooldown', 'Re-grip delay', 'How long a hand that was torn loose waits before it can grab again.', sec],
+  ['reach', 'Grab distance', 'How close a raised hand must get to a body to grab it.', m],
+  ['aim', 'Arm reach', 'How far from the shoulder a reaching arm goes for the nearest opponent.', m],
+  ['hugSide', 'Hug width', 'How far out to his sides the arms go in a bear hug.', m],
+  ['hugPast', 'Hug reach past him', 'How far round his back the arms reach in a bear hug.', m],
+  ['hugBend', 'Hug elbow bend', 'How hard the elbows bend in the squeeze.', rad],
+  ['hugWide', 'Hug elbows out', 'How far the elbows go out in the squeeze.', rad],
+  ['holdStart', 'Hold: time to start', 'How long someone is held before it starts taking his balance.', sec],
+  ['holdFull', 'Hold: time to full', 'The further time until the hold takes all his balance.', sec],
+  ['oneArm', 'One-arm hold', 'How much of that one arm takes (two arms take all of it).', pct],
+];
+const HIT_ROWS: [keyof HitTuning, string, string, (v: number) => string][] = [
+  ['stunStart', 'Stun starts', 'How big a hit (in big hits) starts to stun: the muscles go loose.', x],
+  ['stunFull', 'Stun full', 'How much more hit makes the stun full.', x],
+  ['stunTime', 'Stun time', 'How long a stun takes to wear off.', sec],
+  ['drivenStart', 'Driven back: starts', 'How much faster than he wants to go, pushed along the hit, he starts to lose balance.', (v) => `${v.toFixed(2)} m/s`],
+  ['drivenFull', 'Driven back: full', 'The speed along the hit at which he has lost all balance.', (v) => `${v.toFixed(2)} m/s`],
+  ['drivenTime', 'Hit memory', 'How long a big hit still counts for being driven back.', sec],
+  ['decay', 'Knock recovery', 'How fast he gets his balance back once nothing knocks him (per second).', (v) => `${v.toFixed(2)} /s`],
+  ['free', 'Free time', 'How long untouched before leaning or flying is his own move, not a knock.', sec],
+  ['stable', 'Steady feet', 'How long his feet must be steady before his run comes back after contact.', sec],
+  ['fadeIn', 'Run fade-in', 'How long his run takes to come back after that.', sec],
+  ['goKnock', 'Steady enough', 'How knocked he may still be and start running again.', pct],
+  ['getup', 'Get-up time', 'How long his balance takes to come back while he gets up.', sec],
+  ['launch', 'Dive strength', 'The hardest push a dive takes off with.', (v) => `${v.toFixed(1)} m/s²`],
+  ['lunge', 'Lunge strength', 'The hardest forward push of a hip thrust.', (v) => `${v.toFixed(1)} m/s²`],
+];
+const BONE_ROWS: [keyof BoneTuning, string, string, (v: number) => string][] = [
+  ['all', 'Bone strength (all)', '× how much load every joint takes before it breaks (higher: fewer injuries).', x],
+  ['arms', 'Arm bones', '× for shoulders, elbows and collarbones, on top of the above.', x],
+  ['legs', 'Leg bones', '× for knees and ankles, on top of the above.', x],
+  ['sustain', 'Slow-load toughness', 'How many times more a slow, held load takes to break a joint than a sudden hit.', x],
+  ['slowTau', 'Slow-load time', 'How long a load must last to count as slow.', sec],
+  ['contact', 'Break window', 'Joints break only this long after touching another player (hits and the falls after).', sec],
+];
+const KO_ROWS: [keyof KoTuning, string, string, (v: number) => string][] = [
+  ['dv', 'Knockout blow', 'How hard a head jolt knocks out: its change of speed.', (v) => `${v.toFixed(1)} m/s`],
+  ['window', 'Knockout jolt time', 'Over how long that change of speed is measured.', ms],
+  ['koTone', 'Knocked-out muscle', 'How much muscle a knocked-out player keeps.', pct],
+  ['hurtTone', 'Hurt muscle', 'How much muscle a player with both legs broken keeps.', pct],
+  ['fade', 'Go-limp time', 'How long a player out of the play takes to go limp.', sec],
+];
+
 /** The Advanced tab's tuning groups: a Settings field holding only the knobs moved, over the defaults its `tune` fills
  *  in (and clamps). `ranges`: [min, max, step?] per knob (no step: 0.01). To add a group, add a row here. */
-interface TuningGroup { key: 'jump' | 'qb' | 'catching' | 'fumble'; title: string; note?: string; rows: [string, string, string, (v: number) => string][]; ranges: Record<string, readonly number[]>; tune(o: unknown): object; reset: string }
+interface TuningGroup { key: 'jump' | 'qb' | 'catching' | 'fumble' | 'grab' | 'contact' | 'bones' | 'knockout'; title: string; note?: string; rows: [string, string, string, (v: number) => string][]; ranges: Record<string, readonly number[]>; tune(o: unknown): object; reset: string }
 const TUNING: TuningGroup[] = [
   { key: 'jump', title: 'Jump', rows: JUMP_ROWS, ranges: JUMP_RANGES, tune: jumpTuning, reset: 'Reset jump to defaults' },
   { key: 'qb', title: 'Bot QB', rows: QB_ROWS, ranges: QB_RANGES, tune: qbTuning, reset: 'Reset QB to defaults' },
   { key: 'catching', title: 'Catching', note: 'How easy catching is, for you and the bots alike: the base chance for the hands times the factors below.', rows: CATCH_ROWS, ranges: CATCH_RANGES, tune: catchTuning, reset: 'Catching: back to the defaults' },
   { key: 'fumble', title: 'Fumbles', note: 'Fumbles stay physics, the same for you and the bots: the ball comes loose when a hit pulls on it harder than the grip holds.', rows: FUMBLE_ROWS, ranges: FUMBLE_RANGES, tune: fumbleTuning, reset: 'Reset fumbles to defaults' },
+  { key: 'grab', title: 'Grabbing', note: 'Grips stay physics, the same for you and the bots: a hand lets go when the pull passes its strength.', rows: GRAB_ROWS, ranges: GRAB_RANGES, tune: grabTuning, reset: 'Reset grabbing to defaults' },
+  { key: 'contact', title: 'Hits & balance', note: 'How hits knock players off balance and how fast they recover, the same for you and the bots.', rows: HIT_ROWS, ranges: HIT_RANGES, tune: hitTuning, reset: 'Reset hits to defaults' },
+  { key: 'bones', title: 'Bones', note: 'Joints break by physics when a hit loads them past their limit; these scale on top of the bone strength sliders.', rows: BONE_ROWS, ranges: BONE_RANGES, tune: boneTuning, reset: 'Reset bones to defaults' },
+  { key: 'knockout', title: 'Knockouts', note: 'A big enough jolt to the head knocks a player out for the rest of the rep.', rows: KO_ROWS, ranges: KO_RANGES, tune: koTuning, reset: 'Reset knockouts to defaults' },
 ];
 const tuned = (g: TuningGroup, s: Settings) => g.tune(s[g.key]) as Record<string, number>;
 
