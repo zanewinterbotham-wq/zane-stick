@@ -3,6 +3,7 @@
 import { neutralCommands, type Commands, type PassCmd } from '../control/types';
 import { clamp } from '../math';
 import { catchPoint, dropPoint, incoming, OVERHEAD } from './returner';
+import { wrapArms } from './tackler';
 import { leadShoulder, type AthleteView, type Brain, type Perception } from './types';
 
 /** Device-independent input snapshot (what the shell's InputFrame boils down to). */
@@ -33,6 +34,9 @@ const AIM_DIST = 1.5, CHEST_BELOW_HEAD = 0.3;
 const STEER = { range: 10, cone: 0.5 };
 /** A loose ball this close (m, along the ground) and no higher than this (m) draws both arms to it and a stoop. */
 const LOOSE_REACH = 2, LOOSE_HIGH = 1;
+/** Both arm buttons held with an opponent this close (m, along the ground) or this soon to contact (s, at the
+ *  closing speed): the arms wrap him the way the tackler bot's do, and the body squares up to him. */
+const WRAP_NEAR = 1.2, WRAP_TTC = 0.3;
 
 export class HumanBrain implements Brain {
   latest: HumanInput | null = null;
@@ -76,6 +80,12 @@ export class HumanBrain implements Brain {
     if (c.armL > 0 || c.armR > 0) {
       const me = p.athletes[p.self], ce = Math.cos(i.aimPitch);
       c.aim = [me.head[0] + fwd[0] * ce * AIM_DIST, me.head[1] - CHEST_BELOW_HEAD + Math.sin(i.aimPitch) * AIM_DIST, me.head[2] + fwd[1] * ce * AIM_DIST];
+    }
+    const t = this.nearest;
+    if (t && i.armL > 0.5 && i.armR > 0.5) {
+      const me = p.athletes[p.self], dx = t.com[0] - me.com[0], dz = t.com[2] - me.com[2], d = Math.hypot(dx, dz) || 1e-6;
+      const closing = ((me.comVel[0] - t.comVel[0]) * dx + (me.comVel[2] - t.comVel[2]) * dz) / d;
+      if (d < WRAP_NEAR || (closing > 0 && d / closing < WRAP_TTC)) { wrapArms(c, t, d); c.face = { x: dx / d, z: dz / d }; }
     }
     if (this.contact) {
       c.driveLegs = i.sprint;
