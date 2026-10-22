@@ -34,9 +34,20 @@ const AIM_DIST = 1.5, CHEST_BELOW_HEAD = 0.3;
 const STEER = { range: 10, cone: 0.5 };
 /** A loose ball this close (m, along the ground) and no higher than this (m) draws both arms to it and a stoop. */
 const LOOSE_REACH = 2, LOOSE_HIGH = 1;
-/** Both arm buttons held with an opponent this close (m, along the ground) or this soon to contact (s, at the
- *  closing speed): the arms wrap him the way the tackler bot's do, and the body squares up to him. */
-const WRAP_NEAR = 1.2, WRAP_TTC = 0.3;
+/** Both arm buttons held: a bear hug (wrap + hug) at the tackler bot's aim, squared up to him, from when the gap would close
+ *  to body contact (CONTACT_D m, COM to COM, along the ground) within HUG_LEAD s at the present relative velocity (about
+ *  the time the arms take to open out round him, so they are round him at contact), or inside WRAP_NEAR m. The hands
+ *  grip HUG_GRIP s into it: sooner, they would catch on his front instead of going round. */
+const WRAP_NEAR = 1.2, CONTACT_D = 0.55, HUG_LEAD = 0.4, HUG_GRIP = 0.3;
+
+/** Time (s) until the ground distance from me to him closes to r m at our present velocities: 0 already inside it,
+ *  Infinity if it never does (moving apart, or the closest approach passes wider). */
+export function timeToContact(me: AthleteView, t: AthleteView, r: number): number {
+  const px = t.com[0] - me.com[0], pz = t.com[2] - me.com[2], vx = t.comVel[0] - me.comVel[0], vz = t.comVel[2] - me.comVel[2];
+  const c = px * px + pz * pz - r * r, a = vx * vx + vz * vz, b = px * vx + pz * vz, disc = b * b - a * c;
+  if (c <= 0) return 0;
+  return b >= 0 || disc < 0 ? Infinity : (-b - Math.sqrt(disc)) / a;
+}
 
 export class HumanBrain implements Brain {
   latest: HumanInput | null = null;
@@ -48,6 +59,8 @@ export class HumanBrain implements Brain {
   private nearest: AthleteView | undefined;
   /** The last pass handed on: the shell's input stays `latest` over several steps, the throw is one. */
   private passed: PassCmd | null = null;
+  /** When the hug began (s; −1: not hugging). */
+  private hugSince = -1;
 
   think(p: Perception): Commands {
     const c = neutralCommands();
@@ -82,11 +95,12 @@ export class HumanBrain implements Brain {
       c.aim = [me.head[0] + fwd[0] * ce * AIM_DIST, me.head[1] - CHEST_BELOW_HEAD + Math.sin(i.aimPitch) * AIM_DIST, me.head[2] + fwd[1] * ce * AIM_DIST];
     }
     const t = this.nearest;
-    if (t && i.armL > 0.5 && i.armR > 0.5) {
-      const me = p.athletes[p.self], dx = t.com[0] - me.com[0], dz = t.com[2] - me.com[2], d = Math.hypot(dx, dz) || 1e-6;
-      const closing = ((me.comVel[0] - t.comVel[0]) * dx + (me.comVel[2] - t.comVel[2]) * dz) / d;
-      if (d < WRAP_NEAR || (closing > 0 && d / closing < WRAP_TTC)) { wrapArms(c, t, d); c.face = { x: dx / d, z: dz / d }; }
-    }
+    const me0 = p.athletes[p.self], dx = t ? t.com[0] - me0.com[0] : 0, dz = t ? t.com[2] - me0.com[2] : 0, d = Math.hypot(dx, dz) || 1e-6;
+    if (t && i.armL > 0.5 && i.armR > 0.5 && (d < WRAP_NEAR || timeToContact(me0, t, CONTACT_D) < HUG_LEAD)) {
+      if (this.hugSince < 0) this.hugSince = p.time;
+      wrapArms(c, t, 0); c.hug = true; c.face = { x: dx / d, z: dz / d };
+      c.gripL = c.gripR = p.time - this.hugSince >= HUG_GRIP;
+    } else this.hugSince = -1;
     if (this.contact) {
       c.driveLegs = i.sprint;
       if (c.driveLegs > 0.5) c.gait = 'sprint';

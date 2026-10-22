@@ -38,7 +38,7 @@ export function encodeSnapshot(play: Play): ArrayBuffer {
     const c = a.cmd, g = a.grips;
     i8(a.downBy === null ? -1 : a.segIndex.get(a.downBy)!);
     u8(+a.playerContact | +a.feet[0].touching << 1 | +a.feet[1].touching << 2 | +g[0].active << 3 | +g[1].active << 4 | +a.support.down << 5);
-    u8(+c.thrustHips | +c.dive << 1 | GAITS.indexOf(c.gait) << 2 | +c.contactMode << 4 | +c.wrap << 5);
+    u8(+c.thrustHips | +c.dive << 1 | GAITS.indexOf(c.gait) << 2 | +c.contactMode << 4 | +c.wrap << 5 | +c.hug << 6);
     unit(c.armL); unit(c.armR); unit(a.support.posture); unit(a.support.carry);
     for (const h of g) { i8(h.target?.athlete ?? -1); u8(Math.max(0, h.target?.seg ?? 0)); }
     f32(a.knock); f32(w.impact.peakHeadG[a.index] ?? 0);
@@ -89,7 +89,7 @@ export function applyMeta(play: Play, s: Snapshot) {
     a.downBy = down < 0 ? null : a.plan.segments[down]?.name ?? null;
     a.playerContact = !!(fl & 1); a.feet[0].touching = !!(fl & 2); a.feet[1].touching = !!(fl & 4);
     a.support.down = !!(fl & 32);
-    c.thrustHips = !!(cm & 1); c.dive = !!(cm & 2); c.gait = GAITS[(cm >> 2) & 3] ?? 'jog'; c.contactMode = !!(cm & 16); c.wrap = !!(cm & 32);
+    c.thrustHips = !!(cm & 1); c.dive = !!(cm & 2); c.gait = GAITS[(cm >> 2) & 3] ?? 'jog'; c.contactMode = !!(cm & 16); c.wrap = !!(cm & 32); c.hug = !!(cm & 64);
     c.armL = u8() / 255; c.armR = u8() / 255; a.support.posture = u8() / 255; a.support.carry = u8() / 255;
     for (const h of [0, 1] as const) {
       const g = a.grips[h], ta = i8(), ts = u8();
