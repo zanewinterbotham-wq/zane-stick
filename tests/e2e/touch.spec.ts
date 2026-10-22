@@ -1,5 +1,5 @@
 // Touch controls on a phone-size touch screen: the buttons press the bound keys, the stick moves, and a dragged button
-// keeps its new place after a reload.
+// keeps its new place after a reload, as do a removed and an added control.
 import { expect, test, type Page } from '@playwright/test';
 import { seed, startMode, watchErrors } from './helpers';
 
@@ -50,16 +50,26 @@ test('touch buttons press keys, the stick moves, a moved button stays moved', as
   await page.getByRole('button', { name: /^Resume/ }).click();
   await expect(page.locator('.touch')).toBeVisible();
 
-  // edit the layout: drag Jump to the middle, then it is there after a reload
-  await page.locator('.tbtn.small', { hasText: '✎' }).dispatchEvent('pointerdown');
+  // edit the layout (Settings → Controls → Edit touch layout starts it): drag Jump to the middle, remove Thrust with
+  // its ×, add L arm back from the toolbar; all of it is there after a reload
+  await page.evaluate(() => dispatchEvent(new Event('zane-stick-touch-edit')));
+  await expect(page.locator('.tbar')).toBeVisible();
   await ptr(page, '.tbtn[data-id="jump"]', 'pointerdown');
   await page.locator('.tbtn[data-id="jump"]').evaluate((e) => {
     const o = { bubbles: true, pointerId: 7, pointerType: 'touch', buttons: 1, clientX: innerWidth / 2, clientY: innerHeight / 2 };
     e.dispatchEvent(new PointerEvent('pointermove', o)); e.dispatchEvent(new PointerEvent('pointerup', o));
   });
   expect(await keys(page)).not.toContain('Space'); // editing never presses
+  await page.locator('.tbtn[data-id="thrust"] .tx').dispatchEvent('pointerdown');
+  await expect(page.locator('.tbtn[data-id="thrust"]')).toBeHidden();
+  await page.locator('.tbar button', { hasText: '+ L arm' }).click();
+  await expect(page.locator('.tbtn[data-id="armL"]')).toBeVisible();
+  await page.locator('.tbar button', { hasText: 'Done' }).click();
+  await expect(page.locator('.tbar')).toBeHidden();
   await page.reload();
   await startMode(page, /^Ball Carrier/);
   await expect(page.locator('.tbtn[data-id="jump"]')).toHaveCSS('left', '422px');
+  await expect(page.locator('.tbtn[data-id="thrust"]')).toBeHidden();
+  await expect(page.locator('.tbtn[data-id="armL"]')).toBeVisible();
   expect(errors).toEqual([]);
 });
