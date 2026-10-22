@@ -49,6 +49,9 @@ export class ChaseCamera {
   pitch = PITCH0;
   /** Automatic camera: yaw trails the athlete's heading; false = mouse / right stick look. */
   follow = true;
+  /** Side shuffle on: the automatic camera keeps looking forward (he faces the camera's way and strafes, so following
+   *  his travel would turn the view he is facing along). */
+  shuffle = false;
 
   /** Turn the view: x > 0 turns right, y > 0 looks down (rad). */
   look(x: number, y: number) {
@@ -81,7 +84,7 @@ export class ChaseCamera {
         this.headingRate += (wrap(heading - this.lastHeading) / dt - this.headingRate) * (1 - Math.exp(-dt / 0.1));
       }
       this.lastP = p.clone(); this.lastHeading = heading;
-      this.yaw = autoYaw(this.yaw, heading, this.vSm.x, this.vSm.y, this.headingRate, dt);
+      if (!this.shuffle) this.yaw = autoYaw(this.yaw, heading, this.vSm.x, this.vSm.y, this.headingRate, dt);
       this.pitch += (PITCH0 - this.pitch) * k;
     }
     const cp = Math.cos(this.pitch);

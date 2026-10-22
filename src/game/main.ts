@@ -638,6 +638,7 @@ export class App {
       }
       // drawn between the last two fixed steps (render only), so motion is smooth at any frame rate
       r.lerp(w, Math.min(1, this.acc / w.dt)); // (a multiplayer guest's replica never steps: its latest pose)
+      this.cam.shuffle = !!this.human.latest?.shiftLock;
       this.cam.update(r.camera, w, dtReal, this.humanHeading(), r.poses[this.cam.target]);
       r.hideHeadOf = this.cam.mode === 'helmet' ? this.cam.target : -1;
       const m = r.camera.matrixWorld.elements; // column 0: the camera's right axis
