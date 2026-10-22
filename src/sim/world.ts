@@ -8,7 +8,9 @@ import { clamp, G, headingOf, lerp, qaxis, qconj, qlog, qmul, qrot, quatAt, sub,
 import { MuscleSet, newTargets, type MuscleTargets } from './muscles';
 import type { AthleteState, LinkRef, PhysicsEngine, PhysicsScene, PropDesc, SolverOptions } from './physics/engine';
 import { Rng } from './rng';
-import { InjuryState, type InjuryEvent } from './injury';
+import { boneTuning, InjuryState, koTuning, type BoneTuning, type InjuryEvent, type KoTuning } from './injury';
+import { grabTuning, type GrabTuning } from './grab';
+import { hitTuning, type HitTuning } from './hits';
 import { weightSupport, type SupportSettings, type SupportState } from './anim/types';
 import { rootQuat } from './anim/kinematics';
 import { jumpTuning, RUN_TAKEOFF, type JumpTuning } from './anim/jump';
@@ -48,13 +50,15 @@ export interface WorldSetup { physics: PhysicsSettings; athletes: AthleteSetup[]
   /** Jump tuning (owner request 2026-10-19), the same for every athlete; absent / {} = JUMP_DEFAULTS. */
   jump?: Partial<JumpTuning>;
   /** Fumble tuning (fumble.ts): the ball grip's strength and jolt window; absent / {} = FUMBLE_DEFAULTS. */
-  fumble?: Partial<FumbleTuning> }
+  fumble?: Partial<FumbleTuning>;
+  /** Grabbing, hits & support, bone and knockout tuning (grab.ts, hits.ts, injury.ts); absent / {} = their defaults. */
+  grab?: Partial<GrabTuning>; contact?: Partial<HitTuning>; bones?: Partial<BoneTuning>; knockout?: Partial<KoTuning> }
 
 /** Balance assist timing [design §6.4]. */
 const ASSIST_FADE_OUT = 0.15, ASSIST_STABLE_TIME = 0.3, ASSIST_FADE_IN = 0.3;
 /** Held knock: grip time before it starts (s), further time to full (s), the share one arm takes, and after that
  *  the time over which a two-arm hold drains muscle tone, up to sagMax. */
-const HELD = { start: 0.3, full: 0.9, oneArm: 0.6, sag: 1.0, sagMax: 0.8 };
+const HELD = { sag: 1.0, sagMax: 0.8 }; // start, full, oneArm: GrabTuning holdStart, holdFull, oneArm
 /** Support [design §6.5]: carry velocity gain (1/s), stable footing before the carry returns and its ramp (s),
  *  window for the impulse received (s), flight a stride may have before the carry fades (s), how fast knock
  *  decays (1/s), get-up ramp (s), pelvis height PD (1/s², 1/s), upright stiffness (m·g·h per rad), damping
@@ -104,7 +108,7 @@ export class Athlete {
   readonly handGeoms: { seg: number; off: Vec3; half: number }[];
   readonly shoulderSegs: number[];
   /** Per hand, this step: where a raised arm reaches for (a little inside the opponent's body nearest its
-   *  shoulder, when within REACH.aim of it), or null. */
+   *  shoulder, when within GrabTuning.aim of it), or null. */
   reachTo: (Vec3 | null)[] = [null, null];
   readonly segIndex: Map<string, number>;
   /** Pelvis, thorax (the fused trunk at minimum detail) and head segments, and the body's mass (kg). */
@@ -184,6 +188,9 @@ export class World {
   readonly jump: JumpTuning;
   /** setup.fumble over the defaults, validated. */
   readonly fumble: FumbleTuning;
+  /** setup.grab / contact / bones / knockout over their defaults, validated; `sup` is SUP with the hit tuning on top. */
+  readonly grab: GrabTuning; readonly contact: HitTuning; readonly bones: BoneTuning; readonly knockout: KoTuning;
+  private readonly sup: typeof SUP;
 
   private constructor(readonly scene: PhysicsScene, readonly setup: WorldSetup) {
     this.rng = new Rng(setup.seed);
@@ -191,6 +198,8 @@ export class World {
     this.ballIndex = setup.props?.findIndex((p) => p.name === 'ball') ?? -1;
     this.jump = jumpTuning(setup.jump);
     this.fumble = fumbleTuning(setup.fumble);
+    this.grab = grabTuning(setup.grab); this.contact = hitTuning(setup.contact); this.bones = boneTuning(setup.bones); this.knockout = koTuning(setup.knockout);
+    this.sup = { ...SUP, ...this.contact };
   }
 
   static async create(engine: PhysicsEngine, setup: WorldSetup): Promise<World> {
@@ -206,7 +215,7 @@ export class World {
     setup.athletes.forEach((a, i) => {
       const muscles = new MuscleSet(plans[i]);
       const ath = new Athlete(i, a, plans[i], muscles, a.controller(plans[i], muscles), a.brain);
-      ath.injury = new InjuryState(ath.muscles, scene.dt, a.boneStrength);
+      ath.injury = new InjuryState(ath.muscles, scene.dt, a.boneStrength, w.bones, w.knockout);
       w.athletes.push(ath);
       if (a.hasBall) w.ballCarrier = i;
     });
@@ -222,7 +231,7 @@ export class World {
   view(a: Athlete): BodyView {
     const th = a.throwing;
     return { plan: a.plan, muscles: a.muscles, state: this.scene.athletes[a.index].state, dt: this.dt, time: this.time, feet: a.feet, playerContact: a.playerContact, support: this.supported(a) ? a.support : undefined,
-      grips: [a.grips[0].active && (a.grips[0].target?.athlete ?? -1) >= 0, a.grips[1].active && (a.grips[1].target?.athlete ?? -1) >= 0], reachTo: a.reachTo, hurt: a.injury, jump: this.jump,
+      grips: [a.grips[0].active && (a.grips[0].target?.athlete ?? -1) >= 0, a.grips[1].active && (a.grips[1].target?.athlete ?? -1) >= 0], reachTo: a.reachTo, hurt: a.injury, jump: this.jump, grab: this.grab,
       ...(th && { throwing: { t: th.t, at: th.cmd.at, hand: th.hand } }) };
   }
 
@@ -305,25 +314,25 @@ export class World {
     // the same as through a running stride's flight. The jump tuning's air control (0 = off) is the one exception: a
     // horizontal carry toward the move direction, at most J.air, off contact only.
     if (c > 0 && launch) {
-      const f: Vec3 = [0, 1, 2].map((j) => m * SUP.launchKv * (r.vel[j] - s.comVel[j])) as Vec3, n = Math.hypot(...f);
-      const lim = m * (r.jump === 'launch' ? r.power * lerp(SUP.jump[0], SUP.jump[1], clamp(Math.hypot(s.comVel[0], s.comVel[2]) - 2.5, 0, 1)) : SUP.launch);
+      const f: Vec3 = [0, 1, 2].map((j) => m * this.sup.launchKv * (r.vel[j] - s.comVel[j])) as Vec3, n = Math.hypot(...f);
+      const lim = m * (r.jump === 'launch' ? r.power * lerp(this.sup.jump[0], this.sup.jump[1], clamp(Math.hypot(s.comVel[0], s.comVel[2]) - 2.5, 0, 1)) : this.sup.launch);
       a.carryForce = f.map((x) => x * c * (n > lim ? lim / n : 1)) as Vec3;
     } else if (c > 0 && air) {
-      let fx = m * SUP.kv * (r.vel[0] - s.comVel[0]), fz = m * SUP.kv * (r.vel[2] - s.comVel[2]);
+      let fx = m * this.sup.kv * (r.vel[0] - s.comVel[0]), fz = m * this.sup.kv * (r.vel[2] - s.comVel[2]);
       const n = Math.hypot(fx, fz), lim = m * J.air;
       if (n > lim) { fx *= lim / n; fz *= lim / n; }
       a.carryForce = [fx * c, 0, fz * c];
     } else if (c > 0) {
       // a hip-thrust lunge is a take-off too: the carry stands in for the explosive push off the turf (along the turf,
       // where the pads point once projected on it: never down into it, and the rise is the legs' own)
-      const kv = r.thrust > 0 ? SUP.launchKv : SUP.kv;
+      const kv = r.thrust > 0 ? this.sup.launchKv : this.sup.kv;
       let fx = m * kv * (r.vel[0] - s.comVel[0]), fz = m * kv * (r.vel[2] - s.comVel[2]);
-      const n = Math.hypot(fx, fz), lim = m * (r.thrust > 0 ? SUP.lunge : S.carryAccel), sp = Math.hypot(s.comVel[0], s.comVel[2]);
+      const n = Math.hypot(fx, fz), lim = m * (r.thrust > 0 ? this.sup.lunge : S.carryAccel), sp = Math.hypot(s.comVel[0], s.comVel[2]);
       if (r.thrust <= 0 && sp > 0.5) {
         // across the run the carry may turn it harder than it speeds it up (a cut's sideways push), within one
         // ellipse for both (as the animator's root velocity)
         const ux = s.comVel[0] / sp, uz = s.comVel[2] / sp, along = fx * ux + fz * uz;
-        const lat = m * Math.max(S.carryAccel, lerp(SUP.lat[1], SUP.lat[0], 1 - clamp((sp - 4) / 4, 0, 1)));
+        const lat = m * Math.max(S.carryAccel, lerp(this.sup.lat[1], this.sup.lat[0], 1 - clamp((sp - 4) / 4, 0, 1)));
         const e = Math.hypot(along / lim, Math.hypot(fx - along * ux, fz - along * uz) / lat);
         if (e > 1) { fx /= e; fz /= e; }
       } else if (n > lim) { fx *= lim / n; fz *= lim / n; }
@@ -347,12 +356,12 @@ export class World {
     const run = off * clamp((Math.hypot(r.vel[0], r.vel[2]) - 2) / 1, 0, 1);
     const gs = 1 + run * ((a.downBy ? 1 : footing ? 1 / Math.max(0.3, a.grounded) : clamp((r.height - y) / 0.1, 0, 1)) - 1);
     const vy = s.segVel[3 * pi + 1];
-    if (ps > 0 && gs > 0) fy = clamp(ps * gs * (S.weightShare * m * G + m * SUP.hKp * (r.height - y) - m * SUP.hKd * (vy - Math.min(0, r.vel[1]))), 0, 1.5 * ps * gs * m * G);
+    if (ps > 0 && gs > 0) fy = clamp(ps * gs * (S.weightShare * m * G + m * this.sup.hKp * (r.height - y) - m * this.sup.hKd * (vy - Math.min(0, r.vel[1]))), 0, 1.5 * ps * gs * m * G);
     // the height damping brakes a body rising past its target too (a bounce off the turf), not only a falling one
-    if (ps > 0 && y > r.height && vy > Math.max(0, r.vel[1])) fy -= off * ps * Math.min(m * SUP.hKd * (vy - Math.max(0, r.vel[1])), SUP.brake * m * G);
+    if (ps > 0 && y > r.height && vy > Math.max(0, r.vel[1])) fy -= off * ps * Math.min(m * this.sup.hKd * (vy - Math.max(0, r.vel[1])), this.sup.brake * m * G);
     this.scene.applyWrench(a.index, pi, [a.carryForce[0], fy + a.carryForce[1], a.carryForce[2]], [0, 0, 0]);
     if (p <= 0) return;
-    const H = a.plan.standHeight, kUp = p * SUP.kUp * m * G * H, cUp = 0.5 * p * SUP.cUp * m * H * H;
+    const H = a.plan.standHeight, kUp = p * this.sup.kUp * m * G * H, cUp = 0.5 * p * this.sup.cUp * m * H * H;
     // Damping acts on the whole body's rotation rate (angular momentum over inertia about the COM): a pelvis is too
     // light for explicit damping of its own spin at 240 Hz, and arm and leg swing leave the total untouched.
     const wb = bodyRate(a.plan, s);
@@ -365,7 +374,7 @@ export class World {
       // the thorax also takes a strike's side bend and, about its own long axis (the spine's rotation), its twist
       const o = f === 1 ? qmul(rootQuat(r.heading, fp * r.pitch, fr * r.roll + r.bank), qaxis([0, 1, 0], r.twist)) : rootQuat(r.heading, fp * r.pitch, fr * r.roll);
       const e = qlog(qmul(o, qconj(quatAt(s.segQuat, i))));
-      this.scene.applyWrench(a.index, i, [0, 0, 0], [kUp * e[0] - cUp * wb[0], SUP.yaw * (kUp * e[1] - cUp * wb[1]), kUp * e[2] - cUp * wb[2]]);
+      this.scene.applyWrench(a.index, i, [0, 0, 0], [kUp * e[0] - cUp * wb[0], this.sup.yaw * (kUp * e[1] - cUp * wb[1]), kUp * e[2] - cUp * wb[2]]);
     }
   }
 
@@ -398,7 +407,7 @@ export class World {
   private updateSupport(a: Athlete, dt: number) {
     const S = this.setup.support!, s = this.scene.athletes[a.index].state, m = a.mass, r = a.controller.root!();
     // impulse received from other athletes over the window
-    const n = Math.max(1, Math.round(SUP.window / dt)), J = a.hitImpulse, f = a.hitForce;
+    const n = Math.max(1, Math.round(this.sup.window / dt)), J = a.hitImpulse, f = a.hitForce;
     const jn: Vec3 = [f[0] * dt, f[1] * dt, f[2] * dt];
     a.hitWindow.push(jn); J[0] += jn[0]; J[1] += jn[1]; J[2] += jn[2];
     if (a.hitWindow.length > n) { const o = a.hitWindow.shift()!; J[0] -= o[0]; J[1] -= o[1]; J[2] -= o[2]; }
@@ -412,15 +421,15 @@ export class World {
     const Jknock = Math.min(Jh, m * Math.max(0, vAlong)), knockHit = Jknock / big;
     // Stun: an athlete driven back hard loses muscle tone for a moment (the controller loosens), so the hit's
     // momentum goes through a limp-ish body instead of being caught by a stiff balance reaction.
-    a.stun = Math.max(clamp((Jknock - SUP.stunStart * big) / (SUP.stunFull * big), 0, 1), a.stun - dt / SUP.stunTime);
+    a.stun = Math.max(clamp((Jknock - this.sup.stunStart * big) / (this.sup.stunFull * big), 0, 1), a.stun - dt / this.sup.stunTime);
     // Driven back: still moving along the last big hit faster than the animation wants, the athlete has not caught
     // the momentum yet, so the knock stays up after the impulse window (else posture returns mid-stumble).
     // Measured against the speed he already had along it before the hit (own momentum is not the hit's).
     if (knockHit > 0.3) a.hitDir = [J[0] / Jh, J[2] / Jh];
     const vHit = s.comVel[0] * a.hitDir[0] + s.comVel[2] * a.hitDir[1], vWant = r ? r.vel[0] * a.hitDir[0] + r.vel[2] * a.hitDir[1] : 0;
     // (the lowest estimate over the hit: once the impulse leaves the window the estimate would be his new speed)
-    if (knockHit > 0.3) { a.hitPre = a.hitMem > 0 ? Math.min(a.hitPre, vHit - Jh / m) : vHit - Jh / m; a.hitMem = 1; } else a.hitMem = Math.max(0, a.hitMem - dt / SUP.drivenTime);
-    const knockDriven = a.hitMem <= 0 ? 0 : clamp((vHit - Math.max(0, vWant, a.hitPre) - SUP.drivenStart) / (SUP.drivenFull - SUP.drivenStart), 0, 1);
+    if (knockHit > 0.3) { a.hitPre = a.hitMem > 0 ? Math.min(a.hitPre, vHit - Jh / m) : vHit - Jh / m; a.hitMem = 1; } else a.hitMem = Math.max(0, a.hitMem - dt / this.sup.drivenTime);
+    const knockDriven = a.hitMem <= 0 ? 0 : clamp((vHit - Math.max(0, vWant, a.hitPre) - this.sup.drivenStart) / Math.max(1e-6, this.sup.drivenFull - this.sup.drivenStart), 0, 1);
     // Trunk tilt away from both upright and the lean the animation wants: a deliberate lean (low drive) is not a
     // knock, nor is the trunk still on its way into or out of one.
     const up = qrot(quatAt(s.segQuat, a.trunkSeg), [0, 1, 0]);
@@ -432,7 +441,7 @@ export class World {
     a.airT = footing ? 0 : a.airT + dt;
     const knockAir = clamp((a.airT - (0.08 + 0.015 * speed)) / 0.15, 0, 1);
     // Lifted: an opponent driving up and under him carries part of his weight, so his feet (and their traction) unload.
-    const knockLift = clamp((J[1] / SUP.window / (m * G) - LOW.liftStart) / (LOW.liftFull - LOW.liftStart), 0, 1);
+    const knockLift = clamp((J[1] / this.sup.window / (m * G) - LOW.liftStart) / (LOW.liftFull - LOW.liftStart), 0, 1);
     // Wrapped up, an athlete cannot keep his balance freely: the posture help drains while opponents hold him (one
     // arm takes it part way, two all the way), so the tackler's weight and pull bring him down unless he breaks free.
     let held = 0;
@@ -440,25 +449,25 @@ export class World {
     const onHim = (t: LinkRef | null) => !!t && (t.athlete === a.index || (t.athlete < 0 && this.ballCarrier === a.index && t.seg === this.ballIndex));
     for (const o of this.athletes) if (o !== a) for (const g of o.grips) if (g.active && onHim(g.target)) held++;
     a.heldT = held > 0 ? a.heldT + dt : Math.max(0, a.heldT - 2 * dt);
-    const knockHeld = clamp((a.heldT - HELD.start * T) / (HELD.full * T), 0, 1) * (held >= 2 ? 1 : HELD.oneArm);
+    const GT = this.grab, knockHeld = clamp((a.heldT - GT.holdStart * T) / (GT.holdFull * T), 0, 1) * (held >= 2 ? 1 : GT.oneArm);
     // Held on to past that, his legs give: a balance controller alone would keep a wrapped athlete standing for
     // ever. Muscle tone drains (the stun's looseness) until he goes down or breaks free.
-    if (held >= 2) a.stun = Math.max(a.stun, clamp((a.heldT - (HELD.start + HELD.full) * T) / (HELD.sag * T), 0, HELD.sagMax));
+    if (held >= 2) a.stun = Math.max(a.stun, clamp((a.heldT - (GT.holdStart + GT.holdFull) * T) / (HELD.sag * T), 0, HELD.sagMax));
     // Untouched for a while (no contact, no hit still carrying him, nobody holding him) and not still knocked from
     // one, a tilt or a flight is his own running, cutting or leaning, never a knock: off contact the support keeps
     // him upright (design §6.5). One still off balance from a hit keeps stumbling until he has caught himself.
-    const own = a.freeT > SUP.free && a.hitMem <= 0 && a.heldT <= 0 && a.knock < 0.05 ? 0 : 1;
+    const own = a.freeT > this.sup.free && a.hitMem <= 0 && a.heldT <= 0 && a.knock < 0.05 ? 0 : 1;
     // (his own jump's flight is no knock either, even just after a contact) ... but an athlete in a jump's flight who
     // touches another has no turf to balance on: no posture support, so a contact that stops his legs pitches him
     // over. (The hit rule above misses it at speed: driving through, his momentum absorbs the impulse.)
     const knockAirHit = r?.jump === 'flight' && !footing && a.playerContact ? 1 : 0;
     const target = Math.min(1, Math.max(knockHit, own * knockTilt, r?.jump === 'flight' ? 0 : own * knockAir, knockDriven, knockLift, knockHeld, knockAirHit));
     // rises fast, within a couple of steps on a big hit (the body goes as its impulse lands), decays slowly
-    a.knock = target > a.knock ? a.knock + (target - a.knock) * Math.min(1, dt / (knockHit >= 1 ? SUP.bigRise : SUP.rise)) : Math.max(target, a.knock - dt * SUP.decay);
+    a.knock = target > a.knock ? a.knock + (target - a.knock) * Math.min(1, dt / (knockHit >= 1 ? this.sup.bigRise : this.sup.rise)) : Math.max(target, a.knock - dt * this.sup.decay);
     const down = a.downBy !== null, clip = a.controller.debug?.().clip;
     if (clip === 'getup') {
       // posture support ramps back in with the get-up, while the body is actually rising (not falling back)
-      if (s.segVel[3 * pi + 1] > -0.2) a.getup = Math.min(1, a.getup + dt / SUP.getup);
+      if (s.segVel[3 * pi + 1] > -0.2) a.getup = Math.min(1, a.getup + dt / this.sup.getup);
       a.knock = Math.min(a.knock, 1 - a.getup);
     } else {
       a.getup = 0;
@@ -470,10 +479,10 @@ export class World {
       // stable footing: a step's brief flight does not count against it, a lifted or falling body does
       // (still part knocked counts once the hit no longer drives him back: he gets going on the carry's (1 − knock)
       // share and may stumble, rather than standing still until fully steady)
-      a.supStable = a.airT < 0.1 && !down && a.knock < SUP.goKnock && knockDriven < 0.1 ? a.supStable + dt : 0;
-      if (a.supStable >= SUP.stable) a.carryLevel = Math.min(1, a.carryLevel + dt / SUP.fadeIn);
+      a.supStable = a.airT < 0.1 && !down && a.knock < this.sup.goKnock && knockDriven < 0.1 ? a.supStable + dt : 0;
+      if (a.supStable >= this.sup.stable) a.carryLevel = Math.min(1, a.carryLevel + dt / this.sup.fadeIn);
     }
-    const flight = clamp(1 - (a.airT - SUP.flight) / 0.1, 0, 1);
+    const flight = clamp(1 - (a.airT - this.sup.flight) / 0.1, 0, 1);
     a.support = { posture: down && clip !== 'getup' ? 0 : 1 - a.knock, carry: a.playerContact ? 0 : a.carryLevel * flight * (1 - a.knock), down };
     if (a.injury.out) { a.knock = 1; a.support = { posture: 0, carry: 0, down, out: true }; }
     if ('stun' in a.controller) a.controller.stun = a.stun;
@@ -666,9 +675,9 @@ export class World {
   }
 
   /** Muscle output of an injured athlete: a limp arm gives nothing and a broken leg HOBBLE.legTone, at once; out of
-   *  play, the rest lose tone over INJURY.fade (the hit's own load is still met by muscles that were braced for it). */
+   *  play, the rest lose tone over knockout.fade (the hit's own load is still met by muscles that were braced for it). */
   private limp(a: Athlete) {
-    const m = a.muscles, inj = a.injury, f = Math.min(1, inj.outFor / INJURY.fade), tone = inj.out ? 1 + ((inj.ko ? INJURY.koTone : INJURY.hurtTone) - 1) * f : 1;
+    const m = a.muscles, inj = a.injury, K = this.knockout, f = Math.min(1, inj.outFor / K.fade), tone = inj.out ? 1 + ((inj.ko ? K.koTone : K.hurtTone) - 1) * f : 1;
     for (let i = 0; i < m.n; i++) {
       // a limp dof keeps its damping: the torn tissue still resists motion (and light limbs need it at 240 Hz)
       m.torque[i] *= inj.tone[i] * tone; m.damping[i] *= tone;
@@ -704,22 +713,22 @@ export class World {
       g.cooldown = Math.max(0, g.cooldown - dt);
       if (g.active) {
         // Grip force averaged over ~20 ms (the ball grip: the fumble window); breaks when it exceeds grip (or jersey) strength.
-        const alpha = Math.min(1, dt / (this.isBall(g.target) ? this.fumble.window : 0.02));
+        const alpha = Math.min(1, dt / (this.isBall(g.target) ? this.fumble.window : this.grab.window));
         g.force += (this.scene.gripForce(a.index, h) - g.force) * alpha;
         if (!want[h] || g.force > g.limit) {
           this.scene.gripOff(a.index, h);
           g.active = false;
-          g.cooldown = want[h] ? 0.25 : 0;
+          g.cooldown = want[h] ? this.grab.cooldown : 0;
         }
       } else if (want[h] && g.cooldown <= 0) {
-        // a raised hand closes on a fistful of jersey (or a limb) within REACH.grab of it, not only on contact
-        const near = !a.handTouch[h] && this.raised(a, h) ? this.nearestBody(a, this.handPoint(a, h), REACH.grab + a.handGeoms[h].half) : null;
+        // a raised hand closes on a fistful of jersey (or a limb) within GrabTuning.reach of it, not only on contact
+        const near = !a.handTouch[h] && this.raised(a, h) ? this.nearestBody(a, this.handPoint(a, h), this.grab.reach + a.handGeoms[h].half) : null;
         const t = a.handTouch[h] ?? (near && { athlete: near.athlete, seg: near.seg, pos: this.handPoint(a, h) });
         if (!t) continue;
         const tgtAth = t.athlete >= 0 ? this.athletes[t.athlete] : null;
         const segName = tgtAth ? tgtAth.plan.segments[t.seg].name : '';
         g.jersey = /thorax|lumbar|trunk|pelvis/.test(segName);
-        g.limit = g.jersey ? Math.min(GRIP_ECC * a.plan.gripStrength, EQUIPMENT.jersey.tearStrength) : GRIP_ECC * a.plan.gripStrength * (this.isBall(t) ? this.fumble.hold : 1);
+        g.limit = g.jersey ? Math.min(GRIP_ECC * a.plan.gripStrength * this.grab.grip, EQUIPMENT.jersey.tearStrength * this.grab.tear) : GRIP_ECC * a.plan.gripStrength * this.grab.grip * (this.isBall(t) ? this.fumble.hold : 1);
         this.scene.gripOn(a.index, h, { athlete: t.athlete, seg: t.seg }, t.pos, g.jersey ? GRIP_TIMECONST.jersey : GRIP_TIMECONST.hand);
         g.active = true; g.force = 0; g.target = { athlete: t.athlete, seg: t.seg };
       }
@@ -730,7 +739,7 @@ export class World {
   attachGrip(ai: number, hand: 0 | 1, target: { athlete: number; seg: number }, point: Vec3) {
     const a = this.athletes[ai], g = a.grips[hand];
     this.scene.gripOn(ai, hand, target, point, GRIP_TIMECONST.hand);
-    g.active = true; g.force = 0; g.jersey = false; g.limit = GRIP_ECC * a.plan.gripStrength * (this.isBall(target) ? this.fumble.hold : 1); g.target = target;
+    g.active = true; g.force = 0; g.jersey = false; g.limit = GRIP_ECC * a.plan.gripStrength * this.grab.grip * (this.isBall(target) ? this.fumble.hold : 1); g.target = target;
   }
 
   /** A grip target that is the ball (fumble tuning applies to it). */
@@ -752,7 +761,7 @@ export class World {
     const k = a.shoulderSegs[h];
     if (k < 0) return null;
     const s = this.scene.athletes[a.index].state, sp = vecAt(s.segPos, k);
-    const n = this.nearestBody(a, sp, REACH.aim);
+    const n = this.nearestBody(a, sp, this.grab.aim);
     // a loose ball nearer than any opponent is what the hand goes for
     const bi = this.ballIndex;
     if (bi >= 0 && this.ballCarrier < 0) {
@@ -839,7 +848,7 @@ export class World {
  *  the arm aims at the nearest part of that body (an arm's length and a lean: the eyes guide the hand), and how
  *  far inside its surface the aim point lies. A loose ball is aimed at from further (the body bends to it): its
  *  surface within `ball` m of the shoulder, taken as a sphere of radius `ballR`. */
-const REACH = { grab: 0.07, aim: 0.9, into: 0.03, ball: 1.3, ballR: 0.1 };
+const REACH = { into: 0.03, ball: 1.3, ballR: 0.1 }; // grab, aim: GrabTuning reach, aim
 /** The rotation that turns the prop's long axis (+z) along v. */
 function noseAlong(v: Vec3): Quat {
   const n = Math.hypot(v[0], v[1], v[2]) || 1, c = v[2] / n, ax: Vec3 = [-v[1], v[0], 0];
@@ -856,9 +865,6 @@ const GRIP_ECC = 1.5;
  *  standing opponent does not), the lift added per unit of horizontal boost, and the largest contact force the boost
  *  multiplies (N): ~100 kg stopped from 5 m/s over a 25 ms padded impact (Wusk 2022 pulse) averages 20 kN. */
 const HIT = { minV: 0.3, lift: 0.5, maxForce: 20000 };
-/** Muscle tone left to an athlete out of play (× all muscle output): knocked out (unconscious, assumption), or both
- *  legs broken and conscious (curled up on the turf, assumption), and how long the tone takes to go (s, assumption). */
-const INJURY = { koTone: 0.2, hurtTone: 0.5, fade: 0.3 };
 
 /** Whole-body angular velocity about the COM per world axis: L / I, segment inertias taken as isotropic. */
 function bodyRate(plan: BodyPlan, s: AthleteState): Vec3 {

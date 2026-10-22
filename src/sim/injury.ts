@@ -4,6 +4,7 @@
 import type { MuscleSet } from './muscles';
 import type { AthleteState } from './physics/engine';
 import { G, type Vec3 } from './math';
+import { tuned } from './tuning';
 
 /** Breakable dofs (joint name without its side, dof): which end of the range breaks (−1 lower, +1 upper, 0 either),
  *  the tolerance of the limit torque averaged over LOAD_TAU (N·m), how far the broken end of the range gives way
@@ -41,6 +42,19 @@ export const KO = { window: 0.015, dv: 10 };
  *  `badStance` × and the good leg's `goodStance` × the gait's (a limp: off the bad leg quickly, onto the good one).
  *  A broken arm hangs limp. */
 export const HOBBLE = { legTone: 0.35, speed: 0.4, badStance: 0.6, goodStance: 1.35 };
+/** Bone tuning (owner request 2026-10-21): × the break tolerances (all, then arms and collarbones, legs), the
+ *  sustained-load factor (SUSTAIN), its time constant (SLOW_TAU, s) and the contact window (CONTACT_WINDOW, s). */
+export interface BoneTuning { all: number; arms: number; legs: number; sustain: number; slowTau: number; contact: number }
+export const BONE_DEFAULTS: BoneTuning = { all: 1, arms: 1, legs: 1, sustain: SUSTAIN, slowTau: SLOW_TAU, contact: CONTACT_WINDOW };
+export const BONE_RANGES: Record<keyof BoneTuning, [number, number, number]> = { all: [0.25, 5, 0.05], arms: [0.25, 5, 0.05], legs: [0.25, 5, 0.05], sustain: [1, 10, 0.1], slowTau: [0.05, 3, 0.05], contact: [0, 5, 0.1] };
+export const boneTuning = (o: unknown): BoneTuning => tuned(BONE_DEFAULTS, BONE_RANGES, o);
+/** Knockout tuning: the head velocity change (KO.dv, m/s) over its window (KO.window, s), and the muscle tone left to an
+ *  athlete out of play, knocked out (`koTone`) or with both legs broken (`hurtTone`), and how long it takes to go (`fade`,
+ *  s; World.applyInjury). Tones are assumptions (unconscious; curled up on the turf). */
+export interface KoTuning { dv: number; window: number; koTone: number; hurtTone: number; fade: number }
+export const KO_DEFAULTS: KoTuning = { dv: KO.dv, window: KO.window, koTone: 0.2, hurtTone: 0.5, fade: 0.3 };
+export const KO_RANGES: Record<keyof KoTuning, [number, number, number]> = { dv: [3, 40, 0.5], window: [0.005, 0.1, 0.005], koTone: [0, 1, 0.05], hurtTone: [0, 1, 0.05], fade: [0.05, 3, 0.05] };
+export const koTuning = (o: unknown): KoTuning => tuned(KO_DEFAULTS, KO_RANGES, o);
 const ARM = /^(sc|shoulder|elbow|wrist)[LR]$/, LEG = /^(hip|knee|ankle|toe)[LR]$/;
 
 /** What a body's controller and animator read of its injuries: broken legs and arms [left, right], and each dof's
@@ -77,15 +91,16 @@ export class InjuryState implements Hurt {
   /** Largest filtered limit torque per dof and head velocity change seen (for tests and tuning). */
   readonly peak: Float64Array; peakDv = 0;
 
-  /** `bones` scales every break tolerance (the bone-strength setting: lower breaks more easily). */
-  constructor(private muscles: MuscleSet, dt: number, bones = 1) {
+  /** `bones` scales every break tolerance (the bone-strength setting: lower breaks more easily); `bt` and `kt` are the
+   *  world's bone and knockout tuning. */
+  constructor(private muscles: MuscleSet, dt: number, bones = 1, private bt: BoneTuning = BONE_DEFAULTS, private kt: KoTuning = KO_DEFAULTS) {
     this.rules = muscles.names.map((n) => {
       const [j, d] = n.split('.'), base = j.replace(/[LR]$/, ''), r = BREAK[`${base}.${d}`];
-      return r && base !== j ? { joint: j, ...r, torque: r.torque * bones } : null;
+      return r && base !== j ? { joint: j, ...r, torque: r.torque * bones * bt.all * (ARM.test(j) ? bt.arms : bt.legs) } : null;
     });
     this.load = new Float64Array(muscles.n); this.slow = new Float64Array(muscles.n); this.peak = new Float64Array(muscles.n);
     this.tone = new Float64Array(muscles.n).fill(1);
-    this.head = Array.from({ length: Math.max(1, Math.round(KO.window / dt)) }, () => [0, 0, 0] as Vec3);
+    this.head = Array.from({ length: Math.max(1, Math.round(kt.window / dt)) }, () => [0, 0, 0] as Vec3);
   }
 
   /** Out of play: down for the rest of the rep (no get-up, no support, no brain). Knocked out, or both legs broken
@@ -97,13 +112,13 @@ export class InjuryState implements Hurt {
   /** Joints that break this step: the dofs, with the end of their range that gave way. `sinceContact`: time since
    *  the athlete last touched another athlete (s; Athlete.freeT). */
   checkBreaks(limit: Float64Array, s: AthleteState, sinceContact: number, dt: number) {
-    const out: { dof: number; joint: string; end: -1 | 1; relax: number; what: string; load: number }[] = [], al = 1 - Math.exp(-dt / LOAD_TAU), as = 1 - Math.exp(-dt / SLOW_TAU), ms = this.muscles;
+    const out: { dof: number; joint: string; end: -1 | 1; relax: number; what: string; load: number }[] = [], al = 1 - Math.exp(-dt / LOAD_TAU), as = 1 - Math.exp(-dt / this.bt.slowTau), ms = this.muscles;
     for (let i = 0; i < ms.n; i++) {
       this.load[i] += (limit[i] - this.load[i]) * al;
-      const slow = (this.slow[i] += (this.load[i] - this.slow[i]) * as), eff = Math.max(0, this.load[i] - slow) + slow / SUSTAIN;
+      const slow = (this.slow[i] += (this.load[i] - this.slow[i]) * as), eff = Math.max(0, this.load[i] - slow) + slow / this.bt.sustain;
       if (this.load[i] > this.peak[i]) this.peak[i] = this.load[i];
       const r = this.rules[i];
-      if (!r || this.broken.has(r.joint) || eff <= r.torque || sinceContact > CONTACT_WINDOW) continue;
+      if (!r || this.broken.has(r.joint) || eff <= r.torque || sinceContact > this.bt.contact) continue;
       const end = s.q[i] < 0.5 * (ms.lo[i] + ms.hi[i]) ? -1 : 1;
       if ((r.side !== 0 && r.side !== end) || out.some((o) => o.joint === r.joint)) continue;
       out.push({ dof: i, joint: r.joint, end, relax: r.relax, what: r.what, load: this.load[i] });
@@ -118,7 +133,7 @@ export class InjuryState implements Hurt {
     if (this.headN >= k) dv = Math.hypot(v[0] - old[0], v[1] - old[1] + G * k * dt, v[2] - old[2]);
     this.head[this.headAt] = [v[0], v[1], v[2]]; this.headAt = (this.headAt + 1) % k; this.headN++;
     if (dv > this.peakDv) this.peakDv = dv;
-    if (this.ko || dv <= KO.dv) return false;
+    if (this.ko || dv <= this.kt.dv) return false;
     return (this.ko = true);
   }
 
