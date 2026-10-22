@@ -448,8 +448,11 @@ export class World {
     // one, a tilt or a flight is his own running, cutting or leaning, never a knock: off contact the support keeps
     // him upright (design §6.5). One still off balance from a hit keeps stumbling until he has caught himself.
     const own = a.freeT > SUP.free && a.hitMem <= 0 && a.heldT <= 0 && a.knock < 0.05 ? 0 : 1;
-    // (his own jump's flight is no knock either, even just after a contact)
-    const target = Math.min(1, Math.max(knockHit, own * knockTilt, r?.jump === 'flight' ? 0 : own * knockAir, knockDriven, knockLift, knockHeld));
+    // (his own jump's flight is no knock either, even just after a contact) ... but an athlete in a jump's flight who
+    // touches another has no turf to balance on: no posture support, so a contact that stops his legs pitches him
+    // over. (The hit rule above misses it at speed: driving through, his momentum absorbs the impulse.)
+    const knockAirHit = r?.jump === 'flight' && !footing && a.playerContact ? 1 : 0;
+    const target = Math.min(1, Math.max(knockHit, own * knockTilt, r?.jump === 'flight' ? 0 : own * knockAir, knockDriven, knockLift, knockHeld, knockAirHit));
     // rises fast, within a couple of steps on a big hit (the body goes as its impulse lands), decays slowly
     a.knock = target > a.knock ? a.knock + (target - a.knock) * Math.min(1, dt / (knockHit >= 1 ? SUP.bigRise : SUP.rise)) : Math.max(target, a.knock - dt * SUP.decay);
     const down = a.downBy !== null, clip = a.controller.debug?.().clip;

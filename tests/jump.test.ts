@@ -161,3 +161,46 @@ describe('jump tuning', () => {
     expect(upright(on)).toEqual([-1, true, 0, 0]);
   });
 });
+
+/** Running (`gait`) at a standing opponent 25 m ahead, jump when `d` m short of him (head to head): knees and shins into
+ *  his head and chest. Max trunk tilt (°) within 0.6 s of first contact, and when that contact came. */
+async function kneeHit(d: number, gait: Gait = 'sprint', physics = STD) {
+  const sc = supportRunScenario(physics, gait);
+  sc.setup.athletes[0].brain = new ScriptBrain((t, p, c) => {
+    if (t < 0.5) return;
+    c.gait = gait; c.move = { x: 0, z: 1 };
+    const dz = p.athletes[1 - p.self].head[2] - p.athletes[p.self].head[2];
+    c.jump = dz < d && dz > d - 0.6;
+  });
+  sc.setup.athletes.push({ ...sc.setup.athletes[0], pos: [0, 0, 25], yaw: Math.PI, team: 1, brain: new ScriptBrain(() => {}) });
+  const w = await World.create(mujocoEngine, sc.setup);
+  const a = w.athletes[0];
+  let hitAt = -1, maxTilt = 0;
+  while (w.time < 12 && (hitAt < 0 || w.time < hitAt + 0.6)) {
+    w.step();
+    if (hitAt < 0 && a.playerContact) hitAt = w.time;
+    if (hitAt >= 0) maxTilt = Math.max(maxTilt, metrics(w).tilt);
+  }
+  const out = { hitAt, tiltDeg: maxTilt * 180 / Math.PI, instabilities: w.scene.stats().instabilities };
+  w.destroy();
+  return out;
+}
+
+describe('jump into an opponent', () => {
+  // In a jump's flight a contact takes the posture support away: no magic stability in the air. Before 2026-10-21 a
+  // sprinter (driving through, his momentum absorbed the hit) stayed upright at ~17°.
+  it('sprinting, his legs stopped by a standing opponent mid-air, he pitches forward past 60° within 0.6 s', async () => {
+    const r = await kneeHit(4);
+    console.log(`sprinting knee hit: contact at ${r.hitAt.toFixed(2)} s, trunk tilt ${r.tiltDeg.toFixed(0)}° within 0.6 s`);
+    expect(r.hitAt).toBeGreaterThan(0);
+    expect(r.tiltDeg).toBeGreaterThan(60);
+    expect(r.instabilities).toBe(0);
+  }, 60_000);
+  it('jogging, the same contact pitches him forward too (slower: less momentum to turn him)', async () => {
+    const r = await kneeHit(1.5, 'jog');
+    console.log(`jogging knee hit: contact at ${r.hitAt.toFixed(2)} s, trunk tilt ${r.tiltDeg.toFixed(0)}° within 0.6 s`);
+    expect(r.hitAt).toBeGreaterThan(0);
+    expect(r.tiltDeg).toBeGreaterThan(30);
+    expect(r.instabilities).toBe(0);
+  }, 60_000);
+});
