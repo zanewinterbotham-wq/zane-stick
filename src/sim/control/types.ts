@@ -26,6 +26,9 @@ export interface Commands {
   armL: number; armR: number;      // reach 0..1
   gripL: boolean; gripR: boolean;
   wrap: boolean;
+  /** With wrap: the bear hug (the human's wrap): elbows out wide, then the arms round his sides to his back and a squeeze,
+   *  all in the animation's pose (the balance controller does not take the arms). */
+  hug: boolean;
   shoot: boolean;
   sink: number;                    // hip sink depth 0..1
   thrustHips: boolean;
@@ -53,7 +56,7 @@ export interface Commands {
 export function neutralCommands(): Commands {
   return {
     move: { x: 0, z: 0 }, face: null, gait: 'jog', contactMode: false,
-    armL: 0, armR: 0, gripL: false, gripR: false, wrap: false, shoot: false, sink: 0, thrustHips: false, shoulder: 0,
+    armL: 0, armR: 0, gripL: false, gripR: false, wrap: false, hug: false, shoot: false, sink: 0, thrustHips: false, shoulder: 0,
     driveLegs: 0, chopFeet: false, lean: { fwd: 0, side: 0 }, headTuck: false, plantCut: 0, dive: false, jump: false, carry: 0, aim: null, pass: null, look: null,
   };
 }

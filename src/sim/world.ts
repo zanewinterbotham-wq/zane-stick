@@ -690,7 +690,7 @@ export class World {
   }
 
   private updateGrips(a: Athlete, dt: number) {
-    const want = [a.cmd.gripL || a.cmd.wrap || a.cmd.carry === 1, a.cmd.gripR || a.cmd.wrap || a.cmd.carry === 2].map((x, h) => x && !a.injury.arm[h]);
+    const want = [a.cmd.gripL || (a.cmd.wrap && !a.cmd.hug) || a.cmd.carry === 1, a.cmd.gripR || (a.cmd.wrap && !a.cmd.hug) || a.cmd.carry === 2].map((x, h) => x && !a.injury.arm[h]);
     for (const h of [0, 1] as const) {
       const g = a.grips[h];
       g.cooldown = Math.max(0, g.cooldown - dt);
