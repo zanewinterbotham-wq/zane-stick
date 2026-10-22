@@ -7,6 +7,7 @@ import { QB_RANGES, qbTuning, type QbTuning } from '../sim/brains/football/qbTun
 import type { SupportSettings } from '../sim/anim/types';
 import { DEFAULT_GAINS } from '../sim/control/hand';
 import { keyName, keysText, RESERVED, type InputManager } from './input/input';
+import { TOUCH_EDIT } from './input/touch';
 import { PERF_KNOBS, PRESET_ORDER, PRESETS, type Preset, type PresetName } from './presets';
 import { GORE_LEVELS } from './render/effects';
 import type { GameRenderer } from './render/renderer';
@@ -235,7 +236,7 @@ function tuningSection(host: SettingsHost, g: TuningGroup, changed: () => void):
   return [el('h2', { class: 'set-h', text: g.title }), ...(g.note ? [el('p', { class: 'sub', text: g.note })] : []), list, el('div', { class: 'items' }, reset)];
 }
 
-function controlsTab({ host, status, reopen }: Ctx) {
+function controlsTab({ host, status, reopen, back }: Ctx) {
   const s = host.settings;
   const keys = () => host.input.bindings.keyboard;
   status.textContent = 'Replace or Add, then press a key or mouse button. Esc, Alt, Tab and the Windows key stay with the browser and system.';
@@ -258,13 +259,19 @@ function controlsTab({ host, status, reopen }: Ctx) {
   reset.addEventListener('click', () => { s.bindings = {}; host.input.setKeyboard({}); host.save(); render(); status.textContent = 'Controls reset to the defaults.'; });
   const test = el('button', { class: 'item', type: 'button' }, 'Key test');
   test.addEventListener('click', () => host.keyTest(reopen));
+  // touch screens: edit the layout on the play screen; from the pause menu Resume goes straight back to play
+  const touchEdit = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Edit touch layout');
+  touchEdit.addEventListener('click', () => {
+    window.dispatchEvent(new Event(TOUCH_EDIT)); back();
+    [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => /^Resume/.test(b.textContent ?? ''))?.click();
+  });
   return [
     el('p', { class: 'sub', text: 'Contact mode is automatic: within about 4 m of the ball carrier your athlete settles into a ready stance with the arms up. No control is needed for balance; once you make contact, physics decides who stays up. J / L and I / K always work alongside the mouse, so a touchpad is enough.' }),
     table,
     el('div', { class: 'set-list' },
       mode('Sprint', () => s.sprintToggle, (on) => (s.sprintToggle = host.input.sprintToggle = on))),
     el('p', { class: 'sub', text: 'Click the field to capture the mouse; Esc frees it and pauses. Lowering the pads also gets the hips low; after a big hit they come back up to running.' }),
-    el('div', { class: 'items' }, reset, test),
+    el('div', { class: 'items' }, reset, test, ...(matchMedia('(pointer: coarse)').matches ? [touchEdit] : [])),
   ];
 }
 
