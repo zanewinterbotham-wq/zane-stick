@@ -11,7 +11,8 @@ import { TOUCH_EDIT } from './input/touch';
 import { PERF_KNOBS, PRESET_ORDER, PRESETS, type Preset, type PresetName } from './presets';
 import { GORE_LEVELS } from './render/effects';
 import type { GameRenderer } from './render/renderer';
-import { BONE_BASE, DEFAULT_SETTINGS, DIFFICULTY_PRESETS, PLAYER_BASE, difficultyOf, type Settings } from './settings';
+import { DEFAULT_SETTINGS, DIFFICULTY_PRESETS, difficultyOf, type Settings } from './settings';
+import { applyTuningJson, exportPart, exportTuning } from './tuning-io';
 import { el, range, type Layer } from './ui';
 
 /** What the screen needs from the running game (the App in main.ts implements it). */
@@ -223,7 +224,7 @@ const TUNING: TuningGroup[] = [
 ];
 const tuned = (g: TuningGroup, s: Settings) => g.tune(s[g.key]) as Record<string, number>;
 
-/** One tuning group's heading, sliders and reset (in place); `changed` runs after a reset. */
+/** One tuning group's note, sliders and reset (in place; the category wrapper adds the heading); `changed` runs after a reset. */
 function tuningSection(host: SettingsHost, g: TuningGroup, changed: () => void): HTMLElement[] {
   const s = host.settings, list = el('div', { class: 'set-list' });
   const draw = () => list.replaceChildren(...g.rows.map(([k, label, desc, fmt]) => {
@@ -233,7 +234,26 @@ function tuningSection(host: SettingsHost, g: TuningGroup, changed: () => void):
   draw();
   const reset = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm', text: g.reset });
   reset.addEventListener('click', () => { Object.assign(s, { [g.key]: structuredClone(DEFAULT_SETTINGS[g.key]) }); host.save(); draw(); changed(); });
-  return [el('h2', { class: 'set-h', text: g.title }), ...(g.note ? [el('p', { class: 'sub', text: g.note })] : []), list, el('div', { class: 'items' }, reset)];
+  return [...(g.note ? [el('p', { class: 'sub', text: g.note })] : []), list, el('div', { class: 'items' }, reset)];
+}
+
+const OPEN_KEY = 'zs-tuning-open';
+const openState = (): Record<string, boolean> => { try { return JSON.parse(localStorage.getItem(OPEN_KEY) ?? '{}') ?? {}; } catch { return {}; } };
+const saveOpen = (key: string, open: boolean) => { try { localStorage.setItem(OPEN_KEY, JSON.stringify({ ...openState(), [key]: open })); } catch { /* private mode: not remembered */ } };
+
+/** A category's Export (copy its JSON) and Import (paste JSON, apply, reopen the tab so the sliders redraw). */
+function ioBlock(host: SettingsHost, title: string, text: () => string, apply: (json: string) => string | null, reopen: () => void): HTMLElement {
+  const box = el('textarea', { 'aria-label': `Import ${title} values`, placeholder: 'Paste JSON to import', rows: '3' });
+  const err = el('p', { class: 'sub', role: 'alert' });
+  const copy = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm', 'aria-label': `Copy ${title} values` }, 'Copy');
+  copy.addEventListener('click', () => { void navigator.clipboard?.writeText(text()).then(() => host.hud.flash('Copied'), () => { box.value = text(); box.select(); }); });
+  const imp = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm', 'aria-label': `Import ${title}` }, 'Import');
+  imp.addEventListener('click', () => {
+    const e = apply(box.value);
+    err.textContent = e ?? '';
+    if (!e) { host.save(); reopen(); }
+  });
+  return el('div', { class: 'tuning-io' }, el('div', { class: 'items' }, copy, imp), box, err);
 }
 
 function controlsTab({ host, status, reopen, back }: Ctx) {
@@ -347,36 +367,42 @@ function advancedTab({ host, status, reopen }: Ctx) {
   const s = host.settings;
   status.textContent = 'Tuning changes apply from the next rep (physics settings never change mid-rep).';
   const gainKeys: (keyof typeof DEFAULT_GAINS)[] = ['torsoKp', 'torsoKd', 'footK', 'stepWidth', 'swingWn', 'stanceKnee', 'stanceHip', 'dcmK', 'heightKp', 'heightKd', 'spine'];
-  const grid = el('div', { class: 'grid2' });
-  const row = (label: string, value: number, min: number, max: number, step: number, set: (v: number) => void, fmt = (v: number) => v.toFixed(3)) =>
-    grid.append(el('label', { text: label }), ...range(label, value, min, max, step, set, fmt, () => host.save()));
+  const grid = (build: (row: (label: string, value: number, min: number, max: number, step: number, set: (v: number) => void, fmt?: (v: number) => string) => void) => void) => {
+    const g = el('div', { class: 'grid2' });
+    build((label, value, min, max, step, set, fmt = (v) => v.toFixed(3)) => g.append(el('label', { text: label }), ...range(label, value, min, max, step, set, fmt, () => host.save())));
+    return g;
+  };
   const deg = (v: number) => `${(v * 180 / Math.PI).toFixed(0)}°`;
   const sup = s.support;
-  const supportRow = (label: string, k: keyof SupportSettings, min: number, max: number, step: number, fmt?: (v: number) => string) =>
-    row(`Support: ${label}`, sup[k], min, max, step, (v) => (sup[k] = v), fmt);
-  supportRow('strength', 'strength', 0, 1, 0.01, pct);
-  supportRow('carry accel (m/s²)', 'carryAccel', 0, 15, 0.1, (v) => v.toFixed(1));
-  supportRow('weight share', 'weightShare', 0, 1, 0.01, pct);
-  supportRow('tilt fade start', 'tiltStart', 0.1, 1.2, 0.01, deg);
-  supportRow('tilt fade end', 'tiltEnd', 0.2, 1.5, 0.01, deg);
-  supportRow('big hit (N·s)', 'bigHit', 20, 400, 1, (v) => v.toFixed(0));
-  supportRow('tracking stiffness ×', 'tracking', 0.25, 2, 0.01, (v) => v.toFixed(2));
-  row('Player speed ×', s.speed, 0.7, 1.5, 0.01, (v) => (s.speed = v), (v) => v.toFixed(2));
-  row('Player bone strength ×', s.boneStrength, 0.25, 4, 0.05, (v) => (s.boneStrength = v), (v) => v.toFixed(2));
-  row('AI bone strength ×', s.aiBoneStrength, 0.25, 4, 0.05, (v) => (s.aiBoneStrength = v), (v) => v.toFixed(2));
-  row('Steer assist', s.steerAssist, 0, 1, 0.05, (v) => (s.steerAssist = v), pct);
-  row('Muscle strength ×', s.strength, 0.5, 1.5, 0.01, (v) => (s.strength = v), (v) => v.toFixed(2));
-  row('Balance assist (no support)', s.assist, 0, 1, 0.01, (v) => (s.assist = v), pct);
-  row('Cleat traction μ', s.traction, 0.5, 1.6, 0.01, (v) => (s.traction = v));
-  for (const k of gainKeys) {
-    const d = DEFAULT_GAINS[k], v = s.gains[k] ?? d;
-    row(`Gain: ${k}`, v, d * 0.25, d * 4, d / 100, (g) => (s.gains[k] = g));
-  }
+  const supportGrid = grid((row) => {
+    const supportRow = (label: string, k: keyof SupportSettings, min: number, max: number, step: number, fmt?: (v: number) => string) =>
+      row(`Support: ${label}`, sup[k], min, max, step, (v) => (sup[k] = v), fmt);
+    supportRow('strength', 'strength', 0, 1, 0.01, pct);
+    supportRow('carry accel (m/s²)', 'carryAccel', 0, 15, 0.1, (v) => v.toFixed(1));
+    supportRow('weight share', 'weightShare', 0, 1, 0.01, pct);
+    supportRow('tilt fade start', 'tiltStart', 0.1, 1.2, 0.01, deg);
+    supportRow('tilt fade end', 'tiltEnd', 0.2, 1.5, 0.01, deg);
+    supportRow('big hit (N·s)', 'bigHit', 20, 400, 1, (v) => v.toFixed(0));
+    supportRow('tracking stiffness ×', 'tracking', 0.25, 2, 0.01, (v) => v.toFixed(2));
+  });
+  const playerGrid = grid((row) => {
+    row('Player speed ×', s.speed, 0.7, 1.5, 0.01, (v) => (s.speed = v), (v) => v.toFixed(2));
+    row('Player bone strength ×', s.boneStrength, 0.25, 4, 0.05, (v) => (s.boneStrength = v), (v) => v.toFixed(2));
+    row('AI bone strength ×', s.aiBoneStrength, 0.25, 4, 0.05, (v) => (s.aiBoneStrength = v), (v) => v.toFixed(2));
+    row('Steer assist', s.steerAssist, 0, 1, 0.05, (v) => (s.steerAssist = v), pct);
+    row('Muscle strength ×', s.strength, 0.5, 1.5, 0.01, (v) => (s.strength = v), (v) => v.toFixed(2));
+    row('Balance assist (no support)', s.assist, 0, 1, 0.01, (v) => (s.assist = v), pct);
+    row('Cleat traction μ', s.traction, 0.5, 1.6, 0.01, (v) => (s.traction = v));
+  });
+  const gainsGrid = grid((row) => {
+    for (const k of gainKeys) {
+      const d = DEFAULT_GAINS[k], v = s.gains[k] ?? d;
+      row(`Gain: ${k}`, v, d * 0.25, d * 4, d / 100, (g) => (s.gains[k] = g));
+    }
+  });
   const exp = el('textarea', { readonly: 'true', 'aria-label': 'Exported values' });
   // every tweakable on this tab, with the defaults filled in: the JSON to make the new defaults
-  const update = () => (exp.value = JSON.stringify({ support: sup, speed: PLAYER_BASE.speed * s.speed, strength: PLAYER_BASE.strength * s.strength, assist: s.assist, traction: s.traction,
-    boneStrength: BONE_BASE.player * s.boneStrength, aiBoneStrength: BONE_BASE.ai * s.aiBoneStrength, steerAssist: s.steerAssist, gains: { ...DEFAULT_GAINS, ...s.gains },
-    ...Object.fromEntries(TUNING.map((g) => [g.key, tuned(g, s)])) }, null, 2));
+  const update = () => (exp.value = JSON.stringify(exportTuning(s, TUNING), null, 2));
   update();
   const copy = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Copy values');
   copy.addEventListener('click', () => { void navigator.clipboard?.writeText(exp.value).then(() => host.hud.flash('Copied'), () => { exp.select(); }); });
@@ -385,13 +411,52 @@ function advancedTab({ host, status, reopen }: Ctx) {
     for (const k of ['gains', 'assist', 'traction', 'support', 'speed', 'strength', 'boneStrength', 'aiBoneStrength', 'steerAssist'] as const) Object.assign(s, { [k]: structuredClone(DEFAULT_SETTINGS[k]) });
     host.save(); reopen();
   });
-  // Jump, Bot QB, Catching: each knob over its defaults, the same for you and the bots
-  const body = el('div', {}, el('h2', { class: 'set-h', text: 'Tuning' }), grid, ...TUNING.flatMap((g) => tuningSection(host, g, update)));
-  body.addEventListener('input', update); // the export follows every slider on the tab
+  // Collapsible categories: the hand-built ones, then every TUNING group (Jump, Bot QB, Catching, … each knob over its
+  // defaults, the same for you and the bots). A category: [key, title, body, search text, hand-built grid | group].
+  const cats: { key: string; title: string; body: Node[]; text: string; d?: HTMLDetailsElement }[] = [
+    { key: 'support', title: 'Support', body: [supportGrid], text: '' },
+    { key: 'player', title: 'Player', body: [playerGrid], text: '' },
+    { key: 'gains', title: 'Controller gains', body: [gainsGrid], text: '' },
+    ...TUNING.map((g) => ({ key: g.key, title: g.title, body: tuningSection(host, g, update), text: [g.note ?? '', ...g.rows.map((r) => `${r[1]} ${r[2]}`)].join(' ') })),
+  ];
+  for (const c of cats) if (!c.text) c.text = [...(c.body[0] as HTMLElement).querySelectorAll('label')].map((l) => l.textContent).join(' ');
+  const saved = openState();
+  const list = el('div', { class: 'tuning-cats' });
+  for (const [i, c] of cats.entries()) {
+    const d = c.d = el('details', { 'data-cat': c.key }, el('summary', { class: 'set-h', text: c.title }), ...c.body,
+      ioBlock(host, c.title, () => JSON.stringify(exportPart(s, TUNING, c.key), null, 2), (json) => applyTuningJson(s, json, TUNING, c.key), reopen));
+    d.open = saved[c.key] ?? i === 0;
+    // remember what the player chose (not what a search opened): read after the click has flipped it
+    d.querySelector('summary')!.addEventListener('click', () => setTimeout(() => { saved[c.key] = d.open; saveOpen(c.key, d.open); }));
+    list.append(d);
+  }
+  const none = el('p', { class: 'sub', role: 'status', hidden: 'true', text: 'No matches.' });
+  const search = el('input', { type: 'search', 'aria-label': 'Search tuning', placeholder: 'Search tuning (title, knob, description)' });
+  search.addEventListener('input', () => {
+    const q = search.value.trim().toLowerCase();
+    let shown = 0;
+    for (const c of cats) {
+      const hit = !q || `${c.title} ${c.text}`.toLowerCase().includes(q);
+      c.d!.hidden = !hit;
+      c.d!.open = q ? hit : saved[c.key] ?? c === cats[0];
+      if (hit) shown++;
+    }
+    none.hidden = shown > 0;
+  });
+  list.addEventListener('input', update); // the export follows every slider on the tab
+  const allBox = el('textarea', { 'aria-label': 'Import all values', placeholder: 'Paste an export to import every value in it', rows: '4' });
+  const allErr = el('p', { class: 'sub', role: 'alert' });
+  const importAll = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Import all');
+  importAll.addEventListener('click', () => {
+    const e = applyTuningJson(s, allBox.value, TUNING);
+    allErr.textContent = e ?? '';
+    if (!e) { host.save(); reopen(); }
+  });
   return [
     el('div', { class: 'set-list' }, setRow('Performance overlay', 'Frame rate and physics cost, top right (also the ` key).', onOff('Performance overlay', () => s.overlay, (v) => { s.overlay = v; host.save(); }))),
-    body, el('div', { class: 'items' }, reset),
+    el('h2', { class: 'set-h', text: 'Tuning' }), search, none, list, el('div', { class: 'items' }, reset),
     el('h2', { class: 'set-h', text: 'Export' }), el('p', { class: 'sub', text: 'Every value above: copy it to make them the new defaults.' }), exp, el('div', { class: 'items' }, copy),
+    el('h2', { class: 'set-h', text: 'Import' }), el('p', { class: 'sub', text: 'Paste a full export: every known value in it is applied and saved.' }), allBox, allErr, el('div', { class: 'items' }, importAll),
   ];
 }
 

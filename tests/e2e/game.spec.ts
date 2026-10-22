@@ -355,6 +355,7 @@ test('tuning panel shows the support, speed and strength sliders; HUD shows spee
   await page.keyboard.press('KeyT');
   await expect(page.locator('.menu h1')).toHaveText('Settings');
   await expect(page.getByRole('tab', { name: 'Advanced' })).toHaveAttribute('aria-selected', 'true');
+  await page.evaluate(() => document.querySelectorAll('details').forEach((d) => { d.open = true; })); // the tuning categories start collapsed
   for (const label of ['Support: strength', 'Support: carry accel (m/s²)', 'Support: weight share', 'Support: tilt fade start', 'Support: tilt fade end', 'Support: big hit (N·s)', 'Support: tracking stiffness ×', 'Player speed ×', 'Muscle strength ×', 'Player bone strength ×', 'AI bone strength ×', 'Steer assist', 'Bot QB skill', 'Read time', 'Jump height', 'Two-hand chance', 'Catch reach', 'Ball security', 'Jolt window']) {
     await expect(page.getByRole('slider', { name: label, exact: true })).toBeVisible();
   }
