@@ -839,7 +839,8 @@ export class App {
       const result = resultTitle(d);
       const fumble = mine >= 0 && d.recoveredBy === mine ? 'Fumble recovered by you' : d.recoveredBy >= 0 ? `Fumble recovered by ${d.team(d.recoveredBy) === T ? 'your teammate' : net ? 'the other team' : 'the bots'}` : '';
       const title = fumble ? `${fumble}  ·  ${result}` : result;
-      const ms = (v: number) => `${v.toFixed(1)} m/s (${(v * MPH).toFixed(1)} mph)`;
+      // closing speeds can come out signed (negative when the pair is separating); the readout shows the magnitude
+      const ms = (v: number) => `${Math.abs(v).toFixed(1)} m/s (${(Math.abs(v) * MPH).toFixed(1)} mph)`;
       // impulse over 30 ms, and the mean force it implies; the per-step peak force is a stiff-contact spike
       const J = (h: { impulse: number }) => `${h.impulse.toFixed(0)} N·s in 30 ms (${(h.impulse / 30).toFixed(1)} kN avg)`;
       // a guest's big hits are the host's (replica contact forces are an estimate)
