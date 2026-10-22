@@ -23,6 +23,7 @@ import { legIKInto } from './ik';
 import { rootQuat } from './kinematics';
 import type { AnimFrame, Animator, SupportState } from './types';
 import { JUMP_DEFAULTS, RUN_TAKEOFF, type JumpTuning } from './jump';
+import { GRAB_DEFAULTS } from '../grab';
 
 const TAU = 2 * Math.PI, G = 9.81;
 const s01 = (x: number) => { const t = clamp(x, 0, 1); return t * t * (3 - 2 * t); };
@@ -44,7 +45,7 @@ export const frontAim = (p: Vec3, side: number): Vec3 =>
  *  his middle) squeezes: elbows out `wide` rad more and `drop` rad lower (so the curl stays level instead of riding up over
  *  his shoulders) and bent hard, the forearms curled in round his back. The squeeze comes in as the aim comes from `open` to
  *  `close` m ahead of the shoulder. With pads on, chest to chest, the wrists reach his sides at about his middle. */
-const HUG = { side: 0.45, past: 0.15, open: 0.9, close: 0.45, rt: [0.2, 1.2], el: [0.15, 1.9], wide: 0.4, drop: 0.5 };
+const HUG = { open: 0.9, close: 0.45, rt: [0.2, 1.2], el0: 0.15, drop: 0.5 }; // side, past, el[1], wide: GrabTuning hugSide, hugPast, hugBend, hugWide
 const follow = (x: number, target: number, dt: number, tau: number) => x + (target - x) * (1 - Math.exp(-dt / tau));
 const interp = (t: readonly (readonly [number, number])[], x: number) => {
   if (x <= t[0][0]) return t[0][1];
@@ -784,9 +785,9 @@ export class ProceduralAnimator implements Animator {
       if (lv.hug > 1e-3) {
         // reach out wide past him first (the squeeze waits on the hand), so the hands go round him, never into his chest
         this.hugSq[k] = follow(this.hugSq[k], this.hugIn[k] ? 1 : 0, dt, 0.1);
-        const H = HUG, sq = clamp((H.open - this.aimFwd[k]) / (H.open - H.close), 0, 1) * this.hugSq[k];
-        fl = lerp(fl, this.aimAng[k][0] - H.drop * sq, lv.hug); ab = lerp(ab, this.aimAng[k][1] + H.wide * sq, lv.hug);
-        rt = lerp(rt, lerp(H.rt[0], H.rt[1], sq), lv.hug); el = lerp(el, lerp(H.el[0], H.el[1], sq), lv.hug);
+        const H = HUG, GT = v.grab ?? GRAB_DEFAULTS, sq = clamp((H.open - this.aimFwd[k]) / (H.open - H.close), 0, 1) * this.hugSq[k];
+        fl = lerp(fl, this.aimAng[k][0] - H.drop * sq, lv.hug); ab = lerp(ab, this.aimAng[k][1] + GT.hugWide * sq, lv.hug);
+        rt = lerp(rt, lerp(H.rt[0], H.rt[1], sq), lv.hug); el = lerp(el, lerp(H.el0, GT.hugBend, sq), lv.hug);
       }
       // pull: shoulder extension and a hard elbow bend, the hand drawn back to the ribs
       const pull = k === 0 ? lv.pullL : lv.pullR;
@@ -854,9 +855,9 @@ export class ProceduralAnimator implements Animator {
     lv[key] = follow(lv[key], aim ? (reaching ? (k === 0 ? cmd.armL : cmd.armR) : 1) : 0, dt, 0.1);
     if (aim && arm.seg >= 0) {
       const sp = v.state.segPos, d: Vec3 = [aim[0] - sp[3 * arm.seg], aim[1] - sp[3 * arm.seg + 1], aim[2] - sp[3 * arm.seg + 2]];
-      const iq = qconj(rootQuat(this.heading, this.pitch, this.roll)), r = qrot(iq, d), H = HUG;
+      const iq = qconj(rootQuat(this.heading, this.pitch, this.roll)), r = qrot(iq, d), GT = v.grab ?? GRAB_DEFAULTS;
       // a hug reaches round his side to his back (frontAim never sees a target behind me then: he is in front)
-      const p = cmd.hug ? [r[0] + arm.side * H.side, r[1], r[2] + H.past] : frontAim(r, arm.side), n = Math.hypot(p[0], p[1], p[2]) || 1;
+      const p = cmd.hug ? [r[0] + arm.side * GT.hugSide, r[1], r[2] + GT.hugPast] : frontAim(r, arm.side), n = Math.hypot(p[0], p[1], p[2]) || 1;
       const ab = Math.asin(clamp(arm.side * p[0] / n, -1, 1)), fl = Math.atan2(p[2], -p[1]);
       this.aimFwd[k] = r[2];
       const h = 3 * arm.hand;

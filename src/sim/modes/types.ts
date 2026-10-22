@@ -5,6 +5,9 @@ import type { CatchTuning } from './catching';
 import type { AthleteParams } from '../anatomy/body';
 import type { JumpTuning } from '../anim/jump';
 import type { FumbleTuning } from '../fumble';
+import type { GrabTuning } from '../grab';
+import type { HitTuning } from '../hits';
+import type { BoneTuning, KoTuning } from '../injury';
 import type { SupportSettings } from '../anim/types';
 import type { BotDifficulty } from '../brains/carrier';
 import type { Brain } from '../brains/types';
@@ -42,6 +45,8 @@ export interface PlayConfig {
   jump?: Partial<JumpTuning>;
   /** Fumble tuning for every athlete (WorldSetup.fumble; absent / {} = the defaults). */
   fumble?: Partial<FumbleTuning>;
+  /** Grabbing, hits & support, bone and knockout tuning for every athlete (WorldSetup's; absent / {} = the defaults). */
+  grab?: Partial<GrabTuning>; contact?: Partial<HitTuning>; bones?: Partial<BoneTuning>; knockout?: Partial<KoTuning>;
   /** Defenders' difficulty (TacklerBrain: the AI tackling setting); absent = difficulty. */
   defense?: BotDifficulty;
   /** Bone strength of the human and of every bot (AthleteSetup.boneStrength; 1 = the measured tolerances). */

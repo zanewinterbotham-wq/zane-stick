@@ -2,6 +2,9 @@
 // windows), so every read and write is guarded and the defaults always work.
 import { catchTuning, type CatchTuning } from '../sim/modes/catching';
 import { fumbleTuning, type FumbleTuning } from '../sim/fumble';
+import { GRAB_DEFAULTS, grabTuning, type GrabTuning } from '../sim/grab';
+import { HIT_DEFAULTS, hitTuning, type HitTuning } from '../sim/hits';
+import { BONE_DEFAULTS, boneTuning, KO_DEFAULTS, koTuning, type BoneTuning, type KoTuning } from '../sim/injury';
 import { qbTuning, type QbTuning } from '../sim/brains/football/qbTuning';
 import { jumpTuning, type JumpTuning } from '../sim/anim/jump';
 import { DEFAULT_SUPPORT, type SupportSettings } from '../sim/anim/types';
@@ -31,6 +34,10 @@ export interface Settings {
   jump: Partial<JumpTuning>;     // jump tuning knobs over the defaults (Advanced: Jump; {} = the defaults)
   fumble: Partial<FumbleTuning>; // fumble tuning over the defaults (Advanced: Fumbles; {} = the defaults)
   qb: Partial<QbTuning>;         // bot QB tuning over the defaults (Advanced: Bot QB; {} = the defaults)
+  grab: Partial<GrabTuning>;     // grabbing, hits & support, bones, knockouts (Advanced; {} = the defaults)
+  contact: Partial<HitTuning>;
+  bones: Partial<BoneTuning>;
+  knockout: Partial<KoTuning>;
   steerAssist: number;           // 0..1: the player's run turns this far toward the ball carrier or a loose ball
   traction: number;              // cleat–turf friction (tuning)
   gains: Record<string, number>; // controller gain overrides (tuning)
@@ -62,7 +69,9 @@ export const GAME_TUNING = {
   qb: { skill: 1, look: 0.02, lookK: 1.2, aim: 0.15, aimPerM: 0.025, nerves: 0.6, misread: 0.2, open: 0.2 },
   catching: { reach: 0.8, twoHands: 1, oneHand: 0.8, body: 0.9, edge: 0.8, hard: 0.85, moving: 0.95, air: 0.92, contact: 0.65, blind: 0.9 },
   fumble: { hold: 2, window: 0.05 },
-} satisfies { jump: JumpTuning; qb: QbTuning; catching: CatchTuning; fumble: FumbleTuning };
+  // (2026-10-21: the sim's defaults until the owner tunes them)
+  grab: GRAB_DEFAULTS, contact: HIT_DEFAULTS, bones: BONE_DEFAULTS, knockout: KO_DEFAULTS,
+} satisfies { jump: JumpTuning; qb: QbTuning; catching: CatchTuning; fumble: FumbleTuning; grab: GrabTuning; contact: HitTuning; bones: BoneTuning; knockout: KoTuning };
 export const GAME_SUPPORT = { ...DEFAULT_SUPPORT, carryAccel: 10.5 };
 /** Stored settings layout; 2 = strength/speed are multipliers on PLAYER_BASE; 3 = gore levels, owner's new default
  *  skin and stadium; 4 = no sink control (lowering the pads sinks the hips); 5 = thrust on Q, Space jumps; 6 = the
@@ -91,7 +100,7 @@ export const difficultyOf = (s: Settings): DifficultyName =>
  *  to every guest), and what the benches and tests use as "the game's settings". */
 export function gamePlayConfig(s: Settings, p: Preset): PlayConfig {
   return {
-    physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), defense: tacklerSkill(s.tackling), toughness: s.toughness, hitPower: s.hitPower, catching: s.catching, jump: s.jump, qb: s.qb, fumble: s.fumble, boneStrength: BONE_BASE.player * s.boneStrength, aiBoneStrength: BONE_BASE.ai * s.aiBoneStrength, carrierGait: DEFAULT_OPEN_FIELD.carrierGait, activeBots: p.activeBots,
+    physics: p.physics, assist: s.assist, seed: 1, difficulty: carrierSkill(s.juking), defense: tacklerSkill(s.tackling), toughness: s.toughness, hitPower: s.hitPower, catching: s.catching, jump: s.jump, qb: s.qb, fumble: s.fumble, grab: s.grab, contact: s.contact, bones: s.bones, knockout: s.knockout, boneStrength: BONE_BASE.player * s.boneStrength, aiBoneStrength: BONE_BASE.ai * s.aiBoneStrength, carrierGait: DEFAULT_OPEN_FIELD.carrierGait, activeBots: p.activeBots,
     human: { ...DEFAULT_OPEN_FIELD.human, strength: PLAYER_BASE.strength * s.strength, speed: PLAYER_BASE.speed * s.speed }, bot: DEFAULT_OPEN_FIELD.carrier, traction: s.traction, gains: s.gains,
     support: { ...GAME_SUPPORT, ...s.support },
   };
@@ -139,6 +148,10 @@ export function loadSettings(): Settings {
       s.catching = { ...GAME_TUNING.catching, ...overrides(s.catching, catchTuning(s.catching)) };
       s.qb = { ...GAME_TUNING.qb, ...overrides(s.qb, qbTuning(s.qb)) };
       s.fumble = { ...GAME_TUNING.fumble, ...overrides(s.fumble, fumbleTuning(s.fumble)) };
+      s.grab = { ...GAME_TUNING.grab, ...overrides(s.grab, grabTuning(s.grab)) };
+      s.contact = { ...GAME_TUNING.contact, ...overrides(s.contact, hitTuning(s.contact)) };
+      s.bones = { ...GAME_TUNING.bones, ...overrides(s.bones, boneTuning(s.bones)) };
+      s.knockout = { ...GAME_TUNING.knockout, ...overrides(s.knockout, koTuning(s.knockout)) };
       const jump = { ...GAME_TUNING.jump, ...overrides(s.jump, jumpTuning(s.jump)) };
       // (a copy of the defaults: a field the file lacks must not share, and later mutate, DEFAULT_SETTINGS')
       return { ...structuredClone(DEFAULT_SETTINGS), ...s, version: VERSION, support: { ...GAME_SUPPORT, ...s.support }, jump };

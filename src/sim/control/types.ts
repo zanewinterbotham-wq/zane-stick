@@ -6,6 +6,7 @@ import type { Vec3 } from '../math';
 import type { RootTarget, SupportState } from '../anim/types';
 import type { Hurt } from '../injury';
 import type { JumpTuning } from '../anim/jump';
+import type { GrabTuning } from '../grab';
 
 export type Gait = 'walk' | 'jog' | 'sprint';
 
@@ -88,6 +89,8 @@ export interface BodyView {
   throwing?: { t: number; at: Vec3; hand: 0 | 1 };
   /** Jump tuning (the world's, the same for every athlete); absent = JUMP_DEFAULTS. */
   jump?: JumpTuning;
+  /** Grab tuning (the world's; the animator's bear hug reads it); absent = GRAB_DEFAULTS. */
+  grab?: GrabTuning;
 }
 
 /** Body state + commands in, muscle targets out, every physics step. A learned policy implements the same. */
