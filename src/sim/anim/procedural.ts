@@ -33,6 +33,11 @@ const bump = (s: number, a: number, c: number) => {
   const p = a / (a + c);
   return (s ** a * (1 - s) ** c) / (p ** a * (1 - p) ** c);
 };
+/** An arm's aim direction p (shoulder to target, root frame: y up, z forward, side·x outward) kept in front of the
+ *  trunk: a target behind the shoulder's frontal plane (as after a quick turn) is aimed out to the arm's own side at
+ *  its height, so the hand comes round the outside instead of through the torso. Targets in front are unchanged. */
+export const frontAim = (p: Vec3, side: number): Vec3 =>
+  p[2] < 0 ? [side * (Math.abs(p[0]) - p[2]), p[1], 0] : p;
 const follow = (x: number, target: number, dt: number, tau: number) => x + (target - x) * (1 - Math.exp(-dt / tau));
 const interp = (t: readonly (readonly [number, number])[], x: number) => {
   if (x <= t[0][0]) return t[0][1];
@@ -830,7 +835,7 @@ export class ProceduralAnimator implements Animator {
     lv[key] = follow(lv[key], aim ? (reaching ? (k === 0 ? cmd.armL : cmd.armR) : 1) : 0, dt, 0.1);
     if (aim && arm.seg >= 0) {
       const sp = v.state.segPos, d: Vec3 = [aim[0] - sp[3 * arm.seg], aim[1] - sp[3 * arm.seg + 1], aim[2] - sp[3 * arm.seg + 2]];
-      const p = qrot(qconj(rootQuat(this.heading, this.pitch, this.roll)), d), n = Math.hypot(p[0], p[1], p[2]) || 1;
+      const p = frontAim(qrot(qconj(rootQuat(this.heading, this.pitch, this.roll)), d), arm.side), n = Math.hypot(p[0], p[1], p[2]) || 1;
       const ab = Math.asin(clamp(arm.side * p[0] / n, -1, 1)), fl = Math.atan2(p[2], -p[1]);
       this.aimAng[k][0] = follow(this.aimAng[k][0], fl, dt, 0.06);
       this.aimAng[k][1] = follow(this.aimAng[k][1], ab, dt, 0.06);
