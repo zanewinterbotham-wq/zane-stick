@@ -23,6 +23,11 @@ export const BREAK: Record<string, { side: -1 | 0 | 1; torque: number; relax: nu
 };
 /** Averaging time of the limit torque (s): a broken joint is a load held for a moment, not one solver step. */
 const LOAD_TAU = 0.01;
+/** Rate dependence (owner item 2026-10-21): ligament and bone fail at much higher loads applied slowly than in an
+ *  impact (viscoelastic tissue). The limit torque splits into a slow part (low-pass over SLOW_TAU s) and the impact
+ *  part above it; the slow part counts 1/SUSTAIN as much against the tolerance, so a tug two players hold for seconds
+ *  breaks only at SUSTAIN × the tolerance, a sudden hit at 1 ×. Assumption (design §6.6), the same for every athlete. */
+const SLOW_TAU = 0.5, SUSTAIN = 3;
 /** Breaks are traumatic only: within this long of touching another athlete (s), the hit and the fall that follows.
  *  Away from contact the model's limits carry cuts and landings that real muscles would mostly take, so a hard cut
  *  rolled ankles (347 N·m measured) that a real athlete's peroneals and ligaments hold (assumption, design §6.6). */
@@ -66,7 +71,7 @@ export class InjuryState implements Hurt {
   readonly leg = [false, false]; readonly arm = [false, false];
   readonly tone: Float64Array;
   private readonly rules: ({ joint: string; side: -1 | 0 | 1; torque: number; relax: number; what: string } | null)[];
-  private readonly load: Float64Array;
+  private readonly load: Float64Array; private readonly slow: Float64Array;
   private readonly head: Vec3[];
   private headAt = 0; private headN = 0;
   /** Largest filtered limit torque per dof and head velocity change seen (for tests and tuning). */
@@ -78,7 +83,7 @@ export class InjuryState implements Hurt {
       const [j, d] = n.split('.'), base = j.replace(/[LR]$/, ''), r = BREAK[`${base}.${d}`];
       return r && base !== j ? { joint: j, ...r, torque: r.torque * bones } : null;
     });
-    this.load = new Float64Array(muscles.n); this.peak = new Float64Array(muscles.n);
+    this.load = new Float64Array(muscles.n); this.slow = new Float64Array(muscles.n); this.peak = new Float64Array(muscles.n);
     this.tone = new Float64Array(muscles.n).fill(1);
     this.head = Array.from({ length: Math.max(1, Math.round(KO.window / dt)) }, () => [0, 0, 0] as Vec3);
   }
@@ -92,12 +97,13 @@ export class InjuryState implements Hurt {
   /** Joints that break this step: the dofs, with the end of their range that gave way. `sinceContact`: time since
    *  the athlete last touched another athlete (s; Athlete.freeT). */
   checkBreaks(limit: Float64Array, s: AthleteState, sinceContact: number, dt: number) {
-    const out: { dof: number; joint: string; end: -1 | 1; relax: number; what: string; load: number }[] = [], al = 1 - Math.exp(-dt / LOAD_TAU), ms = this.muscles;
+    const out: { dof: number; joint: string; end: -1 | 1; relax: number; what: string; load: number }[] = [], al = 1 - Math.exp(-dt / LOAD_TAU), as = 1 - Math.exp(-dt / SLOW_TAU), ms = this.muscles;
     for (let i = 0; i < ms.n; i++) {
       this.load[i] += (limit[i] - this.load[i]) * al;
+      const slow = (this.slow[i] += (this.load[i] - this.slow[i]) * as), eff = Math.max(0, this.load[i] - slow) + slow / SUSTAIN;
       if (this.load[i] > this.peak[i]) this.peak[i] = this.load[i];
       const r = this.rules[i];
-      if (!r || this.broken.has(r.joint) || this.load[i] <= r.torque || sinceContact > CONTACT_WINDOW) continue;
+      if (!r || this.broken.has(r.joint) || eff <= r.torque || sinceContact > CONTACT_WINDOW) continue;
       const end = s.q[i] < 0.5 * (ms.lo[i] + ms.hi[i]) ? -1 : 1;
       if ((r.side !== 0 && r.side !== end) || out.some((o) => o.joint === r.joint)) continue;
       out.push({ dof: i, joint: r.joint, end, relax: r.relax, what: r.what, load: this.load[i] });

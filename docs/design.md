@@ -357,7 +357,8 @@ Owner decision 2026-10-18: injuries are modeled, replacing "no injury modeling".
 rule applies to every athlete (bots and the human), and toughness / hit power change only what reaches the body.
 
 - **Break:** each breakable dof's range-of-motion limit torque (`PhysicsScene.limitTorques`, the load the
-  joint's passive structures carry), averaged over 10 ms, beyond its tolerance ([S6]; knee and elbow at the
+  joint's passive structures carry), averaged over 10 ms, beyond its tolerance, rate-dependent: the slow part of the
+  load (low-pass over 0.5 s) counts a third, the impact above it in full, so a held tug breaks only at 3 × a hit ([S6]; knee and elbow at the
   hyper-extension end, ankle inversion/eversion, shoulder, sternoclavicular "collarbone"), within 1 s of touching
   another athlete (traumatic injuries only). Tolerances × the athlete's bone strength (`AthleteSetup.boneStrength`;
   settings "Player bone strength" / "AI bone strength", 0.25–4, default 1). The end of its range that broke gives
