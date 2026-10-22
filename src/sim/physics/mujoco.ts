@@ -15,6 +15,8 @@ let mj: Any = null;
  *  earlier was unstable at 240 Hz, see git history. */
 const LIMIT_SOLIMP = '0.3 0.99 0.17';
 const LIMIT_TIMECONST = 0.03;
+/** Divergence recovery: an older good state every BACK s, restored after STUCK divergences in a row. */
+const BACK = 0.2, STUCK = 3;
 const FRICTION = { ground: 0.6, body: 0.6, hand: 1.0 }; // [S5]
 
 /** Fast contact reads (MujocoScene.contacts()): byte offsets of the fields in this MuJoCo build's mjContact and its
@@ -75,7 +77,9 @@ class MujocoScene implements PhysicsScene {
   private xfrc!: Float64Array; private qfrc!: Float64Array;
   /** The state before the current step, restored if it diverges; divergence count and bookkeeping. */
   private good!: { qpos: Float64Array; qvel: Float64Array; eq: Uint8Array; time: number };
-  private instab = 0; private steps = 0; private lastBad = -9;
+  private instab = 0; private steps = 0; private lastBad = -9; private streak = 0;
+  /** An older good state (taken every BACK s while nothing diverges), for a state that diverges every time it is stepped. */
+  private back!: { qpos: Float64Array; qvel: Float64Array; set: boolean };
   private pyramidal = false;
   private heap: { f64: Float64Array; i32: Int32Array } | null = null;
 
@@ -173,6 +177,7 @@ class MujocoScene implements PhysicsScene {
     mj.mj_forward(m, this.d);
     this.views();
     this.good = { qpos: new Float64Array(m.nq), qvel: new Float64Array(m.nv), eq: new Uint8Array(m.neq), time: 0 };
+    this.back = { qpos: new Float64Array(m.nq), qvel: new Float64Array(m.nv), set: false };
     this.read();
   }
 
@@ -180,6 +185,8 @@ class MujocoScene implements PhysicsScene {
     this.views();
     const d = this.d, { qpos, qvel } = this.v, eq = d.eq_active as Uint8Array;
     this.good.qpos.set(qpos); this.good.qvel.set(qvel); this.good.eq.set(eq); this.good.time = d.time;
+    const K = Math.max(1, Math.round(BACK / this.dt));
+    if (this.steps % K === 0 && this.steps - this.lastBad > K) { const b = this.back; b.qpos.set(qpos); b.qvel.set(qvel); b.set = true; }
     mj.mj_step(this.m, d);
     // a diverged solve makes MuJoCo reset everyone to the spawn pose (a mid-rep teleport, injuries kept): undo it,
     // back to the last good state with the motion damped out (halved; stopped if it diverges again at once). A reset
@@ -188,9 +195,13 @@ class MujocoScene implements PhysicsScene {
     // from 0, do a reset and a good step both end at dt: there the counters, which start at 0, decide.
     if (d.time <= this.good.time || (this.good.time === 0 && this.warnings() > 0)) {
       this.views();
-      const k = this.lastBad === this.steps - 1 ? 0 : 0.5;
+      this.streak = this.lastBad === this.steps - 1 ? this.streak + 1 : 1;
+      const k = this.streak > 1 ? 0 : 0.5;
+      // the last good state itself cannot be stepped (it diverged STUCK times running): go back to the older one, at rest
+      const g = this.streak >= STUCK && this.back.set ? this.back : this.good;
+      if (g === this.back) this.streak = 0;
       this.lastBad = this.steps; this.instab++;
-      this.v.qpos.set(this.good.qpos); this.v.qvel.set(this.good.qvel); (d.eq_active as Uint8Array).set(this.good.eq);
+      this.v.qpos.set(g.qpos); this.v.qvel.set(g.qvel); (d.eq_active as Uint8Array).set(this.good.eq); // the grips World set stay
       for (let i = 0; i < this.v.qvel.length; i++) this.v.qvel[i] *= k;
       d.qacc_warmstart.fill(0); d.time = this.good.time + this.dt;
       mj.mj_forward(this.m, d);
