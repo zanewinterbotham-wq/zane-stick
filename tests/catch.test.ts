@@ -66,7 +66,7 @@ describe('catching', () => {
   it('a ball passing 0.3 m wide of a raised hand is in reach: a one-hand try at its edge, a long chance', async () => {
     const d = await drill(script((_t, c) => { c.armL = c.armR = 1; c.gripL = c.gripR = true; }));
     run(d, 0.6);
-    throwThrough(d, wide(d, 1, 0.3), 4, 0.3);
+    throwThrough(d, wide(d, 1, 0.3), 4, 0.5); // (a released grip is a fumble: nobody takes it for FUMBLE_DELAY, so it arrives after that)
     run(d, 1, () => d.world.ballCarrier >= 0);
     const t = d.lastCatch!;
     console.log('0.3 m wide of a raised hand: try', t && { chance: +t.chance.toFixed(2), ...t.factors, caught: t.caught });
