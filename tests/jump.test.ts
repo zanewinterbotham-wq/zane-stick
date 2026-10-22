@@ -181,7 +181,8 @@ async function kneeHit(d: number, gait: Gait = 'sprint', physics = STD) {
     if (hitAt < 0 && a.playerContact) hitAt = w.time;
     if (hitAt >= 0) maxTilt = Math.max(maxTilt, metrics(w).tilt);
   }
-  const out = { hitAt, tiltDeg: maxTilt * 180 / Math.PI, instabilities: w.scene.stats().instabilities };
+  const o = w.athletes[1].injury;
+  const out = { hitAt, tiltDeg: maxTilt * 180 / Math.PI, instabilities: w.scene.stats().instabilities, headDv: o.peakDv, ko: o.ko };
   w.destroy();
   return out;
 }
@@ -191,9 +192,10 @@ describe('jump into an opponent', () => {
   // sprinter (driving through, his momentum absorbed the hit) stayed upright at ~17°.
   it('sprinting, his legs stopped by a standing opponent mid-air, he pitches forward past 60° within 0.6 s', async () => {
     const r = await kneeHit(4);
-    console.log(`sprinting knee hit: contact at ${r.hitAt.toFixed(2)} s, trunk tilt ${r.tiltDeg.toFixed(0)}° within 0.6 s`);
+    console.log(`sprinting knee hit: contact at ${r.hitAt.toFixed(2)} s, trunk tilt ${r.tiltDeg.toFixed(0)}° within 0.6 s, his head Δv ${r.headDv.toFixed(1)} m/s`);
     expect(r.hitAt).toBeGreaterThan(0);
     expect(r.tiltDeg).toBeGreaterThan(60);
+    expect(r.ko).toBe(false);   // into a standing man: no knockout (head Δv ~6 m/s, KO past 10)
     expect(r.instabilities).toBe(0);
   }, 60_000);
   it('jogging, the same contact pitches him forward too (slower: less momentum to turn him)', async () => {
