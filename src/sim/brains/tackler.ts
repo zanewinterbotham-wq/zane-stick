@@ -55,6 +55,12 @@ export function predict(a: AthleteView, dt: number): AthleteView {
   return { ...a, com: f(a.com), pelvis: f(a.pelvis), head: f(a.head) };
 }
 
+/** Both arms reach for just above his hips and grab, wrapping him inside WRAP m (d: COM to COM, along the ground). */
+export function wrapArms(c: Commands, t: AthleteView, d: number) {
+  c.armL = c.armR = 1; c.gripL = c.gripR = true; c.wrap = d < WRAP;
+  c.aim = [t.pelvis[0], t.pelvis[1] + 0.3, t.pelvis[2]];
+}
+
 export class TacklerBrain implements Brain {
   private history: Perception[] = [];
   private steer = new Steer();
@@ -151,8 +157,7 @@ export class TacklerBrain implements Brain {
     if (this.phase !== 'strike') return;
     // drive the legs only once on him: it shortens the stride, so it would slow the last steps in
     c.sink = 0.35; c.lean.fwd = 0.35; c.driveLegs = d < WRAP ? 1 : 0;
-    c.armL = c.armR = 1; c.gripL = c.gripR = true; c.wrap = d < WRAP;
-    c.aim = [t.pelvis[0], t.pelvis[1] + 0.3, t.pelvis[2]];
+    wrapArms(c, t, d);
     if (d < THRUST) { c.thrustHips = true; c.shoulder = leadShoulder(me, t); c.sink = 0; c.lean.fwd = 0; }
     // slipping away just out of reach: lay out for him
     const later = Math.hypot(dx + rvx * 0.3, dz + rvz * 0.3);
