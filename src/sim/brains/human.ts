@@ -67,6 +67,7 @@ export class HumanBrain implements Brain {
     c.thrustHips = h.has('thrust');
     c.shoulder = this.contact ? leadShoulder(p.athletes[p.self], this.nearest) : 0;
     c.dive = h.has('dive'); // one press runs a whole dive; holding changes nothing
+    c.diveFacing = !!i.shiftLock; // shuffling, he dives the way he moves, still facing forward
     c.jump = h.has('jump'); // the same for a jump
     const sink = TORSO_SINK * Math.max(0, i.torso);
     c.sink = this.contact ? Math.max(sink, READY_SINK) : sink;

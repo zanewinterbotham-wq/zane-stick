@@ -40,6 +40,8 @@ export interface Commands {
   headTuck: boolean;
   plantCut: -1 | 0 | 1;            // −1 cut right, +1 cut left
   dive: boolean;
+  /** Side shuffle: the dive keeps facing `face` and goes along `move` (back, side), the trunk tipping that way. */
+  diveFacing: boolean;
   /** Jump straight up (or on along the run): one press is one jump, as for dive. */
   jump: boolean;
   /** Carry the ball: 0 no, 1 in the left arm, 2 in the right arm (tucked, hand gripping the ball). */
@@ -57,7 +59,7 @@ export function neutralCommands(): Commands {
   return {
     move: { x: 0, z: 0 }, face: null, gait: 'jog', contactMode: false,
     armL: 0, armR: 0, gripL: false, gripR: false, wrap: false, hug: false, shoot: false, sink: 0, thrustHips: false, shoulder: 0,
-    driveLegs: 0, chopFeet: false, lean: { fwd: 0, side: 0 }, headTuck: false, plantCut: 0, dive: false, jump: false, carry: 0, aim: null, pass: null, look: null,
+    driveLegs: 0, chopFeet: false, lean: { fwd: 0, side: 0 }, headTuck: false, plantCut: 0, dive: false, diveFacing: false, jump: false, carry: 0, aim: null, pass: null, look: null,
   };
 }
 

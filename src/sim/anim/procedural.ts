@@ -183,7 +183,7 @@ export class ProceduralAnimator implements Animator {
 
   // whole-body modes and cross-fades
   private mode: Mode = 'loco'; private modeT = 0; private settleT = 0; private standT = 0; private prevDive = false;
-  private dv = { run: 0, vh: 0, dir: [0, 1] as [number, number], tL: 0.2, tP: 0.2, stage: 'load' as DiveStage, vy: 0 };
+  private dv = { run: 0, vh: 0, dir: [0, 1] as [number, number], yaw: 0, f: 1, l: 0, tL: 0.2, tP: 0.2, stage: 'load' as DiveStage, vy: 0 };
   private jv = { running: false, vel: [0, 0] as [number, number], tL: 0.3, tP: 0.2, tT: 0, tF: Infinity, pushed: false, offT: 0, leg: -1, q0: [] as LegQ[], was: [true, true], stage: 'load' as DiveStage, vy: 0, power: 1 };
   private prevJump = false; private jumpCool = 0; private jumpReq = 0; private landT = Infinity;
   /** The world's jump tuning this step; a charge being held (s, −1 = none) and the strength of the jump it fired. */
@@ -873,7 +873,11 @@ export class ProceduralAnimator implements Animator {
     const c = v.state.comVel, vh = Math.hypot(c[0], c[2]), run = s01((vh - 2) / 5), mm = Math.hypot(cmd.move.x, cmd.move.z);
     // along the way the player steers (the turn he is making), else the run, else the way he faces
     const dir: [number, number] = mm > 0.2 ? [cmd.move.x / mm, cmd.move.z / mm] : vh > 1 ? [c[0] / vh, c[2] / vh] : [Math.sin(this.heading), Math.cos(this.heading)];
-    this.dv = { run, vh, dir, tL: lerp(DIVE.load[0], DIVE.load[1], run), tP: lerp(DIVE.push[0], DIVE.push[1], run), stage: 'load', vy: 0 };
+    // shuffling (diveFacing) he keeps facing `face`; f, l: the dive's way ahead / to the left of that facing
+    const face = cmd.diveFacing && cmd.face ? Math.atan2(cmd.face.x, cmd.face.z) : null;
+    const yaw = face ?? Math.atan2(dir[0], dir[1]);
+    const f = face === null ? 1 : dir[0] * Math.sin(yaw) + dir[1] * Math.cos(yaw), l = face === null ? 0 : dir[0] * Math.cos(yaw) - dir[1] * Math.sin(yaw);
+    this.dv = { run, vh, dir, yaw, f, l, tL: lerp(DIVE.load[0], DIVE.load[1], run), tP: lerp(DIVE.push[0], DIVE.push[1], run), stage: 'load', vy: 0 };
     this.enter('dive', 0.8 * this.dv.tL);
   }
 
@@ -884,26 +888,27 @@ export class ProceduralAnimator implements Animator {
     const uL = minJerk(t / D.tL), wP = minJerk((t - D.tL) / D.tP), wF = minJerk((t - D.tL - D.tP) / 0.15);
     D.stage = t < D.tL ? 'load' : t < D.tL + D.tP ? 'launch' : 'flight';
     // the body turns to face the way it dives while it loads and pushes
-    if (D.stage !== 'flight') this.heading = wrapAngle(this.heading + clamp(wrapAngle(Math.atan2(D.dir[0], D.dir[1]) - this.heading), -TURN_RATE * dt, TURN_RATE * dt));
+    if (D.stage !== 'flight') this.heading = wrapAngle(this.heading + clamp(wrapAngle(D.yaw - this.heading), -TURN_RATE * dt, TURN_RATE * dt));
     const sd = lerp(1, 0.55, D.run), hLoad = this.standH - 0.16 * sd, pLoad = lerp(0.3, 0.45, D.run);
     // the push is forward first, then up: rising early would lift the feet off the turf before the speed is there
     D.vy = lerp(DIVE.vy[0], DIVE.vy[1], D.run) * wP;
     if (D.stage === 'load') {
-      this.pitch = lerp(this.blendRoot.pitch, pLoad, uL);
+      this.pitch = lerp(this.blendRoot.pitch, D.f * pLoad, uL);
       this.height = lerp(this.blendRoot.height, hLoad, uL);
       // the run's speed is kept through the load (the feet gather under the hips, they do not brake)
       this.vel[0] = D.dir[0] * D.vh; this.vel[2] = D.dir[1] * D.vh;
     } else if (D.stage === 'launch') {
-      this.pitch = lerp(pLoad, 1.0, wP);
+      this.pitch = lerp(D.f * pLoad, D.f * 1.0, wP);
       this.height = lerp(hLoad, this.standH + 0.03, wP);
       const vh = Math.max(D.vh, DIVE.vStand);
       this.vel[0] = D.dir[0] * vh; this.vel[2] = D.dir[1] * vh;
     } else {
-      this.pitch = follow(this.pitch, 1.3, dt, 0.1);
+      this.pitch = follow(this.pitch, D.f * 1.3, dt, 0.1);
       this.height = follow(this.height, s.segPos[3 * this.pelvisSeg + 1], dt, 0.05);
       this.vel[0] = s.comVel[0]; this.vel[2] = s.comVel[2];
     }
-    this.roll = follow(this.roll, 0, dt, 0.1);
+    // the trunk tips the way he dives: forward (pitch), back (negative pitch) or to a side (roll)
+    this.roll = follow(this.roll, D.l * (D.stage === 'flight' ? 1.3 : D.stage === 'launch' ? wP : 0), dt, 0.1);
     // The legs fold only a little ahead of the pelvis's real drop (IK from the measured pelvis, feet under the
     // hips), so the feet stay on the turf through the load; then hips, knees and ankles extend hard and trail.
     const h = this.height, p = this.pitch, fw = this.segAxis(v, this.pelvisSeg, [0, 0, 1]);
@@ -916,14 +921,15 @@ export class ProceduralAnimator implements Animator {
       L.stance = false;
     }
     this.height = h; this.pitch = p;
-    const fl = lerp(lerp(-0.6 * sd, 2.0, wP), 2.0, wF), el = lerp(0.4, 0.15, wP);
+    const up = 2.0 + 0.9 * Math.max(0, -D.f), fl = lerp(lerp(-0.6 * sd, up, wP), up, wF), el = lerp(0.4, 0.15, wP);
     // reaching out of the launch, the arms go where the hands aim (a ball he lays out for)
     for (const a of this.arms) {
       const k = a.side > 0 ? 0 : 1, w = this.aimArm(v, cmd, a, k, dt) * wP;
       this.setArm(a, lerp(fl, this.aimAng[k][0], w), lerp(lerp(0.15, 0.25, wF), this.aimAng[k][1], w), 0, lerp(el, 0.2, w), 0);
     }
     this.add('lumbar.flex', lerp(0.15 * (1 - wP), -0.15, wF));
-    this.head(-0.3 - 0.4 * wP + 0.3 * (cmd.headTuck ? 1 : 0));
+    // (diving backward: arms up behind the head, chin tucked)
+    this.head(D.f < 0 ? 0.5 * wP : -0.3 - 0.4 * wP + 0.3 * (cmd.headTuck ? 1 : 0));
     out.root.height = this.height; out.root.pitch = this.pitch; out.root.roll = this.roll;
     // the feet push against the turf until take-off
     out.planted[0] = D.stage !== 'flight' && v.feet[0].touching; out.planted[1] = D.stage !== 'flight' && v.feet[1].touching;
