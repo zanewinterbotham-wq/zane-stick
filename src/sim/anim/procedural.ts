@@ -35,9 +35,10 @@ const bump = (s: number, a: number, c: number) => {
 };
 /** An arm's aim direction p (shoulder to target, root frame: y up, z forward, side·x outward) kept in front of the
  *  trunk: a target behind the shoulder's frontal plane (as after a quick turn) is aimed out to the arm's own side at
- *  its height, so the hand comes round the outside instead of through the torso. Targets in front are unchanged. */
+ *  its height, so the hand comes round the outside instead of through the torso. Targets in front are unchanged, and so
+ *  are high ones behind (over the shoulder, as a deep catch: the arm goes up and back, never through the trunk). */
 export const frontAim = (p: Vec3, side: number): Vec3 =>
-  p[2] < 0 ? [side * (Math.abs(p[0]) - p[2]), p[1], 0] : p;
+  p[2] < 0 && p[1] < 0.5 * Math.hypot(p[0], p[2]) ? [side * (Math.abs(p[0]) - p[2]), p[1], 0] : p;
 const follow = (x: number, target: number, dt: number, tau: number) => x + (target - x) * (1 - Math.exp(-dt / tau));
 const interp = (t: readonly (readonly [number, number])[], x: number) => {
   if (x <= t[0][0]) return t[0][1];
