@@ -80,7 +80,7 @@ test('settings: title menu has Settings and no skin button; every tab opens, a v
   await page.getByRole('button', { name: 'Reset jump to defaults' }).click();
   await expect(page.getByRole('slider', { name: 'Jump height', exact: true })).toHaveValue('1.35');
   await expect(page.getByRole('slider', { name: 'Charge time' })).toHaveValue('0.25');
-  expect((await stored(page)).jump).toEqual({});
+  expect((await stored(page)).jump).toMatchObject({ height: 1.35, charge: 0.25 }); // back to the game's values
   await page.keyboard.press('Escape');
   await expect(page.locator('.menu h1')).toHaveText('ZANE STICK');
   expect(errors).toEqual([]);
