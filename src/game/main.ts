@@ -725,7 +725,7 @@ export class App {
       this.aim = null; this.hud.setPass(null);
     } else {
       const m = r!.camera.matrixWorld.elements; // column 2: the camera's back axis; column 3: its position
-      const c = passCtx(w, d.human, now / 1000, { yaw: this.cam.yaw, pitch: this.cam.aimPitch, origin: [m[12], m[13], m[14]], dir: [-m[8], -m[9], -m[10]] });
+      const c = passCtx(w, d.human, now / 1000, { yaw: this.cam.yaw, pitch: this.cam.aimPitch, origin: [m[12], m[13], m[14]], dir: [-m[8], -m[9], -m[10]] }, this.settings.autoCamera);
       const cmd = this.passer.update(f, c);
       if (cmd) this.pass = { cmd, until: now + PASS_HOLD };
       // the QB sees his aim all the time; anyone else with the ball only once he starts a throw

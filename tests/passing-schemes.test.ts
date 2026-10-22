@@ -2,7 +2,7 @@
 // the PassCmd it produces and its aim aid; the flight helpers it aims with.
 import { describe, expect, it } from 'vitest';
 import type { InputFrame } from '../src/game/input/input';
-import { turfAim } from '../src/game/passing/context';
+import { autoAim, turfAim } from '../src/game/passing/context';
 import { CATCH_Y, MAX_RANGE, Passer, type PassCtx, type Receiver } from '../src/game/passing/schemes';
 import type { Vec3 } from '../src/sim/math';
 import { leadPoint, THROW, throwVelocity } from '../src/sim/throw';
@@ -83,4 +83,14 @@ it('turf aim: the camera ray meets the turf, no farther than the longest throw',
   expect(turfAim([0, 3, 0], n([0, -0.1, 1]), [0, 1.8, 0])[2]).toBeCloseTo(30, 6);
   expect(turfAim([0, 3, 0], n([0, -0.01, 1]), [0, 1.8, 0])[2]).toBeCloseTo(MAX_RANGE, 6);
   expect(turfAim([0, 3, 0], n([1, 0.2, 0]), [0, 1.8, 0])).toEqual([MAX_RANGE, CATCH_Y, 0]);
+});
+
+it('autoAim: the most open receiver in range, led; none in range: straight ahead along the yaw', () => {
+  const from: Vec3 = [0, 1.8, 0], rx = (index: number, pos: Vec3, open: number, vel: Vec3 = [0, 0, 0]): Receiver => ({ index, pos, vel, open });
+  const near = rx(1, [3, CATCH_Y, 20], 2), open = rx(2, [-10, CATCH_Y, 30], 12);
+  expect(autoAim(from, [near, open], 0)).toEqual([-10, CATCH_Y, 30]);
+  expect(autoAim(from, [rx(3, [0, CATCH_Y, 15], 5, [0, 0, 8])], 0)[2]).toBeGreaterThan(15);
+  expect(autoAim(from, [rx(4, [0, CATCH_Y, 200], 20)], 0)).toEqual([0, CATCH_Y, 25]);
+  const a = autoAim(from, [], Math.PI / 2);
+  expect(a[0]).toBeCloseTo(25, 6); expect(a[2]).toBeCloseTo(0, 6);
 });
