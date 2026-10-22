@@ -15,7 +15,27 @@ const DIST = 3.0, PIVOT_UP = 0.75, SHOULDER = 0.55;
  *  (neck ~80° plus the eyes). */
 const EYE = [0, -0.02, 0.07], HELMET_YAW = 1.7;
 
+const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+
+/** Automatic-camera yaw step. Looks along the smoothed travel direction (vx, vz, m/s) once he moves, and along his
+ *  body facing only when nearly stopped, so a spin (facing turning fast, travel steady) never turns the view.
+ *  Turns faster the further the view is off his travel, so he stays on screen. */
+export function autoYaw(yaw: number, heading: number, vx: number, vz: number, headingRate: number, dt: number): number {
+  const speed = Math.hypot(vx, vz);
+  const wMove = Math.min(1, Math.max(0, (speed - 0.6) / 1.4));
+  // facing counts less the faster the body is spinning (full below ~2 rad/s, none above ~5)
+  const wFace = (1 - wMove) * Math.min(1, Math.max(0, (5 - Math.abs(headingRate)) / 3));
+  const toMove = wrap(Math.atan2(vx, vz) - yaw);
+  const turn = wMove * toMove + wFace * wrap(heading - yaw);
+  const rate = 3 + 7 * Math.min(1, Math.abs(toMove) / 1.0) * wMove; // 3 /s, up to 10 /s when well off his travel
+  return yaw + turn * (1 - Math.exp(-dt * rate));
+}
+
 export class ChaseCamera {
+  private lastP: THREE.Vector3 | null = null;
+  private lastHeading = 0;
+  private vSm = new THREE.Vector2();
+  private headingRate = 0;
   private pivot = new THREE.Vector3(0, 1.6, 0);
   private pivotVel = new THREE.Vector3();
   private pos = new THREE.Vector3(0, 3, -6);
@@ -54,7 +74,14 @@ export class ChaseCamera {
     const p = new THREE.Vector3(s.segPos[3 * pi], s.segPos[3 * pi + 1], s.segPos[3 * pi + 2]);
     if (this.follow) {
       const k = 1 - Math.exp(-dt * 3);
-      this.yaw += Math.atan2(Math.sin(heading - this.yaw), Math.cos(heading - this.yaw)) * k;
+      if (dt > 0 && this.lastP) {
+        const vx = (p.x - this.lastP.x) / dt, vz = (p.z - this.lastP.z) / dt, a = 1 - Math.exp(-dt / 0.2);
+        if (Math.hypot(vx, vz) > 20) this.vSm.set(0, 0); // teleport (new rep), not motion
+        else this.vSm.x += (vx - this.vSm.x) * a, this.vSm.y += (vz - this.vSm.y) * a;
+        this.headingRate += (wrap(heading - this.lastHeading) / dt - this.headingRate) * (1 - Math.exp(-dt / 0.1));
+      }
+      this.lastP = p.clone(); this.lastHeading = heading;
+      this.yaw = autoYaw(this.yaw, heading, this.vSm.x, this.vSm.y, this.headingRate, dt);
       this.pitch += (PITCH0 - this.pitch) * k;
     }
     const cp = Math.cos(this.pitch);
@@ -101,6 +128,7 @@ export class ChaseCamera {
   snap(cam: THREE.PerspectiveCamera, w: World, heading: number) {
     this.yaw = heading; this.pitch = PITCH0;
     this.vel.set(0, 0, 0); this.pivotVel.set(0, 0, 0);
+    this.lastP = null; this.vSm.set(0, 0); this.headingRate = 0;
     for (let i = 0; i < 200; i++) this.update(cam, w, 0.05, heading);
   }
 }
