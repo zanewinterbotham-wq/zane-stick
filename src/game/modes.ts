@@ -23,10 +23,10 @@ const escapeTo = (root: HTMLElement, go: () => void) => root.addEventListener('k
 /** The Play menu's tabs. The category of every mode id lives in CATEGORY_OF; an id not listed there goes under Other. */
 const CATEGORIES = [{ id: 'football', label: 'Football' }, { id: 'drills', label: 'Drills' }, { id: 'party', label: 'Party' }, { id: 'other', label: 'Other' }];
 const CATEGORY_OF: Record<string, string> = {
-  drive: 'football', elevens: 'football', passRush: 'football', pass: 'football', kickoff: 'football', kickoffReturn: 'football',
+  drive: 'football', eleven: 'football', passRush: 'football', pass: 'football', kickoff: 'football', kickoffReturn: 'football',
   puntReturn: 'football', puntBlock: 'football', fieldGoalBlock: 'football', goalline: 'football',
   tackle: 'drills', carry: 'drills', oklahoma: 'drills', gauntlet: 'drills', hitstick: 'drills',
-  sumo: 'party', keepaway: 'party', scramble: 'party', survival: 'party', hotPotato: 'party', infection: 'party',
+  sumo: 'party', keepaway: 'party', scramble: 'party', survival: 'party', potato: 'party', infection: 'party',
 };
 export const modeCategory = (id: string) => CATEGORY_OF[id] ?? 'other';
 
