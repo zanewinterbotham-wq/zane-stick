@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { seed, watchErrors } from './helpers';
+import { pickMode, seed, watchErrors } from './helpers';
 
 // Multiplayer end to end (docs/multiplayer.md) against the local room server (npm run dev:rooms) through the Vite dev
 // server's /api proxy (playwright.config.ts starts both): A hosts, B joins by the invite link, B takes a position, both
@@ -39,7 +39,7 @@ test('host, join by link and by code, position menu, ready, start, guest input o
 
   // A picks Ball Carrier and adds a blocker; B takes the blocker slot (his team-mate)
   await a.getByRole('button', { name: 'Change mode' }).click();
-  await a.locator('.lobby .mode-card[data-mode="carry"]').click();
+  await pickMode(a, a.locator('.lobby .mode-card[data-mode="carry"]'));
   await expect(b.locator('.lobby-mode h3')).toHaveText('Ball Carrier'); // guests see the mode change live
   await a.getByRole('button', { name: 'Add a blocker' }).click();
   await expect(b.locator('.slot .pos')).toHaveText(['Ball carrier', 'Blocker', 'Tackler']); // team 0's column, then team 1's

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { seed, watchErrors } from './helpers';
+import { pickMode, seed, watchErrors } from './helpers';
 
 // The invented modes from the Play menu: their options show, the athlete count warning follows them, and each starts.
 test('Invented modes: Sumo Ring options and Start, Keep Away and the Gauntlet start with their rules in the HUD', async ({ page }) => {
@@ -8,7 +8,7 @@ test('Invented modes: Sumo Ring options and Start, Keep Away and the Gauntlet st
   await page.goto('/');
   await page.getByRole('button', { name: /^Play/ }).click({ timeout: 60_000 });
 
-  await page.getByRole('button', { name: /^Sumo Ring/ }).click();
+  await pickMode(page, page.getByRole('button', { name: /^Sumo Ring/ }));
   await expect(page.locator('.mode-setup h1')).toHaveText('Sumo Ring');
   await expect(page.locator('.mode-setup [role=status]')).toHaveText('2 athletes on the field.');
   await page.locator('input[data-option=perSide]').fill('2');
@@ -24,7 +24,7 @@ test('Invented modes: Sumo Ring options and Start, Keep Away and the Gauntlet st
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Quit to title' }).click();
   await page.getByRole('button', { name: /^Play/ }).click();
-  await page.getByRole('button', { name: /^Keep Away/ }).click();
+  await pickMode(page, page.getByRole('button', { name: /^Keep Away/ }));
   await page.getByRole('button', { name: 'Start' }).click();
   await expect(page.locator('.status')).toContainText('KEEP AWAY', { timeout: 60_000 });
   await expect(page.locator('.status')).toContainText('Hold the ball');
@@ -32,7 +32,7 @@ test('Invented modes: Sumo Ring options and Start, Keep Away and the Gauntlet st
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Quit to title' }).click();
   await page.getByRole('button', { name: /^Play/ }).click();
-  await page.getByRole('button', { name: /^The Gauntlet/ }).click();
+  await pickMode(page, page.getByRole('button', { name: /^The Gauntlet/ }));
   await page.locator('input[data-option=tacklers]').fill('4');
   await expect(page.locator('.mode-setup [role=status]')).toContainText('5 athletes on the field. May run slowly');
   await page.getByRole('button', { name: 'Start' }).click();

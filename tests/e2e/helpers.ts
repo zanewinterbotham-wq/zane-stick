@@ -1,6 +1,6 @@
 // Shared e2e helpers: the error collector, the saved-settings seed, starting a mode from the Play menu, and a bot
 // carrier that walks into the human.
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 const KEY = 'zane-stick-settings-v1';
 // the physics engine's loader reports a slow wasm start as an error line under a busy machine: not a fault
@@ -30,8 +30,19 @@ export function seed(page: Page, extra: Record<string, unknown> = {}, mode: 'alw
 /** From the title: Play, the mode card whose name matches, Start. */
 export async function startMode(page: Page, mode: RegExp) {
   await page.getByRole('button', { name: /^Play/ }).click({ timeout: 60_000 });
-  await page.getByRole('button', { name: mode }).click();
+  await pickMode(page, page.getByRole('button', { name: mode }));
   await page.getByRole('button', { name: 'Start' }).click();
+}
+
+/** Open the category tab that shows a mode card (Play menu or lobby). */
+export async function showMode(page: Page, card: Locator) {
+  for (const t of await page.locator('.mode-browser .inv-tab').all()) { if (await card.count()) break; await t.click(); }
+}
+
+/** Click a mode card, opening its tab first. */
+export async function pickMode(page: Page, card: Locator) {
+  await showMode(page, card);
+  await card.click();
 }
 
 /** The AI carrier now dodges a straight run, so these UI tests have him walk into the human instead. */

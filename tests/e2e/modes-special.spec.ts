@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { seed, watchErrors } from './helpers';
+import { pickMode, seed, watchErrors } from './helpers';
 
 // The special-teams modes start from the Play menu with their options, put four athletes on the field by default,
 // and the kick goes up. Screenshots: test-results/4x-<mode>.png.
@@ -16,7 +16,7 @@ SPECIAL.forEach(([id, title, options], k) => test(`special teams: ${id} starts w
   await seed(page, { mute: true });
   await page.goto('/');
   await page.getByRole('button', { name: /^Play/ }).click({ timeout: 60_000 });
-  await page.locator(`.mode-card[data-mode=${id}]`).click();
+  await pickMode(page, page.locator(`.mode-card[data-mode=${id}]`));
   for (const o of options) await expect(page.locator(`[data-option=${o}]`)).toHaveCount(1);
   await expect(page.locator('.mode-setup [role=status]')).toHaveText('4 athletes on the field.');
   await page.getByRole('button', { name: 'Start' }).click();

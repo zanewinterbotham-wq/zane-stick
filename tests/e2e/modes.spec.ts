@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { seed, watchErrors } from './helpers';
+import { pickMode, seed, showMode, watchErrors } from './helpers';
 import { MODES } from '../../src/sim/modes/registry';
 
 test('Play: mode cards with previews, a setup with options that are remembered, and Start', async ({ page }) => {
@@ -7,9 +7,12 @@ test('Play: mode cards with previews, a setup with options that are remembered, 
   await seed(page, {}, 'ifEmpty');
   await page.goto('/');
   await page.getByRole('button', { name: /^Play/ }).click({ timeout: 60_000 });
-  const cards = page.locator('.mode-card');
-  await expect(cards).toHaveCount(MODES.length);
+  // the modes are split over category tabs: the tabs together hold every mode once
+  let total = 0;
+  for (const t of await page.locator('.mode-browser .inv-tab').all()) { await t.click(); total += await page.locator('.mode-card').count(); }
+  expect(total).toBe(MODES.length);
   for (const id of ['tackle', 'carry', 'oklahoma', 'kickoffReturn', 'gauntlet', 'sumo', 'keepaway', 'scramble', 'goalline', 'hitstick']) {
+    await showMode(page, page.locator(`.mode-card[data-mode=${id}]`));
     const img = page.locator(`.mode-card[data-mode=${id}] img`);
     await img.scrollIntoViewIfNeeded(); // lazy images load once on screen
     await expect(img).toHaveJSProperty('complete', true, { timeout: 30_000 });
@@ -18,7 +21,7 @@ test('Play: mode cards with previews, a setup with options that are remembered, 
   await page.screenshot({ path: 'test-results/20-modes.png' });
 
   // the carry setup: tacklers and blockers; above four athletes it warns about low-end devices
-  await page.getByRole('button', { name: /^Ball Carrier/ }).click();
+  await pickMode(page, page.getByRole('button', { name: /^Ball Carrier/ }));
   await expect(page.locator('.mode-setup h1')).toHaveText('Ball Carrier');
   await expect(page.locator('.mode-setup [role=status]')).toHaveText('2 athletes on the field.');
   await page.locator('input[data-option=tacklers]').fill('3');
@@ -39,13 +42,13 @@ test('Play: mode cards with previews, a setup with options that are remembered, 
   await page.getByRole('button', { name: 'Quit to title' }).click();
   await expect(page.getByRole('button', { name: /^Quick play: Ball Carrier/ })).toBeVisible();
   await page.getByRole('button', { name: /^Play/ }).click();
-  await page.getByRole('button', { name: /^Ball Carrier/ }).click();
+  await pickMode(page, page.getByRole('button', { name: /^Ball Carrier/ }));
   await expect(page.locator('input[data-option=tacklers]')).toHaveValue('2');
   await expect(page.locator('input[data-option=blockers]')).toHaveValue('1');
 
   // the Oklahoma drill: pick a role and a lane width, then play it
   await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await page.getByRole('button', { name: /^Oklahoma Drill/ }).click();
+  await pickMode(page, page.getByRole('button', { name: /^Oklahoma Drill/ }));
   await page.getByRole('button', { name: 'Blocker', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Blocker', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.locator('input[data-option=width]').fill('7');
