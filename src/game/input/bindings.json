@@ -11,7 +11,7 @@
     "shiftLock": ["Mouse1", "Semicolon"],
     "reset": ["Enter"], "pause": ["Escape"], "overlay": ["Backquote"], "tuning": ["KeyT"],
     "throw": ["KeyF"],
-    "slide": ["ControlLeft", "ControlRight"]
+    "slide": ["ControlLeft", "ControlRight"], "replay": ["KeyC"], "photo": ["KeyP"]
   },
   "gamepad": {
     "moveX": ["a0"], "moveY": ["a1"],

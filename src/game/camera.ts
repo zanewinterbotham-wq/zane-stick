@@ -143,3 +143,39 @@ function spring(x: THREE.Vector3, v: THREE.Vector3, target: THREE.Vector3, k: nu
   v.addScaledVector(a, dt);
   x.addScaledVector(v, dt);
 }
+
+/** Ghost camera for instant replay and photo mode: flies freely (not tied to any athlete, through bodies), turns like
+ *  the chase camera (x > 0 turns right, y > 0 looks down), never below the turf. */
+export class FreeCamera {
+  pos = new THREE.Vector3();
+  yaw = 0;
+  pitch = 0;
+  /** Flying speed (m/s), set by the wheel. */
+  speed = 6;
+
+  /** Start from where `cam` is and looks now. */
+  from(cam: THREE.Camera) {
+    const d = cam.getWorldDirection(new THREE.Vector3());
+    this.pos.copy(cam.position);
+    this.yaw = Math.atan2(d.x, d.z);
+    this.pitch = -Math.asin(Math.max(-1, Math.min(1, d.y)));
+  }
+  look(x: number, y: number) {
+    this.yaw -= x;
+    this.pitch = Math.max(-1.5, Math.min(1.5, this.pitch + y));
+  }
+  /** Wheel delta (pixels): scrolling up flies faster. */
+  wheel(dy: number) { this.speed = Math.max(0.5, Math.min(40, this.speed * Math.exp(-dy * 0.002))); }
+  /** Fly `dt` s: x right, y forward (along the view, so looking down flies down), z up; each −1..1, `fast` ×3. */
+  update(cam: THREE.Camera, x: number, y: number, z: number, dt: number, fast = false) {
+    const cp = Math.cos(this.pitch);
+    const dir = new THREE.Vector3(Math.sin(this.yaw) * cp, -Math.sin(this.pitch), Math.cos(this.yaw) * cp);
+    const right = new THREE.Vector3(-Math.cos(this.yaw), 0, Math.sin(this.yaw));
+    const v = this.speed * (fast ? 3 : 1) * dt;
+    this.pos.addScaledVector(dir, y * v).addScaledVector(right, x * v);
+    this.pos.y = Math.max(0.05, this.pos.y + z * v);
+    cam.position.copy(this.pos);
+    cam.lookAt(this.pos.clone().add(dir));
+    cam.updateMatrixWorld();
+  }
+}

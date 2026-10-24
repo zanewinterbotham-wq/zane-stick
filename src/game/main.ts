@@ -18,6 +18,7 @@ import { touchControls } from './input/touch';
 import { InputManager, keyName, keysText, type InputFrame } from './input/input';
 import { effectivePreset, PRESETS, type PresetName } from './presets';
 import { GameRenderer } from './render/renderer';
+import { Viewer } from './replay';
 import { DEFAULT_SETTINGS, gamePlayConfig, loadSettings, saveSettings, type Settings } from './settings';
 import { CATEGORIES, equipItem } from './inventory';
 import { modeMenu, savedOptions } from './modes';
@@ -95,6 +96,8 @@ export class App {
   drill: Play | null = null;
   human = new HumanBrain();
   cam = new ChaseCamera();
+  /** Instant replay (C) and photo mode (P): single player only, the game paused while open. */
+  view = new Viewer(canvas, this.hud.root);
   paused = true;
   timeScale = 1;
   slowUntil = 0;
@@ -513,6 +516,7 @@ export class App {
       ['Left arm, grab', t('armL')], ['Right arm, grab', t('armR')],
       ['Pads down / up: torso and hips (scroll up = down)', `Scroll, ${t('torsoDown')} / ${t('torsoUp')}`],
       ['Side shuffle (toggle)', t('shiftLock')],
+      ...(this.net ? [] : [['Instant replay', t('replay')], ['Photo mode', t('photo')]] as [string, string][]),
       ...(this.settings.autoCamera ? [] : [['Look', 'Mouse'] as [string, string]]),
       ...(this.throwing ? [ // only while he holds the ball: the QB throw controls
         ['Throw (hold for more loft)', t('throw')]] as [string, string][] : []),
@@ -568,6 +572,7 @@ export class App {
   // ---------------------------------------------------------------- input
   onKey(e: KeyboardEvent) {
     this.audio.unlock();
+    if (this.view.open) { this.view.key(e, this.input.bindings.keyboard[this.view.kind!] ?? []); return; }
     if (this.layer.open) {
       if ((document.activeElement as HTMLElement | null)?.tagName === 'SELECT') return; // its own arrow keys
       if (e.code === 'ArrowDown') { this.focusMove(1); e.preventDefault(); }
@@ -584,6 +589,25 @@ export class App {
     else if (k.reset.includes(e.code)) void this.newRep();
     else if (k.overlay.includes(e.code)) { this.settings.overlay = !this.settings.overlay; this.save(); }
     else if (k.tuning.includes(e.code)) { this.paused = true; this.pausedAt = performance.now(); this.input.capture = false; document.exitPointerLock?.(); this.settingsMenu(() => this.pauseMenu(), 'advanced'); }
+    else if (k.replay?.includes(e.code)) this.openView('replay');
+    else if (k.photo?.includes(e.code)) this.openView('photo');
+  }
+
+  /** Instant replay or photo mode: pauses the game and frees the cursor (drag looks). Off in multiplayer, whose shared
+   *  play cannot pause for one player. */
+  openView(kind: 'replay' | 'photo') {
+    const name = kind === 'replay' ? 'Instant replay' : 'Photo mode';
+    if (this.net) { this.hud.flash(`${name} is off in multiplayer`); return; }
+    if (!this.renderer || !this.view.start(kind, this.renderer.camera, () => this.closeView())) { this.hud.flash('Nothing to replay yet'); return; }
+    this.paused = true;
+    this.input.capture = false;
+    document.exitPointerLock?.();
+  }
+
+  closeView() {
+    this.view.close();
+    this.input.read(0, 0); // drop the presses made in the viewer (Space must not jump)
+    this.resume();
   }
 
   /** Gamepad buttons for menus and Start (tap = reset, hold = pause). */
@@ -599,7 +623,7 @@ export class App {
       if (edge(0)) (document.activeElement as HTMLElement | null)?.click();
       // B is Esc: each screen's own Esc handler steps back one level (the pause menu's resumes)
       if (edge(1)) (document.activeElement ?? this.layer.root).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
-    } else if (this.drill) {
+    } else if (this.drill && !this.view.open) {
       if (down(9)) { this.startHeld += dt; if (this.startHeld > 0.6 && this.startHeld - dt <= 0.6) this.pauseMenu(); }
       else { if (this.startHeld > 0 && this.startHeld < 0.6) void this.newRep(); this.startHeld = 0; }
     }
@@ -641,6 +665,8 @@ export class App {
       }
       // drawn between the last two fixed steps (render only), so motion is smooth at any frame rate
       r.lerp(w, Math.min(1, this.acc / w.dt)); // (a multiplayer guest's replica never steps: its latest pose)
+      if (!this.net) this.view.record(w, r.poses);
+      if (this.view.frame(r, w, dtReal, this.input, this.cam.target)) { requestAnimationFrame((t) => this.frame(t)); return; }
       this.cam.shuffle = !!this.human.latest?.shiftLock;
       this.cam.update(r.camera, w, dtReal, this.humanHeading(), r.poses[this.cam.target]);
       r.hideHeadOf = this.cam.mode === 'helmet' ? this.cam.target : -1;
