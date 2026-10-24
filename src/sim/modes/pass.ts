@@ -20,18 +20,19 @@ export type PassRole = 'qb' | 'wr' | 'cb';
 /** Alignment (m): the outside receivers' split from the ball (about the numbers), the slot's (between the hash and the
  *  numbers, a step off the line), the quarterback under centre, a receiver on the line, a corner's depth and shade
  *  pressed (in his face) and off (7 yd cushion), the safety's depth. */
-const SPLIT = 11, SLOT = 5.5, QB_DEPTH = 1, ON_LINE = 0.5, OFF_LINE = 1.2, PRESS = { depth: 1, shade: 0.5 }, OFF = { depth: 7 * YD, shade: 0.8 }, SAFETY = 12 * YD;
+export const SPLIT = 11, SLOT = 5.5, QB_DEPTH = 1, ON_LINE = 0.5, OFF_LINE = 1.2, PRESS = { depth: 1, shade: 0.5 }, OFF = { depth: 7 * YD, shade: 0.8 }, SAFETY = 12 * YD;
 /** The routes a bot receiver is given (and 'random' picks from). */
 export const ROUTE_CHOICES: RouteKind[] = ['go', 'slant', 'out', 'in', 'dig', 'curl', 'comeback', 'hitch', 'post', 'corner', 'seam'];
 /** The QB's drop by his first read's route: quick (3 steps), intermediate (5), deep (7). */
 const QUICK = new Set<RouteKind>(['slant', 'hitch', 'flat', 'screen']), DEEP = new Set<RouteKind>(['go', 'seam', 'post', 'corner', 'dig', 'comeback']);
-const routeClass = (r: RouteKind): 0 | 1 | 2 => (QUICK.has(r) ? 0 : DEEP.has(r) ? 2 : 1);
-const DROP = [3, 5, 7] as const;
+export const routeClass = (r: RouteKind): 0 | 1 | 2 => (QUICK.has(r) ? 0 : DEEP.has(r) ? 2 : 1);
+export const DROP = [3, 5, 7] as const;
 /** Each read's time (s after the snap) by drop, and the time added for each later read. */
-const READ_BY = [2.2, 3, 3.8], READ_NEXT = 0.6;
+export const READ_BY = [2.2, 3, 3.8], READ_NEXT = 0.6;
 /** shortcut: no scramble. The QB brain runs as soon as his progression is covered and a lane is open, and with no pass
  *  rush in this mode every lane is open: with it on he ran in most reps (measured 1 v 1: 4–7 of 8 per coverage, most
- *  for 75 yd touchdowns). Turn it on once the brain holds a read until its time or scrambles only under pressure. */
+ *  for 75 yd touchdowns). Turn it on once the brain holds a read until its time or scrambles only under pressure.
+ *  Pass Rush (passRush.ts) has a rush, and turns it on there. */
 const SCRAMBLE = false;
 /** Concepts: every receiver's route at once, WR1 wide, WR2 wide on the other side, WR3 the slot on WR1's side (the
  *  usual pass-game concepts, simplified to these alignments). */
