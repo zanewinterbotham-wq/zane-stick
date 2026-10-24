@@ -10,7 +10,7 @@ import { MSG } from './snapshot';
  *  the wire format). The sim does not import game data, so the names are copied; a test checks the list is complete.
  *  'jump' is the owner's requested Space action (2026-10-18). */
 export const ACTIONS = ['moveUp', 'moveDown', 'moveLeft', 'moveRight', 'sprint', 'thrust', 'dive', 'armL', 'armR', 'torsoUp', 'torsoDown',
-  'shiftLock', 'reset', 'pause', 'overlay', 'tuning', 'jump', 'throw', 'lob', 'target', 'scheme'] as const;
+  'shiftLock', 'reset', 'pause', 'overlay', 'tuning', 'jump', 'throw', 'lob', 'target', 'scheme', 'replay', 'photo'] as const;
 const SIZE = 57, VERSION = 2;
 /** A pass rides along in this many inputs after its own (the channel is unreliable: one lost packet must not lose the
  *  throw; the copies reach the host while the throw already runs, and the world ignores them). */

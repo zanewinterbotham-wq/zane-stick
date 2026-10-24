@@ -50,6 +50,7 @@ const REBIND: [string, string, string][] = [
   ['shiftLock', 'Side shuffle on / off: face the camera way, A / D shuffle', 'L3 (stick click)'],
   ['throw', 'Throw where the ring is; hold longer for more loft (only this key throws: Left click stays the left arm)', 'Y'],
   ['reset', 'Reset rep', 'Start (tap)'], ['tuning', 'Tuning panel', 'menu'], ['overlay', 'Performance overlay', 'menu'],
+  ['replay', 'Instant replay: the last seconds with a free camera (single player)', '—'], ['photo', 'Photo mode: pause, free camera, save a picture (single player)', '—'],
 ];
 /** Controls that are not rebindable. */
 const FIXED: string[][] = [['Pads (torso and hips)', 'Scroll (up = lower the pads)', '—'], ['Look (aims the arms)', 'Mouse', 'Right stick'], ['Pause', 'Esc', 'Start (hold)']];

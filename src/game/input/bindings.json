@@ -10,7 +10,8 @@
     "torsoUp": ["KeyI"], "torsoDown": ["KeyK"],
     "shiftLock": ["Mouse1", "Semicolon"],
     "reset": ["Enter"], "pause": ["Escape"], "overlay": ["Backquote"], "tuning": ["KeyT"],
-    "throw": ["KeyF"]
+    "throw": ["KeyF"],
+    "replay": ["KeyC"], "photo": ["KeyP"]
   },
   "gamepad": {
     "moveX": ["a0"], "moveY": ["a1"],
