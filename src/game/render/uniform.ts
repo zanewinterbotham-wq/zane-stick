@@ -10,7 +10,7 @@ const NAMES: string[][] = [
 ];
 const NUMBERS = [12, 24, 33, 7, 55, 81, 90, 21, 44, 3, 68, 17];
 /** One letter on each team's helmet. */
-const MARKS = ['G', 'F'];
+export const MARKS = ['G', 'F'];
 
 export interface Ident { name: string; number: number; mark: string }
 /** The `rank`-th athlete (0-based) of `team`. */

@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import type { World } from '../../sim/world';
 import { clamp } from '../../sim/math';
-import { AthleteMesh, TEAMS } from './athleteMesh';
+import { AthleteMesh, TEAMS, teamChanged } from './athleteMesh';
 import { AnatomyOverlay } from './anatomy';
 import { GORE_LEVELS, InjuryEffects } from './effects';
 import { buildBarrier, buildField } from './field';
@@ -18,7 +18,7 @@ import { CLASSIC, loadSkin, skinById, type Skin, type SkinTemplate } from './ski
 import { CrowdFx, pushUniforms } from './crowd';
 import { buildFloodlights, disposeFloodlights } from './lights';
 import { ContactShadows, TurfMarks } from './turf';
-import { addStain, identFor, stainKey, stainOf } from './uniform';
+import { addStain, identFor, MARKS, stainKey, stainOf } from './uniform';
 
 /** Graphics knobs of a quality level (presets.ts). `scale`: resolution × the device pixel ratio, which is first capped
  *  at `pixelCap`; `shadowMap`: shadow map size (px); `effects`: share of the injury particles drawn; `faces`: farthest
@@ -152,8 +152,11 @@ export class GameRenderer {
       const r = +this.slots[i].split(':')[1];
       return new AthleteMesh(a.plan, TEAMS[a.setup.team], this.quality.detail, this.template, { ident: this.quality.decals ? identFor(a.setup.team, r) : undefined, stain: stainOf(this.slots[i]) });
     });
+    this.shownTeam = w.athletes.map((a) => a.setup.team);
     for (const a of this.athletes) { a.setXray(this.xray); this.scene.add(a.root); }
   }
+  /** The team each athlete's uniform is in now: a mode may change an athlete's team mid-rep (Infection). */
+  private shownTeam: number[] = [];
 
   /** A voice sound has started on an athlete: their mouth follows it (see render/mouth.ts). */
   voice(v: Voice) { this.athletes[v.athlete]?.mouth?.driver.say(v); }
@@ -251,6 +254,7 @@ export class GameRenderer {
     const cam = this.camera.position, far = this.quality.faces;
     w.athletes.forEach((a, i) => {
       const s = this.poses[i], mesh = this.athletes[i], k = 3 * (a.segIndex.get('head') ?? 0);
+      if (teamChanged(this.shownTeam, i, a.setup.team)) mesh.setTeam(TEAMS[a.setup.team], MARKS[a.setup.team]);
       mesh.pose(s.segPos, s.segQuat);
       // far faces keep their last expression: a mouth or brow a few pixels tall is not worth its update
       if (far === Infinity || Math.hypot(s.segPos[k] - cam.x, s.segPos[k + 1] - cam.y, s.segPos[k + 2] - cam.z) < far) { mesh.mouth?.update(dt); mesh.brows?.update(dt); }
