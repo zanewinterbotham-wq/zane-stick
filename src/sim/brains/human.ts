@@ -34,6 +34,11 @@ const AIM_DIST = 1.5, CHEST_BELOW_HEAD = 0.3;
 const STEER = { range: 10, cone: 0.5 };
 /** A loose ball this close (m, along the ground) and no higher than this (m) draws both arms to it and a stoop. */
 const LOOSE_REACH = 2, LOOSE_HIGH = 1;
+/** Natural moves (the bot brains never set them): hurdle a man ahead within `hurdle` m whose head is below `low` m (diving,
+ *  or on the turf); the carrier's free hand covers the ball with `cover.n` opponents within `cover.r` m; a raised arm
+ *  stiff-arms an opponent within `stiff` m in front or beside him (cosine of the bearing off his heading above `side`),
+ *  at his chest (`chest` m below his head). */
+const MOVES = { hurdle: 2, low: 1.1, cover: { r: 2, n: 2 }, stiff: 1.5, side: -0.2, chest: 0.35 };
 
 export class HumanBrain implements Brain {
   latest: HumanInput | null = null;
@@ -69,6 +74,8 @@ export class HumanBrain implements Brain {
     c.dive = h.has('dive'); // one press runs a whole dive; holding changes nothing
     c.diveFacing = !!i.shiftLock; // shuffling, he dives the way he moves, still facing forward
     c.jump = h.has('jump'); // the same for a jump
+    c.slide = h.has('slide'); // and a slide
+    c.hurdle = this.lowAhead(p);
     const sink = TORSO_SINK * Math.max(0, i.torso);
     c.sink = this.contact ? Math.max(sink, READY_SINK) : sink;
     c.lean = { fwd: i.torso, side: 0 };
@@ -87,6 +94,9 @@ export class HumanBrain implements Brain {
       if (t && this.contact) { wrapArms(c, t, 0); c.face = { x: dx / d, z: dz / d }; }
       c.wrap = c.hug = true; c.gripL = c.gripR = false;
     }
+    // a held arm catches him on the turf if he stumbles (the animator decides when: a small knock only)
+    c.plant = i.armL > 0.5 || i.armR > 0.5;
+    if (p.athletes[p.self].hasBall) this.carrierArms(p, c, i);
     if (this.contact) {
       c.driveLegs = i.sprint;
       if (c.driveLegs > 0.5) c.gait = 'sprint';
@@ -121,6 +131,34 @@ export class HumanBrain implements Brain {
     if (w <= 0) return [mx, mz];
     const sx = mx / m + (dx / d - mx / m) * w, sz = mz / m + (dz / d - mz / m) * w, s = Math.hypot(sx, sz) || 1;
     return [sx / s * m, sz / s * m];
+  }
+
+  /** A low or diving opponent (head below MOVES.low, or on the turf) ahead within MOVES.hurdle: a jump now hurdles him. */
+  private lowAhead(p: Perception): boolean {
+    const me = p.athletes[p.self], hx = Math.sin(me.heading), hz = Math.cos(me.heading);
+    return p.athletes.some((a) => {
+      if (a.team === me.team || !(a.down || a.head[1] < MOVES.low)) return false;
+      const dx = a.com[0] - me.com[0], dz = a.com[2] - me.com[2], d = Math.hypot(dx, dz);
+      return d < MOVES.hurdle && dx * hx + dz * hz > 0.5 * d;
+    });
+  }
+
+  /** The ball carrier's free arm: held out with a man close in front or beside him, it stiff-arms him (aimed at his chest,
+   *  no grab); not held, it covers the ball when two close in. */
+  private carrierArms(p: Perception, c: Commands, i: HumanInput) {
+    const me = p.athletes[p.self], hx = Math.sin(me.heading), hz = Math.cos(me.heading);
+    let near = 0, best: AthleteView | undefined, bestD = MOVES.stiff;
+    for (const a of p.athletes) {
+      if (a.team === me.team || a.down) continue;
+      const dx = a.com[0] - me.com[0], dz = a.com[2] - me.com[2], d = Math.hypot(dx, dz);
+      if (d < MOVES.cover.r) near++;
+      if (d < bestD && dx * hx + dz * hz > MOVES.side * d) { bestD = d; best = a; }
+    }
+    if (i.armL > 0.5 || i.armR > 0.5) {
+      if (!best) return;
+      c.stiffArm = true; c.aim = [best.head[0], best.head[1] - MOVES.chest, best.head[2]];
+      c.gripL = c.gripR = false; c.wrap = c.hug = false;
+    } else c.cover = near >= MOVES.cover.n;
   }
 
   /** A loose ball within reach: the hands go for it and the body stoops, so walking over it picks it up. */

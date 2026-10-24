@@ -86,6 +86,40 @@ describe('HumanBrain', () => {
     expect(ang(steer(1, mine))).toBeCloseTo(0, 6);
   });
 
+  it('natural moves: slide on its key, hurdle over a low man ahead, plant with a held arm, the carrier\'s cover and stiff-arm', () => {
+    const b = new HumanBrain();
+    const opp = (x: number, z: number, head = 1.8, down = false): AthleteView => ({ ...view(x, z), head: [x, head, z], down });
+    const field = { halfWidth: 24, goalZ: 50, dirZ: 1 as const };
+    const p = (mine: boolean, ...o: AthleteView[]): Perception => ({ time: 0, self: 0, athletes: [{ ...view(0, 0), team: 0, hasBall: mine }, ...o], field });
+    b.latest = input({ held: new Set(['slide']) });
+    expect(b.think(p(false, opp(0, 20))).slide).toBe(true);
+    b.latest = input();
+    expect(b.think(p(false, opp(0, 20))).slide).toBe(false);
+    // hurdle: a diver (head low) or a man on the turf ahead within 2 m; not standing, behind or farther
+    expect(b.think(p(false, opp(0, 1.5, 0.6))).hurdle).toBe(true);
+    expect(b.think(p(false, opp(0.3, 1.5, 1.6, true))).hurdle).toBe(true);
+    expect(b.think(p(false, opp(0, 1.5))).hurdle).toBe(false);
+    expect(b.think(p(false, opp(0, -1.5, 0.6))).hurdle).toBe(false);
+    expect(b.think(p(false, opp(0, 3, 0.6))).hurdle).toBe(false);
+    // plant: only with an arm held
+    expect(b.think(p(false, opp(0, 20))).plant).toBe(false);
+    b.latest = input({ armR: 1 });
+    expect(b.think(p(false, opp(0, 20))).plant).toBe(true);
+    // carrier, no arm held: the cover with two close, not one; never without the ball
+    b.latest = input();
+    expect(b.think(p(true, opp(1, 1), opp(-1, 1))).cover).toBe(true);
+    expect(b.think(p(true, opp(1, 1), opp(-1, 5))).cover).toBe(false);
+    expect(b.think(p(false, opp(1, 1), opp(-1, 1))).cover).toBe(false);
+    // carrier holding an arm out: a stiff-arm at the chest of the man beside him, no grab; behind or far, none
+    b.latest = input({ armL: 1 });
+    const c = b.think(p(true, opp(1.2, 0.3)));
+    expect([c.stiffArm, c.gripL, c.gripR, c.cover]).toEqual([true, false, false, false]);
+    expect(c.aim).toEqual([1.2, 1.8 - 0.35, 0.3]);
+    expect(b.think(p(true, opp(0, -1.2))).stiffArm).toBe(false);
+    expect(b.think(p(true, opp(0, 2))).stiffArm).toBe(false);
+    expect(b.think(p(false, opp(1.2, 0.3))).stiffArm).toBe(false);
+  });
+
   it('with shift lock, holding D shuffles sideways without turning the body (headless)', async () => {
     await mujocoEngine.init();
     const run = async (shiftLock: boolean) => {

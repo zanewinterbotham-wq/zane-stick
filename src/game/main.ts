@@ -153,6 +153,9 @@ export class App {
     // Alt+Tab (or any switch away): pause, which frees the mouse; Resume or a click on the field captures it again
     window.addEventListener('blur', () => this.lostFocus());
     canvas.addEventListener('click', () => { if (!this.paused) this.lockPointer(); });
+    // Ctrl is Slide, and Ctrl+W closes the tab outside fullscreen (no page can block it): ask first while a rep runs.
+    // (not under automation: a test's reload would wait on the dialog)
+    window.addEventListener('beforeunload', (e) => { if (this.drill && !this.drill.ended && !navigator.webdriver) { e.preventDefault(); e.returnValue = ''; } });
     document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement) this.lostFocus(); });
     document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) this.lostFocus(); });
     window.addEventListener('resize', () => this.renderer?.resize());
@@ -506,7 +509,7 @@ export class App {
     const k = this.input.bindings.keyboard, t = (a: string) => keysText(k[a] ?? []);
     const move = ['moveUp', 'moveLeft', 'moveDown', 'moveRight'].map((a) => k[a]?.[0] ? keyName(k[a][0]) : '—').join(' ');
     return [
-      ['Move', move], ['Sprint', t('sprint')], ['Thrust', t('thrust')], ['Jump', t('jump')], ['Dive', t('dive')],
+      ['Move', move], ['Sprint', t('sprint')], ['Thrust', t('thrust')], ['Jump (hurdles a diver)', t('jump')], ['Dive', t('dive')], ['Slide (with the ball: give yourself up)', t('slide')],
       ['Left arm, grab', t('armL')], ['Right arm, grab', t('armR')],
       ['Pads down / up: torso and hips (scroll up = down)', `Scroll, ${t('torsoDown')} / ${t('torsoUp')}`],
       ['Side shuffle (toggle)', t('shiftLock')],

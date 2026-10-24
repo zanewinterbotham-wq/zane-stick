@@ -26,6 +26,7 @@ const CONTROLS: Control[] = [
   { id: 'pause', label: 'II', name: 'Pause', kind: 'button', small: true, x: 89.5, y: 8.5, shown: true },
   { id: 'armL', label: 'L arm', kind: 'button', x: 59, y: 39, shown: false },
   { id: 'armR', label: 'R arm', kind: 'button', x: 59, y: 61, shown: false },
+  { id: 'slide', label: 'Slide', kind: 'button', x: 59, y: 84, shown: false },
 ];
 /** Window event that starts editing the layout (Settings → Controls). */
 export const TOUCH_EDIT = 'zane-stick-touch-edit';

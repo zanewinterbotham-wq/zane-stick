@@ -66,6 +66,8 @@ const UP_TIME = 0.5;
 /** A runner going down this soon after an opponent last touched him is down by contact (s): the hit that took his
  *  feet often lets go of him just before he lands. */
 const CONTACT_MEM = 1;
+/** A runner reaching the turf this soon after pressing slide (s) gave himself up: down where he is, touched or not. */
+const SLIDE_MEM = 1.5;
 /** Untouched on the turf this long (s, flickers shorter than UP_TIME included) he has given himself up: a get-up
  *  takes about 2.5 s. */
 const GIVE_UP = 4;
@@ -107,7 +109,7 @@ export class Play {
   private fumbledAt = -Infinity;
   /** The holder: time on the turf (s), time since he last left it (s), last opponent contact (world s), and whether
    *  a dead ball in his own end zone would be a touchback (he got it there from the opponents and has not left). */
-  private turfT = 0; private offT = UP_TIME; private touchedAt = -Infinity; private touchback = false;
+  private turfT = 0; private offT = UP_TIME; private touchedAt = -Infinity; private slidAt = -Infinity; private touchback = false;
   private readonly ballRef = { athlete: -1, seg: this.ball };
   /** The last catch attempt (HUD, tests). */
   lastCatch: CatchTry | null = null;
@@ -216,7 +218,7 @@ export class Play {
     // moving with the hand: a ball put at rest in a hand swinging up to a catch is struck by it and torn out
     w.scene.launchProp(this.ball, [s.segVel[3 * hi], s.segVel[3 * hi + 1], s.segVel[3 * hi + 2]], [0, 0, 0]);
     this.impetus = T;
-    this.turfT = 0; this.offT = UP_TIME; this.touchedAt = -Infinity;
+    this.turfT = 0; this.offT = UP_TIME; this.touchedAt = -Infinity; this.slidAt = -Infinity;
     w.setup.field = { halfWidth: this.rules.halfWidth, goalZ: this.rules.goal[T], dirZ: attackDir(T) };
   }
 
@@ -227,12 +229,13 @@ export class Play {
     if (hi >= 0) {
       const a = w.athletes[hi], T = a.setup.team, bz = this.ballPos()[2];
       if (a.touching.some((k) => this.team(k) !== T)) this.touchedAt = w.time;
+      if (a.cmd.slide) this.slidAt = w.time; // a runner who slides gives himself up: down when he reaches the turf
       if (a.downBy) { this.turfT += w.dt; this.offT = 0; } else if ((this.offT += w.dt) >= UP_TIME) this.turfT = 0;
       if (this.touchback && !inOwnEndZone(r, T, bz)) this.touchback = false;
       // an unconscious carrier's hands let go: the ball is a fumble by the usual rules
       if (a.injury.ko) { const g = w.gripping(hi, this.ballRef); if (g >= 0) w.releaseGrip(hi, g as 0 | 1); }
       // checked before the grip: a ball that comes out on the step he lands was still held when he went down
-      if (!a.injury.ko && a.downBy && (w.time - this.touchedAt < CONTACT_MEM || this.turfT > GIVE_UP || a.injury.out)) return this.dead(T, bz, 'down');
+      if (!a.injury.ko && a.downBy && (w.time - this.touchedAt < CONTACT_MEM || w.time - this.slidAt < SLIDE_MEM || this.turfT > GIVE_UP || a.injury.out)) return this.dead(T, bz, 'down');
       if (w.gripping(hi, this.ballRef) < 0) this.fumble(hi);
       else if (scores(r, T, bz)) return this.end('touchdown', T, r.points.touchdown);
       else if (r.outOfBounds && this.runnerOut(hi)) return this.dead(T, bz, 'out');

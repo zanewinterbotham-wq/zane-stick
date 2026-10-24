@@ -54,6 +54,16 @@ export interface Commands {
   /** Eyes on a world point (a ball in the air): the head turns toward it, the trunk helping, as far as they go; null:
    *  ahead. */
   look: Vec3 | null;
+  /** Slide feet first to the turf (one press, one slide, as for dive): a runner giving himself up (down by rule). */
+  slide: boolean;
+  /** The raised arms (armL / armR held) may plant their hand on the turf when he stumbles (a small knock only). */
+  plant: boolean;
+  /** Carrying: the free hand covers the ball (a second grip on it). */
+  cover: boolean;
+  /** Carrying: a raised free arm locks out straight at `aim` (a stiff-arm) and does not grab. */
+  stiffArm: boolean;
+  /** A jump fired now is a hurdle (knees tucked high, lead leg forward) over a low or diving man ahead. */
+  hurdle: boolean;
 }
 
 export function neutralCommands(): Commands {
@@ -61,6 +71,7 @@ export function neutralCommands(): Commands {
     move: { x: 0, z: 0 }, face: null, gait: 'jog', contactMode: false,
     armL: 0, armR: 0, gripL: false, gripR: false, wrap: false, hug: false, shoot: false, sink: 0, thrustHips: false, shoulder: 0,
     driveLegs: 0, chopFeet: false, lean: { fwd: 0, side: 0 }, headTuck: false, plantCut: 0, dive: false, diveFacing: false, jump: false, carry: 0, aim: null, pass: null, look: null,
+    slide: false, plant: false, cover: false, stiffArm: false, hurdle: false,
   };
 }
 

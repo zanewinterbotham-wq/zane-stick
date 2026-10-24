@@ -108,9 +108,26 @@ const JUMP = { vy: 4, ext: 0.04, off: 0.02, maxFlight: 1.5, stuck: 0.3, fresh: 0
  *  hurdle's tuck in the air (heels drawn up under the hips). */
 const JUMP_PUSH_LEG: LegQ = [-0.5, 0.05, 0.1, -0.6, 0.3, 0, 0], JUMP_LEAD_LEG: LegQ = [1.3, 0.08, 1.6, 0.2, 0, 0, 0];
 const JUMP_TUCK: LegQ = [0.9, 0.08, 1.4, 0.1, 0, 0, 0], JUMP_HURDLE: LegQ = [1.5, 0.08, 2.35, 0.2, 0, 0, 0];
+/** A hurdle's lead leg in the air (owner request 2026-10-23): thigh up level, knee nearly straight, reaching on over him. */
+const HURDLE_LEAD: LegQ = [1.6, 0.05, 0.3, 0.15, 0, 0, 0];
+/** Feet-first slide (Commands.slide): he sits down onto the turf as in a deep sink, the hips lowered toward `height` (m)
+ *  at `sink` (m/s) and the trunk leaning back to `pitch` (rad), the lead leg out ahead nearly straight, the other knee bent
+ *  under it (a baseball slide's), the chin tucked, the free arms up and out; fade-in time (s), and the longest it waits for
+ *  the turf before running on (s). Nothing pushes him along: he slides on what speed he has, and the turf's friction
+ *  stops him. (Letting the support go, the planted foot tripped a runner head first.) Assumption: angles chosen to look
+ *  like a QB slide within the joints' ranges [S3]. */
+const SLIDE = { lead: [1.35, 0.1, 0.25, 0.1, 0, 0, 0] as LegQ, tuck: [1.1, 0.25, 1.9, -0.2, 0, 0, 0] as LegQ, lumbar: 0.1, neck: 0.5,
+  arm: [0.9, 0.5, 0, 0.7, 0] as ArmQ, height: 0.25, sink: 2, pitch: -0.4, blend: 0.12, max: 1.5 };
+/** Hand plant (Commands.plant): a held arm reaches for the turf `out` m beyond the shoulder the way the trunk falls, elbow
+ *  `elbow` rad, while he is knocked between knock[0] and knock[1] (1 − posture support) and his trunk tilts between
+ *  tilt[0] and tilt[1] rad off upright. Past either upper end it lets go: a hand can slow a stumble, not hold up a tackle. */
+const PLANT = { out: 0.45, elbow: 0.35, knock: [0.05, 0.7], tilt: [0.15, 0.8] } as const;
+/** The free hand covering the ball (Commands.cover): across the chest onto the ball in the carrying hand; running (the
+ *  carrying arm swings lower), the shoulder flexes only `runFlex` (rad). Tuned headless so the hand meets the ball. */
+const COVER: ArmQ = [0.9, 0.0, 1.0, 1.9, 0.2], COVER_RUN_FLEX = 0.6;
 type DiveStage = 'load' | 'launch' | 'flight';
 
-type Mode = 'loco' | 'dive' | 'jump' | 'down' | 'getup';
+type Mode = 'loco' | 'dive' | 'jump' | 'down' | 'getup' | 'slide';
 /** One leg's angles: hip flexion, abduction, knee flexion, ankle dorsiflexion, toe extension, foot yaw
  *  relative to the heading (positive toward the athlete's left), and the foot's toe-up roll on the turf. */
 type LegQ = [number, number, number, number, number, number, number];
@@ -166,7 +183,7 @@ export class ProceduralAnimator implements Animator {
   private vel: Vec3 = [0, 0, 0]; private vPlan: [number, number] = [0, 0]; private aFwd = 0; private aLat = 0;
   private height: number; private pitch = 0; private roll = 0; private bend = 0; private dropF = 0.008; private dropV = 0; private pitchV = 0;
   private lv = { gait: 0, stance: 0, sink: 0, chop: 0, drive: 0, thrust: 0, tuck: 0, leanF: 0, leanS: 0, reachL: 0, reachR: 0,
-    wrap: 0, hug: 0, shoot: 0, carryL: 0, carryR: 0, contact: 0, cut: 0, aimL: 0, aimR: 0, bp: 0, shuffle: 0, pullL: 0, pullR: 0, hit: 0 };
+    wrap: 0, hug: 0, shoot: 0, carryL: 0, carryR: 0, contact: 0, cut: 0, aimL: 0, aimR: 0, bp: 0, shuffle: 0, pullL: 0, pullR: 0, hit: 0, plantL: 0, plantR: 0, coverL: 0, coverR: 0 };
   private aimAng = [[0, 0], [0, 0]];
   /** How far ahead of each shoulder (root frame, m) cmd.aim is (last aimArm). */
   private aimFwd = [0, 0];
@@ -183,9 +200,11 @@ export class ProceduralAnimator implements Animator {
   private thrustP = 0; private thrustD = 0; private thrustLow = 0; private thrustSide = -1;
 
   // whole-body modes and cross-fades
-  private mode: Mode = 'loco'; private modeT = 0; private settleT = 0; private standT = 0; private prevDive = false;
+  private mode: Mode = 'loco'; private modeT = 0; private settleT = 0; private standT = 0; private prevDive = false; private prevSlide = false;
+  /** The support levels this step (update's), for the hand plant. */
+  private sup: SupportState = { posture: 1, carry: 1, down: false };
   private dv = { run: 0, vh: 0, dir: [0, 1] as [number, number], yaw: 0, f: 1, l: 0, tL: 0.2, tP: 0.2, stage: 'load' as DiveStage, vy: 0 };
-  private jv = { running: false, vel: [0, 0] as [number, number], tL: 0.3, tP: 0.2, tT: 0, tF: Infinity, pushed: false, offT: 0, leg: -1, q0: [] as LegQ[], was: [true, true], stage: 'load' as DiveStage, vy: 0, power: 1 };
+  private jv = { running: false, hurdle: false, vel: [0, 0] as [number, number], tL: 0.3, tP: 0.2, tT: 0, tF: Infinity, pushed: false, offT: 0, leg: -1, q0: [] as LegQ[], was: [true, true], stage: 'load' as DiveStage, vy: 0, power: 1 };
   private prevJump = false; private jumpCool = 0; private jumpReq = 0; private landT = Infinity;
   /** The world's jump tuning this step; a charge being held (s, −1 = none) and the strength of the jump it fired. */
   private jt: JumpTuning = JUMP_DEFAULTS; private chg = -1; private jumpPow = 1;
@@ -363,7 +382,7 @@ export class ProceduralAnimator implements Animator {
       if (!cmd.jump || this.chg >= JT.charge) { fire = true; this.jumpPow = lerp(JT.chargeMin, 1, clamp(this.chg / JT.charge, 0, 1)); this.chg = -1; }
     }
     this.jumpReq = fire && this.mode !== 'jump' ? Math.max(JT.buffer, dt) : Math.max(0, this.jumpReq - dt);
-    if (support.down && (this.mode === 'loco' || this.mode === 'dive' || this.mode === 'jump')) this.enter('down', 0.15);
+    if (support.down && (this.mode === 'loco' || this.mode === 'dive' || this.mode === 'jump' || this.mode === 'slide')) this.enter('down', 0.15);
     // out of play (knocked out, or both legs broken; design §6.6): he goes down where he stands and stays down this
     // rep. One break he plays on with: down from the hit as physics decides, then up again like anyone.
     if (support.out && this.mode !== 'down') this.enter('down', 0.15);
@@ -386,17 +405,21 @@ export class ProceduralAnimator implements Animator {
         else if (this.getup.downT > 0.6) this.startGetup(view);
       }
     } else if (this.mode === 'loco' && cmd.dive && !this.prevDive) this.startDive(view, cmd);
+    // one press, one slide: it ends on the turf (down), or on the feet again if it never got there
+    else if (this.mode === 'loco' && cmd.slide && !this.prevSlide) this.enter('slide', SLIDE.blend);
+    else if (this.mode === 'slide' && this.modeT > SLIDE.max) this.enter('loco', 0.3);
     // one press, one whole dive: holding the button changes nothing; it ends on the turf (down), or on the
     // feet again if it never landed
     else if (this.mode === 'dive' && this.modeT > this.dv.tL + this.dv.tP + DIVE.maxFlight) this.enter('loco', 0.3);
     // one press, one jump, from the turf (a press in a stride's flight waits for the next foot down), not again until a
     // moment after the last landing
-    else if (this.mode === 'loco' && this.jumpReq > 0 && this.jumpCool <= 0 && (view.feet[0].touching || view.feet[1].touching)) this.startJump(view);
+    else if (this.mode === 'loco' && this.jumpReq > 0 && this.jumpCool <= 0 && (view.feet[0].touching || view.feet[1].touching)) this.startJump(view, cmd);
     // a jump ends when a foot finds the turf on the way down (or it never lands): he runs on from the landing
     // (or he never got off the turf: held down, or the push never came)
     else if (this.mode === 'jump' && (this.jv.stage === 'flight' ? (this.modeT > this.jv.tF + 0.1 && s.comVel[1] < 0.5 && (view.feet[0].touching || view.feet[1].touching))
       || this.modeT > this.jv.tF + JUMP.maxFlight : this.modeT > (this.jv.stage === 'load' ? this.jv.tL : this.jv.tT + this.jv.tP) + JUMP.stuck)) this.land(view);
-    this.prevDive = cmd.dive; this.prevJump = cmd.jump;
+    this.prevDive = cmd.dive; this.prevJump = cmd.jump; this.prevSlide = cmd.slide;
+    this.sup = support;
     if (this.mode !== 'jump') this.jumpCool = Math.max(0, this.jumpCool - dt);
 
     this.q.fill(0);
@@ -407,6 +430,7 @@ export class ProceduralAnimator implements Animator {
       case 'jump': this.jump(view, cmd, out); break;
       case 'down': this.down(view, out); break;
       case 'getup': this.doGetup(view, out); break;
+      case 'slide': this.slide(view, cmd, out); break;
     }
     // cross-fade from the last frame of the previous mode
     if (this.blendW < 1) {
@@ -430,7 +454,7 @@ export class ProceduralAnimator implements Animator {
     // the root's vertical speed: a dive's take-off, else how fast the posture lowers or raises the hips (the support
     // damps the pelvis toward it, so a quick sink is not braked as if it were a fall)
     const jump = this.mode !== 'jump' || (this.jv.stage === 'load' && this.jv.running) ? 'none' : this.jv.stage;
-    out.root.vel[1] = dive === 'launch' ? this.dv.vy : jump === 'launch' ? this.jv.vy : this.mode === 'loco' ? -this.dropV : 0;
+    out.root.vel[1] = dive === 'launch' ? this.dv.vy : jump === 'launch' ? this.jv.vy : this.mode === 'loco' ? -this.dropV : this.mode === 'slide' && this.height > SLIDE.height ? -SLIDE.sink : 0;
     out.root.dive = dive; out.root.jump = jump; out.root.power = this.mode === 'jump' ? this.jv.power : 1;
     out.root.thrust = this.mode === 'loco' ? this.lv.thrust : 0;
     out.root.twist = this.mode === 'loco' ? -THRUST.turn * this.thrustSide * this.lv.thrust + this.pass.twist * this.pass.w + this.look.thorax : 0;
@@ -765,6 +789,7 @@ export class ProceduralAnimator implements Animator {
     L.thorax = follow(L.thorax, tor, dt, LOOK.tau); L.neck = follow(L.neck, clamp(bear - tor, -LOOK.neck, LOOK.neck), dt, LOOK.tau);
     this.add('thoracic.rotL', L.thorax); this.add('neckLow.rotL', 0.45 * L.neck); this.add('neckUp.rotL', 0.55 * L.neck);
     const A = lerp(lerp(0.25, 0.85, clamp(sp / 9, 0, 1)) * gl, 0.15 * gl, ready);
+    const plantW = cmd.plant ? this.planting(v) : 0;
     const c = Math.cos(TAU * p0);
     for (const arm of this.arms) {
       const sw = arm.side > 0 ? -c : c;   // each arm swings with the opposite leg
@@ -772,6 +797,12 @@ export class ProceduralAnimator implements Animator {
       let el = lerp(lerp(0.35, 1.5, clamp(sp / 5, 0, 1)), 1.6, ready), wr = 0;
       const carry = arm.side > 0 ? lv.carryL : lv.carryR, reach = arm.side > 0 ? lv.reachL : lv.reachR;
       fl = lerp(fl, 0.35, carry); ab = lerp(ab, 0.1, carry); rt = lerp(rt, 0.7, carry); el = lerp(el, 2.0, carry); wr = lerp(wr, 0.2, carry);
+      // the free hand covers the ball (only while the brain asks: bots never do)
+      const ck = arm.side > 0 ? 'coverL' : 'coverR';
+      if (cmd.cover || lv[ck] > 0) {
+        const cv = lv[ck] = follow(lv[ck], cmd.cover && cmd.carry === (arm.side > 0 ? 2 : 1) ? 1 : 0, dt, 0.08);
+        fl = lerp(fl, lerp(COVER[0], COVER_RUN_FLEX, run), cv); ab = lerp(ab, COVER[1], cv); rt = lerp(rt, COVER[2], cv); el = lerp(el, COVER[3], cv); wr = lerp(wr, COVER[4], cv);
+      }
       fl = lerp(fl, 1.3, lv.wrap); ab = lerp(ab, 0.45, lv.wrap); rt = lerp(rt, 0.9, lv.wrap); el = lerp(el, 1.4, lv.wrap);
       // shoot and reach point the arms forward of the body whatever the trunk's lean (shoulder flexion is relative
       // to the thorax), so a low athlete punches up and under instead of at the turf
@@ -781,7 +812,16 @@ export class ProceduralAnimator implements Animator {
       // wrapped around an opponent lift him instead (elbows stay bent). Hands at the chest still met him before the pads.
       fl = lerp(fl, lerp(-0.8, 1.4, lv.wrap), lv.thrust); ab = lerp(ab, lerp(0.15, 0.2, lv.wrap), lv.thrust); rt = lerp(rt, lerp(0.3, rt, lv.wrap), lv.thrust); el = lerp(el, lerp(1.3, 1.2, lv.wrap), lv.thrust);
       const k = arm.side > 0 ? 0 : 1, aimW = this.aimArm(v, cmd, arm, k, dt);
-      fl = lerp(fl, this.aimAng[k][0], aimW); ab = lerp(ab, this.aimAng[k][1], aimW); el = lerp(el, 0.2, aimW);
+      // a stiff-arm locks the elbow out straight (the carrying arm keeps the ball)
+      const stiff = cmd.stiffArm && cmd.carry !== k + 1;
+      fl = lerp(fl, this.aimAng[k][0], aimW); ab = lerp(ab, this.aimAng[k][1], aimW); el = lerp(el, stiff ? 0 : 0.2, aimW);
+      // a held arm reaches down for the turf as he stumbles (the hand's contact with it is the physics' to decide)
+      const pk = k === 0 ? 'plantL' : 'plantR';
+      if (cmd.plant || lv[pk] > 0) {
+        const pw = lv[pk] = follow(lv[pk], (k === 0 ? cmd.armL : cmd.armR) > 0.5 && cmd.carry !== k + 1 ? plantW : 0, dt, 0.06);
+        const pa = this.plantAng[k];
+        fl = lerp(fl, pa[0], pw); ab = lerp(ab, pa[1], pw); rt = lerp(rt, 0, pw); el = lerp(el, PLANT.elbow, pw);
+      }
       if (lv.hug > 1e-3) {
         // reach out wide past him first (the squeeze waits on the hand), so the hands go round him, never into his chest
         this.hugSq[k] = follow(this.hugSq[k], this.hugIn[k] ? 1 : 0, dt, 0.1);
@@ -799,10 +839,11 @@ export class ProceduralAnimator implements Animator {
       this.setArm(arm, fl, ab, rt, el, wr);
       // a thrust rolls the shoulders forward (scapular protraction to its end), so the pads are what meets the opponent
       this.add(`sc${arm.side > 0 ? 'L' : 'R'}.protr`, Math.max(0.15 * Math.max(lv.wrap, lv.shoot, reach), 0.3 * Math.max(lv.thrust, lv.hug)));
+      if (stiff) this.add(`sc${arm.side > 0 ? 'L' : 'R'}.protr`, 0.3 * aimW); // the shoulder drives the stiff-arm out
       // a pulling arm is held loosely: the row itself is the tracking controller's pull, sized to what the fist holds,
       // and a stiff arm still swinging to its reach pose would tear the fresh grip open
       const g = Math.max(P.w, lerp(lerp(0.5, 1, clamp(Math.max(lv.contact, carry, reach, lv.wrap, lv.shoot, lv.thrust, aimW), 0, 1)), 0.3, pull));
-      for (const i of this.armDofs[k]) out.gain[i] = g;
+      for (const i of this.armDofs[k]) out.gain[i] = lv[ck] > 0 ? Math.max(g, lv[ck]) : g;
     }
     for (const i of this.neckDofs) out.gain[i] = 0.8;
 
@@ -851,7 +892,7 @@ export class ProceduralAnimator implements Animator {
     const lv = this.lv, key = k === 0 ? 'aimL' : 'aimR';
     const reaching = lv.reachL > 0.05 || lv.reachR > 0.05;
     // the eyes guide a reaching hand to the nearest part of an opponent within reach (the world's reachTo)
-    const aim = (reaching && !cmd.hug && v.reachTo?.[k]) || cmd.aim;
+    const aim = (reaching && !cmd.hug && !cmd.stiffArm && v.reachTo?.[k]) || cmd.aim;
     lv[key] = follow(lv[key], aim ? (reaching ? (k === 0 ? cmd.armL : cmd.armR) : 1) : 0, dt, 0.1);
     if (aim && arm.seg >= 0) {
       const sp = v.state.segPos, d: Vec3 = [aim[0] - sp[3 * arm.seg], aim[1] - sp[3 * arm.seg + 1], aim[2] - sp[3 * arm.seg + 2]];
@@ -867,6 +908,40 @@ export class ProceduralAnimator implements Animator {
       this.aimAng[k][1] = follow(this.aimAng[k][1], ab, dt, 0.06);
     }
     return lv[key];
+  }
+
+  /** Hand plant: 1 while he stumbles within PLANT's knock and tilt (else 0), with each arm's angles to the turf point
+   *  PLANT.out beyond its shoulder the way the trunk falls (plantAng). */
+  private plantAng = [[0, 0], [0, 0]];
+  private planting(v: BodyView): number {
+    const knock = 1 - this.sup.posture, up = this.segAxis(v, this.thoraxSeg, [0, 1, 0]), tilt = Math.acos(clamp(up[1], -1, 1));
+    if (knock <= PLANT.knock[0] || knock >= PLANT.knock[1] || tilt <= PLANT.tilt[0] || tilt >= PLANT.tilt[1]) return 0;
+    const n = Math.hypot(up[0], up[2]), sp = v.state.segPos, iq = qconj(rootQuat(this.heading, this.pitch, this.roll));
+    for (const arm of this.arms) {
+      if (arm.seg < 0) continue;
+      const i = 3 * arm.seg, r = qrot(iq, [up[0] / n * PLANT.out, -sp[i + 1], up[2] / n * PLANT.out]), m = Math.hypot(r[0], r[1], r[2]) || 1;
+      this.plantAng[arm.side > 0 ? 0 : 1] = [Math.atan2(r[2], -r[1]), Math.asin(clamp(arm.side * r[0] / m, -1, 1))];
+    }
+    return 1;
+  }
+
+  /** Slide: the pose sits him down feet first, the hips lowered and the trunk leaning back, until the turf takes him
+   *  (down); the root goes at the body's own speed (no carry). The carrying arm keeps the ball. */
+  private slide(v: BodyView, cmd: Commands, out: AnimFrame) {
+    const s = v.state, lead = this.leadSide() > 0 ? 0 : 1;
+    this.legs.forEach((L, k) => { this.writeLeg(L, k === lead ? SLIDE.lead : SLIDE.tuck); L.stance = false; });
+    for (const a of this.arms) {
+      const carry = cmd.carry === (a.side > 0 ? 1 : 2);
+      if (carry) this.setArm(a, 0.35, 0.1, 0.7, 2.0, 0.2); else this.setArm(a, SLIDE.arm[0], SLIDE.arm[1], SLIDE.arm[2], SLIDE.arm[3], SLIDE.arm[4]);
+    }
+    this.add('lumbar.flex', SLIDE.lumbar); this.head(SLIDE.neck);
+    for (const i of this.neckDofs) out.gain[i] = 0.8;
+    this.height = Math.max(SLIDE.height, this.height - SLIDE.sink * v.dt);
+    this.pitch = follow(this.pitch, SLIDE.pitch, v.dt, 0.1); this.roll = follow(this.roll, 0, v.dt, 0.1);
+    this.vel = [s.comVel[0], 0, s.comVel[2]];
+    out.root.height = this.height; out.root.pitch = this.pitch; out.root.roll = this.roll;
+    out.planted[0] = out.planted[1] = false;
+    out.phase = clamp(this.modeT / SLIDE.max, 0, 1);
   }
 
   // ------------------------------------------------------------------ dive, down, get-up
@@ -944,12 +1019,12 @@ export class ProceduralAnimator implements Animator {
     return [x * ch - z * sh, x * sh + z * ch];
   }
 
-  private startJump(v: BodyView) {
+  private startJump(v: BodyView, cmd: Commands) {
     const c = v.state.comVel, running = Math.hypot(c[0], c[2]) > RUN_TAKEOFF.from, JT = this.jt, kv = running ? JT.carry : 1;
     // From a run he jumps on along it (a hurdle), keeping `carry` of its speed; standing he goes up. A running take-off
     // is off a fresh plant: a foot on the turf still under or ahead of the hips now, else the next foot down.
     const fresh = (k: number) => running && v.feet[k].touching && this.footAt(v, k)[1] > -JUMP.fresh;
-    this.jv = { running, vel: [c[0] * kv, c[2] * kv], tL: running ? 0 : JT.load, tP: running ? RUN_TAKEOFF.stance : JT.push, tT: running ? Infinity : JT.load, tF: Infinity, pushed: false, offT: 0, leg: -1, q0: [],
+    this.jv = { running, hurdle: cmd.hurdle, vel: [c[0] * kv, c[2] * kv], tL: running ? 0 : JT.load, tP: running ? RUN_TAKEOFF.stance : JT.push, tT: running ? Infinity : JT.load, tF: Infinity, pushed: false, offT: 0, leg: -1, q0: [],
       was: [v.feet[0].touching && !fresh(0), v.feet[1].touching && !fresh(1)], stage: 'load', vy: 0, power: this.jumpPow };
     this.enter('jump', running ? 0.05 : 0.6 * JT.load); this.jumpReq = 0;
   }
@@ -1033,11 +1108,12 @@ export class ProceduralAnimator implements Animator {
     this.height = Math.min(Math.max(h, s.segPos[3 * this.pelvisSeg + 1] + (J.stage === 'launch' ? JUMP.ext : -0.01)), this.standH);
     this.pitch = Math.atan2(-fw[1], Math.hypot(fw[0], fw[2]));
     const E: LegQ = [-0.05, 0.05, 0.05, -0.7, 0.3, 0, 0], Ld: LegQ = [0.35, 0.08, 0.5, -0.5, 0, 0, 0];
-    const T = (J.running ? JUMP_HURDLE : JUMP_TUCK).map((x, i) => (i === 0 || i === 2 ? x * JT.tuck : x)) as LegQ;
-    const wD = J.stage === 'flight' ? s01(-s.comVel[1] / 2) : 0;
+    // a hurdle (Commands.hurdle at the press) tucks the trailing knee high and reaches the lead leg on over the man
+    const T = (J.running || J.hurdle ? JUMP_HURDLE : JUMP_TUCK).map((x, i) => (i === 0 || i === 2 ? x * JT.tuck : x)) as LegQ;
+    const wD = J.stage === 'flight' ? s01(-s.comVel[1] / 2) : 0, lead = J.hurdle ? this.legs[J.leg >= 0 ? 1 - J.leg : 1] : null;
     for (const L of this.legs) {
-      const C = this.solve(L, [L.side * 0.12, 0], L.side * 0.08, 0).q;
-      this.writeLeg(L, C.map((c, i) => lerp(lerp(lerp(c, E[i], wP), T[i], wF), Ld[i], wD)) as LegQ);
+      const C = this.solve(L, [L.side * 0.12, 0], L.side * 0.08, 0).q, Tl = L === lead ? HURDLE_LEAD : T;
+      this.writeLeg(L, C.map((c, i) => lerp(lerp(lerp(c, E[i], wP), Tl[i], wF), Ld[i], wD)) as LegQ);
       L.stance = false;
       for (const i of this.legDofs(L)) out.gain[i] = lerp(1, 1 - JT.soft, wD);
     }
