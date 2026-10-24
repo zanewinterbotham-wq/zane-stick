@@ -20,16 +20,54 @@ export const savedOptions = (s: Settings, def: ModeDef) => resolveOptions(def, s
 export const preview = (def: ModeDef) => el('img', { src: import.meta.env.BASE_URL + def.preview, alt: `${def.title} preview`, loading: 'lazy', draggable: 'false' });
 const escapeTo = (root: HTMLElement, go: () => void) => root.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); go(); } });
 
-/** The grid of modes. `focus`: the mode whose card gets the focus (coming back from its setup). */
+/** The Play menu's tabs. The category of every mode id lives in CATEGORY_OF; an id not listed there goes under Other. */
+const CATEGORIES = [{ id: 'football', label: 'Football' }, { id: 'drills', label: 'Drills' }, { id: 'party', label: 'Party' }, { id: 'other', label: 'Other' }];
+const CATEGORY_OF: Record<string, string> = {
+  drive: 'football', elevens: 'football', passRush: 'football', pass: 'football', kickoff: 'football', kickoffReturn: 'football',
+  puntReturn: 'football', puntBlock: 'football', fieldGoalBlock: 'football', goalline: 'football',
+  tackle: 'drills', carry: 'drills', oklahoma: 'drills', gauntlet: 'drills', hitstick: 'drills',
+  sumo: 'party', keepaway: 'party', scramble: 'party', survival: 'party', hotPotato: 'party', infection: 'party',
+};
+export const modeCategory = (id: string) => CATEGORY_OF[id] ?? 'other';
+
+const TAB_KEY = 'zs.modeTab';
+const lastTab = () => { try { return localStorage.getItem(TAB_KEY) ?? ''; } catch { return ''; } };
+const rememberTab = (id: string) => { try { localStorage.setItem(TAB_KEY, id); } catch { /* private window: the tab is just not remembered */ } };
+
+/** Category tabs over a grid of mode cards that run `pick`. `show`: a mode whose tab opens (else the last tab used). */
+export function modeBrowser(pick: (def: ModeDef) => void, show?: string): HTMLElement {
+  const cats = CATEGORIES.filter((c) => MODES.some((m) => modeCategory(m.id) === c.id));
+  let cur = cats.find((c) => c.id === (show ? modeCategory(show) : lastTab())) ?? cats.find((c) => c.id === lastTab()) ?? cats[0];
+  const tabs = el('div', { class: 'inv-tabs', role: 'tablist', 'aria-label': 'Game mode categories' });
+  const grid = el('div', { class: 'inv-grid mode-grid', role: 'tabpanel' });
+  const render = () => {
+    tabs.replaceChildren(...cats.map((c) => {
+      const t = el('button', { type: 'button', role: 'tab', class: 'inv-tab', 'aria-selected': String(c === cur), 'data-cat': c.id, text: c.label });
+      t.addEventListener('click', () => go(c));
+      return t;
+    }));
+    grid.replaceChildren(...MODES.filter((m) => modeCategory(m.id) === cur.id).map((m) => modeCard(m, () => pick(m))));
+  };
+  const go = (c: typeof cur) => { cur = c; rememberTab(c.id); render(); tabs.querySelector<HTMLElement>('[aria-selected=true]')!.focus(); };
+  tabs.addEventListener('keydown', (e) => {
+    const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    go(cats[(cats.indexOf(cur) + d + cats.length) % cats.length]);
+  });
+  render();
+  return el('div', { class: 'mode-browser' }, tabs, grid);
+}
+
+/** The Play menu. `focus`: the mode whose card gets the focus (coming back from its setup). */
 export function modeMenu(s: Settings, hooks: ModeHooks, focus?: string): HTMLElement {
-  const grid = el('div', { class: 'inv-grid mode-grid' });
-  for (const def of MODES) grid.append(modeCard(def, () => hooks.show(modeSetup(def, s, hooks))));
+  const browser = modeBrowser((def) => hooks.show(modeSetup(def, s, hooks)), focus);
   const back = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_back' }, 'Back');
   back.addEventListener('click', hooks.back);
   const root = el('div', { class: 'panel menu inventory', role: 'dialog', 'aria-label': 'Play' },
-    el('h1', { text: 'Play' }), el('p', { class: 'sub', text: 'Pick a game mode, set it up, and go.' }), grid, back);
+    el('h1', { text: 'Play' }), el('p', { class: 'sub', text: 'Pick a game mode, set it up, and go.' }), browser, back);
   escapeTo(root, hooks.back);
-  if (focus) queueMicrotask(() => grid.querySelector<HTMLElement>(`[data-mode="${focus}"]`)?.focus());
+  if (focus) queueMicrotask(() => browser.querySelector<HTMLElement>(`[data-mode="${focus}"]`)?.focus());
   return root;
 }
 

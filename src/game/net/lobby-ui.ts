@@ -3,9 +3,9 @@
 // position with its player or a bot. Players click a slot to take it; the host also drags players between slots, picks
 // from each slot's dropdown, auto-assigns and adds positions. Keyboard, mouse and touch; one column at phone width.
 import { CODE_ALPHABET, CODE_LENGTH, normCode } from '../../net/protocol';
-import { MODES, modeById, SLOW_ATHLETES } from '../../sim/modes/registry';
+import { modeById, SLOW_ATHLETES } from '../../sim/modes/registry';
 import type { ModeOptions } from '../../sim/modes/types';
-import { control, modeCard, preview, savedOptions } from '../modes';
+import { control, modeBrowser, preview, savedOptions } from '../modes';
 import { TEAMS } from '../render/athleteMesh';
 import type { Settings } from '../settings';
 import { el } from '../ui';
@@ -162,7 +162,8 @@ export function lobbyPanel(net: Session, s: Settings, hooks: LobbyHooks): LobbyV
   const buildMode = (): (Node | string)[] => {
     const lb = l(), def = modeById(lb.mode);
     if (picking && host) {
-      const grid = el('div', { class: 'inv-grid mode-grid' }, ...MODES.map((m) => modeCard(m, () => { picking = false; setup(m.id, m.id === lb.mode ? lb.options : savedOptions(s, m)); update(); })));
+      // picking collapses the list back to the chosen mode and brings it into view (no scrolling down past the grid)
+      const grid = modeBrowser((m) => { picking = false; setup(m.id, m.id === lb.mode ? lb.options : savedOptions(s, m)); update(); modeSec.scrollIntoView({ block: 'start' }); modeSec.querySelector<HTMLElement>('[data-key=change-mode]')?.focus(); }, lb.mode);
       const cancel = el('button', { type: 'button', class: 'item', 'data-sfx': 'ui_back', 'data-key': 'cancel-mode' }, 'Keep ' + def.title);
       cancel.addEventListener('click', () => { picking = false; update(); });
       grid.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); picking = false; update(); } });

@@ -78,6 +78,8 @@ table.controls .bind:hover { background: #2c4431; }
 .equip[aria-disabled=true] { cursor: default; background: transparent; color: var(--dim); }
 .inv-card.equipped .equip { color: var(--accent); border-color: var(--accent); }
 .inventory > .item { margin-top: 12px; }
+.mode-browser { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+.lobby-mode .mode-browser .inv-tabs { flex-wrap: wrap; }
 @media (max-width: 700px) { .inv-grid[data-cat=skins] { grid-template-columns: repeat(2, 1fr); } .inv-grid { grid-template-columns: 1fr; } }
 
 /* play: game modes and their setup */
