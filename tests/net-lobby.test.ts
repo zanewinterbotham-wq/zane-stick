@@ -130,7 +130,7 @@ describe('a host and two guests over a loopback room (headless)', () => {
 
     // 2 s: the host steps; every 4 steps (a 60 Hz frame) messages flow, guests send input and render
     const hist: { t: number; com: number[][] }[] = [], start = hw.athletes.map((_, i) => [...hw.scene.athletes[i].state.com]);
-    let worst = 0, checks = 0;
+    let worst = 0, checks = 0, maxShift = 0;
     while (hw.time < 2) {
       host.step();
       hist.push({ t: hw.time, com: hw.athletes.map((_, i) => [...hw.scene.athletes[i].state.com]) });
@@ -140,9 +140,11 @@ describe('a host and two guests over a loopback room (headless)', () => {
       await flush();
       for (const g of [ann, bob]) {
         if (!g.render(clock)) continue;
+        maxShift = Math.max(maxShift, Math.hypot(...g.predictor.off));
         const t = g.replica!.time, h = hist.find((x) => x.t >= t - 1e-9);
         if (!h || hw.time < 0.5) continue;
-        g.play!.world.athletes.forEach((_, i) => { const c = g.play!.world.scene.athletes[i].state.com; worst = Math.max(worst, Math.hypot(c[0] - h.com[i][0], c[1] - h.com[i][1], c[2] - h.com[i][2])); });
+        g.play!.world.athletes.forEach((_, i) => { if (i === g.mySlot) return; // his own athlete is shown predicted (Predictor)
+          const c = g.play!.world.scene.athletes[i].state.com; worst = Math.max(worst, Math.hypot(c[0] - h.com[i][0], c[1] - h.com[i][1], c[2] - h.com[i][2])); });
         checks++;
       }
     }
@@ -150,6 +152,8 @@ describe('a host and two guests over a loopback room (headless)', () => {
     console.log(`loopback: ${checks} guest frames, worst replica COM error ${(100 * worst).toFixed(1)} cm, Bob's athlete moved ${moved.toFixed(2)} m along +X`);
     expect(checks).toBeGreaterThan(150);
     expect(worst).toBeLessThan(0.05);
+    expect(maxShift).toBeGreaterThan(0.01); // Bob's start was shown before the host's answer came back
+    expect(maxShift).toBeLessThan(0.5);
     expect(moved).toBeGreaterThan(2);
     expect(ann.replica!.delay).toBeLessThan(0.2);
 

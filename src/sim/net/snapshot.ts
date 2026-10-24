@@ -129,6 +129,9 @@ export class Replica {
   /** Current delay behind the snapshot clock (s), and the render time last written (host sim s). */
   delay = DELAY.min;
   time = -Infinity;
+  /** Called with the interpolated pose (and `now`) before it is written: a guest shifts his own athlete by his
+   *  prediction (game/net/session.ts). The pose is rebuilt from the snapshots every frame, so nothing accumulates. */
+  adjust: ((q: Float64Array, now: number) => void) | null = null;
   private buf: Snapshot[] = [];
   private off = NaN; private jitter = 0; private lastNow = NaN;
   private readonly q: Float64Array; private readonly qd: Float64Array;
@@ -176,6 +179,7 @@ export class Replica {
       for (let j = 3; j < 7; j++) q[f + j] /= n;
     }
     if (dt > 0) sc.diffQ(q0, q1, dt, this.qd); else this.qd.fill(0);
+    this.adjust?.(q, now);
     sc.writeQ(q, this.qd);
     const w = this.play.world;
     w.time = t;
