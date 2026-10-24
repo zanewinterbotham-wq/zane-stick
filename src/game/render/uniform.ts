@@ -52,9 +52,13 @@ function decalMaterial(key: string, map: THREE.Texture): THREE.MeshStandardMater
   return m;
 }
 
-/** The jersey's back (name over number) or chest (number only). */
+/** Names on the jersey backs: off for now (owner, 2026-10-23); the back shows the number only. Set true to bring them back. */
+export const JERSEY_NAMES = false;
+
+/** The jersey's back (name over number, when JERSEY_NAMES) or chest (number only). */
 export function jerseyMaterial(id: Ident, p: Palette, side: 'back' | 'front'): THREE.MeshStandardMaterial {
-  const key = `${side}:${id.number}:${side === 'back' ? id.name : ''}:${p.trim}`;
+  const named = side === 'back' && JERSEY_NAMES;
+  const key = `${side}:${id.number}:${named ? id.name : ''}:${p.trim}`;
   const tex = canvasTexture(key, 256, (g) => {
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillStyle = hex(p.trim);
@@ -63,7 +67,7 @@ export function jerseyMaterial(id: Ident, p: Palette, side: 'back' | 'front'): T
       g.font = `bold ${px}px system-ui, sans-serif`; g.lineWidth = Math.max(3, px / 14);
       g.strokeText(text, 128, y); g.fillText(text, 128, y);
     };
-    if (side === 'back') {
+    if (named) {
       put(id.name, 46, id.name.length > 7 ? 38 : 46);
       put(String(id.number), 158, id.number > 9 ? 150 : 170);
     } else put(String(id.number), 128, id.number > 9 ? 150 : 170);
