@@ -3,7 +3,8 @@
 // Flight, bounces, catches, muffs, blocks and returns are physics and the shared rules (play.ts), plus the NFL kick
 // rules below: the kicking team may recover a kick the receivers never had but not advance it, a punt that touches
 // the receivers' end zone and a kickoff that stops there are touchbacks.
-import { BALL } from '../anatomy/equipment';
+import { BALL, BALL_AERO } from '../anatomy/equipment';
+import { aimThroughAir } from '../physics/aero';
 import { BlockerBrain } from '../brains/blocker';
 import { CoverBrain, type CoverLane } from '../brains/cover';
 import { ReturnerBrain } from '../brains/returner';
@@ -66,7 +67,11 @@ export function goalposts(): PropDesc[] {
 export function kick(play: Play, team: 0 | 1, vel: Vec3, spin: Vec3, from?: Vec3) {
   play.ballLoose(team);
   if (from) play.world.scene.placeProp(play.ball, from, [0, 0, 0, 1]);
-  play.world.scene.launchProp(play.ball, vel, spin);
+  // aimed through the air (physics/aero.ts) to come down where and when `vel` would in a vacuum: a spiral flies nose
+  // first, an end-over-end kick at its mean drag
+  const at = play.world.scene.propPose(play.ball).pos, T = (vel[1] + Math.sqrt(vel[1] * vel[1] + 2 * 9.81 * Math.max(0, at[1]))) / 9.81;
+  const cd = Math.abs(spin[2]) >= BALL_AERO.spiral ? BALL_AERO.cdNose : (BALL_AERO.cdNose + BALL_AERO.cdSide) / 2;
+  play.world.scene.launchProp(play.ball, aimThroughAir(at, vel, T, cd), spin);
 }
 
 /** What the ball touched in the last step: the turf, and each team's bodies. */

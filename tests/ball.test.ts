@@ -52,13 +52,17 @@ describe('ball on turf', () => {
         const r = landing(hz, iterations, v, w, y0), line = name === 'hard45';
         console.log(preset, name, Object.entries(r).map(([k, x]) => `${k}=${x.toFixed(3)}`).join(' '));
         expect(r.inst, name).toBe(0);
-        // it can land at most one step's fall deep (it moves that far between collision checks), then is out at once
-        expect(r.pen, name).toBeLessThan(r.vIn / hz + 0.01);
-        expect(r.deep, name).toBeLessThanOrEqual(4 / hz + 1e-9);
-        expect(r.bounces, name).toBeLessThanOrEqual(line ? 6 : 2);
+        // the contact meets it a step's fall above the turf: it never sinks in (it went up to a step's fall deep, 8 cm
+        // for a punt at 240 Hz, until 2026-10-23)
+        expect(r.pen, name).toBeLessThan(0.01);
+        expect(r.deep, name).toBe(0);
+        // a kick hops two or three times before it rolls out (more on a line drive)
+        expect(r.bounces, name).toBeLessThanOrEqual(line ? 6 : 3);
         expect(r.settled, name).toBeGreaterThanOrEqual(0);
-        expect(r.settled, name).toBeLessThan(line ? 6 : 3);
+        expect(r.settled, name).toBeLessThan(line ? 6 : 4);
         if (name !== 'drop') expect(r.cor, name).toBeLessThan(0.5);
+        // a gentle drop is not dead: it bounces (a 2 m drop gave back 0.13–0.15 of its speed before)
+        else expect(r.cor, name).toBeGreaterThan(0.2);
       }
     });
   }

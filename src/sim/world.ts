@@ -1,7 +1,7 @@
 // The simulation loop: brains → commands → motor controller → muscles → physics, at a fixed timestep.
 // Runs unchanged in the browser, a Worker, or Node. No DOM, no wall clock, no Math.random.
 import { buildBody, totalMass, type AthleteParams, type BodyPlan, type Detail } from './anatomy/body';
-import { BALL, GRIP_TIMECONST, EQUIPMENT } from './anatomy/equipment';
+import { BALL, BALL_AERO, GRIP_TIMECONST, EQUIPMENT } from './anatomy/equipment';
 import type { Brain, Perception, AthleteView } from './brains/types';
 import { neutralCommands, type BodyView, type Commands, type FootContact, type MotorController, type PassCmd } from './control/types';
 import { clamp, G, headingOf, lerp, qaxis, qconj, qlog, qmul, qrot, quatAt, sub, vecAt, type Quat, type Vec3 } from './math';
@@ -16,6 +16,7 @@ import { rootQuat } from './anim/kinematics';
 import { jumpTuning, RUN_TAKEOFF, type JumpTuning } from './anim/jump';
 import { fumbleTuning, type FumbleTuning } from './fumble';
 import { THROW, throwError, throwVelocity, type PassRecord } from './throw';
+import { aimThroughAir, ballAir } from './physics/aero';
 
 /** Physics precision of a scene (a quality preset's, set only between reps). The solver options and `lod` are the
  *  low presets' approximations; absent, the scene is exactly as it always was. */
@@ -279,9 +280,20 @@ export class World {
       if (this.supported(a)) this.applySupport(a); else this.applyAssist(a);
       if ((this.setup.hitPower ?? 1) > 1) this.applyHitPower(a, this.setup.hitPower!);
     }
+    this.ballAir();
     this.scene.step();
     this.time += dt; this.steps++;
     this.afterStep();
+  }
+
+  /** The air's loads on a loose ball (physics/aero.ts): drag always, a spiral's nose turned onto its flight once
+   *  nothing can touch it (its tip clear of the turf). A held ball moves with the hand. */
+  private ballAir() {
+    const bi = this.ballIndex;
+    if (bi < 0 || this.ballCarrier >= 0) return;
+    const { pos, quat } = this.scene.propPose(bi);
+    const air = ballAir(this.scene.propVel(bi), qrot(quat, [0, 0, 1]), this.scene.propSpin(bi), pos[1] > BALL.length / 2 + 0.01);
+    this.scene.pushProp(bi, air.force, air.torque);
   }
 
   private supported(a: Athlete) { return !!this.setup.support && !!a.controller.root; }
@@ -649,7 +661,10 @@ export class World {
     // struck by the hand still closing on it (fingers would roll it off the hand; the hand model has none)
     const n = Math.hypot(vel[0], vel[1], vel[2]) || 1;
     for (let k = 0; k < 3; k++) from[k] += vel[k] / n * THROW.clear;
-    vel = throwVelocity(from, to, loft).vel;
+    const tv = throwVelocity(from, to, loft);
+    // aimed through the air (a spiral flies nose first): it gets there when the plan says (the arm's vmax bounds the
+    // planned speed; the air adds up to ~1–2 m/s on a long throw)
+    vel = aimThroughAir(from, tv.vel, tv.time, BALL_AERO.cdNose);
     this.releaseGrip(a.index, h);
     // the opened hand does not close on the ball again on its way out, nor does the carry arm
     a.grips[h].cooldown = THROW.end; a.cmd.carry = 0; this.ballCarrier = -1;

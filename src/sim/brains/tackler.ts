@@ -177,7 +177,7 @@ export class TacklerBrain implements Brain {
     const dx = bx + ball.vel[0] * t - me.com[0], dz = bz + ball.vel[2] * t - me.com[2], d = Math.hypot(dx, dz) || 1e-6;
     this.phase = 'pursue';
     // sine of the angle between the run and the ball (a right angle at most): the arc that meets it has radius d / (2 sin)
-    const cos = sp > 1 ? (me.comVel[0] * dx + me.comVel[2] * dz) / (sp * d) : 1, sin = cos < 0 ? 1 : Math.sqrt(1 - cos * cos);
+    const cos = sp > 1 ? (me.comVel[0] * dx + me.comVel[2] * dz) / (sp * d) : 1, sin = cos < 0 ? 1 : Math.sqrt(Math.max(0, 1 - cos * cos)); // (rounding can put cos a hair over 1 running straight at it)
     // stop BALL_SHORT short of it (the stoop reaches that far); on the way slow only as far as needed
     const ds = Math.max(d - BALL_SHORT, 0);
     const v = ds < 0.05 ? 0 : clamp(Math.min(FULL, Math.sqrt(2 * BALL_BRAKE * ds), Math.sqrt(LAT_ACCEL * d / Math.max(2 * sin, 0.3))), ds > 0.8 ? BALL_V : 0.3, FULL);

@@ -22,6 +22,8 @@ const LIMIT_TIMECONST = 0.03;
  *  at 90°, which bounds it, as MuJoCo's own humanoid's armature does (0.02 on every joint there); 0.002 is under 1% of
  *  the arm's inertia about the shoulder. Zero elsewhere, so every other pose steps exactly as before. */
 const GIMBAL = { window: 0.26, armature: 0.002 };
+/** A ball's turf contact margin at rest (m). */
+const TURF_MARGIN = 0.005;
 /** Divergence recovery: an older good state every BACK s, restored after STUCK divergences in a row. */
 const BACK = 0.2, STUCK = 3;
 const FRICTION = { ground: 0.6, body: 0.6, hand: 1.0 }; // [S5]
@@ -88,6 +90,9 @@ class MujocoScene implements PhysicsScene {
   /** An older good state (taken every BACK s while nothing diverges), for a state that diverges every time it is stepped. */
   private back!: { qpos: Float64Array; qvel: Float64Array; set: boolean };
   private pyramidal = false;
+  /** Per prop with its own turf contact (a ball): pair id, free-joint dof address, body, semi-axes, the contact's
+   *  settings, the landing speed it last came down at (m/s) and the pair's current margin (m). */
+  private turfPairs: { pair: number; va: number; b: number; size: number[]; t: NonNullable<SceneDesc['props'][number]['turf']>; land: number; margin: number }[] = [];
   /** Per shoulder: its abduction's qpos address and its three hinges' dof addresses (GIMBAL). */
   private shoulders: { abd: number; dofs: number[] }[] = [];
   private heap: { f64: Float64Array; i32: Int32Array } | null = null;
@@ -137,7 +142,7 @@ class MujocoScene implements PhysicsScene {
       xml += p.mass > 0 ? `<body name="prop${pi}" pos="${f(p.pos)}"${quat}><freejoint/>${geom}</body>` : geom.replace('/>', ` pos="${f(p.pos)}"${quat}/>`);
       // an explicit pair: only this prop's turf contact changes (hands, bodies and posts keep the blended defaults)
       const t = p.turf, fr = p.friction ?? 0.7;
-      if (t) pairs.push(`<pair geom1="ground" geom2="prop${pi}" condim="6" friction="${fr} ${fr} ${t.torsional} ${t.rolling} ${t.rolling}" solref="${2 * dt} ${t.dampRatio}" solimp="0.99 0.99 0.001" margin="0.005"/>`);
+      if (t) pairs.push(`<pair name="turf${pi}" geom1="ground" geom2="prop${pi}" condim="6" friction="${fr} ${fr} ${t.torsional} ${t.rolling} ${t.rolling}" solref="${2 * dt} ${t.dampRatio}" solimp="0.99 0.99 0.001" margin="0.005"/>`);
     });
     xml += `</worldbody><contact>${pairs.join('')}${excludes.join('')}</contact><equality>${equalities.join('')}</equality></mujoco>`;
 
@@ -171,6 +176,10 @@ class MujocoScene implements PhysicsScene {
     });
     this.limits = this.athletes.map((a) => new Float64Array(a.nDof));
     this.propBody = desc.props.map((p, pi) => (p.mass > 0 ? id('mjOBJ_BODY', `prop${pi}`) : -1));
+    desc.props.forEach((p, pi) => {
+      const t = p.turf, b = this.propBody[pi];
+      if (t && b >= 0) this.turfPairs.push({ pair: id('mjOBJ_PAIR', `turf${pi}`), va: m.jnt_dofadr[m.body_jntadr[b]], b, size: p.size, t, land: 0, margin: TURF_MARGIN });
+    });
     // geom → link table for contact reports
     const bodyLink = new Map<number, LinkRef>();
     this.segBody.forEach((row, ai) => row.forEach((b, si) => bodyLink.set(b, { athlete: ai, seg: si })));
@@ -204,6 +213,7 @@ class MujocoScene implements PhysicsScene {
       const x = Math.abs(Math.abs(qpos[sh.abd]) - Math.PI / 2), arm = x < GIMBAL.window ? GIMBAL.armature * (1 - x / GIMBAL.window) : 0;
       for (const k of sh.dofs) this.v.dof_armature[k] = arm;
     }
+    this.ballTurf();
     mj.mj_step(this.m, d);
     // a diverged solve makes MuJoCo reset everyone to the spawn pose (a mid-rep teleport, injuries kept): undo it,
     // back to the last good state with the motion damped out (halved; stopped if it diverges again at once). A reset
@@ -270,6 +280,25 @@ class MujocoScene implements PhysicsScene {
         s.segVel[3 * i + 2] = cvel[6 * b + 5] + wx * py - wy * px;
       });
     });
+  }
+
+  /** A ball's turf contact for the next step. Off the turf, its margin reaches a step's fall below it (it moved up to
+   *  that far into the turf between collision checks: ~8 cm for a punt at 240 Hz), so the contact meets it as it
+   *  arrives, and the landing speed is noted; on the turf the margin eases back (~0.05 s) and the bounce's damping is
+   *  set by that landing speed (BALL_TURF). */
+  private ballTurf() {
+    const { qvel, xquat, xpos } = this.v, m = this.m;
+    for (const p of this.turfPairs) {
+      const b = p.b, w = xquat[4 * b], x = xquat[4 * b + 1], y = xquat[4 * b + 2], z = xquat[4 * b + 3];
+      // height of the ellipsoid's lowest point: its semi-axes' world-up components (rotation matrix row 2)
+      const low = xpos[3 * b + 1] - Math.hypot(2 * (x * y + w * z) * p.size[0], (1 - 2 * (x * x + z * z)) * p.size[1], 2 * (y * z - w * x) * p.size[2]);
+      const down = Math.max(0, -qvel[p.va + 1]);
+      if (low > p.margin) { p.land = down; p.margin = TURF_MARGIN + down * this.dt; }
+      else p.margin += (TURF_MARGIN - p.margin) * Math.min(1, this.dt / 0.05);
+      const t = p.t, u = t.dampSlow === undefined ? 1 : Math.min(1, Math.max(0, (p.land - t.slow!) / (t.fast! - t.slow!)));
+      m.pair_margin[p.pair] = p.margin;
+      m.pair_solref[2 * p.pair + 1] = t.dampSlow === undefined ? t.dampRatio : t.dampSlow + (t.dampRatio - t.dampSlow) * u;
+    }
   }
 
   setDamping(ai: number, kd: Float64Array) {

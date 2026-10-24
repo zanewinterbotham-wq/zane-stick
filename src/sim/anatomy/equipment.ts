@@ -23,7 +23,13 @@ export const TURF = { mu: 1.2, torsional: 0.05, rolling: 0.0001 };
 
 /** Regulation ball [S5]. */
 export const BALL = { mass: 0.41, length: 0.28, diameter: 0.17 };
-/** Ball on turf [S5]: its contact is as stiff as the step allows (no sinking); the damping ratio sets the bounce
- *  (kick landings rebound at 0.15–0.45 of their vertical speed), torsional and rolling friction (m) stop a kick
- *  that came down within ~2 s. */
-export const BALL_TURF = { dampRatio: 0.85, torsional: 0.02, rolling: 0.03 };
+/** Ball in the air [S5]: drag coefficients on its largest cross-section with the long axis along the flow (a spiral)
+ *  and across it (~4× more), air density (kg/m³); spin about the long axis (rad/s) above which the ball is a stable
+ *  spiral whose nose follows the flight, and the rate (1/s) at which it turns onto the flight. */
+export const BALL_AERO = { cdNose: 0.06, cdSide: 0.24, rho: 1.2, spiral: 20, follow: 4 };
+/** Ball on turf [S5]: its contact is as stiff as the step allows and meets the ball a step's fall early (no sinking);
+ *  the damping ratio sets the bounce: `dampRatio` for a landing at `fast` m/s or more (kick landings rebound at
+ *  0.15–0.45 of their vertical speed), easing to `dampSlow` at `slow` m/s or less (a ball, like the turf, gives back
+ *  more of a gentle impact: a dropped ball bounces). Torsional and rolling friction (m) stop a kick that came down
+ *  within ~2 s. */
+export const BALL_TURF = { dampRatio: 0.85, dampSlow: 0.6, slow: 4, fast: 12, torsional: 0.02, rolling: 0.03 };

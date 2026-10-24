@@ -15,7 +15,7 @@ export interface PropDesc {
   hidden?: boolean;        // collision only, never drawn (the stadium art shows the wall)
   /** Its own contact with the turf (a ball): stiffest stable compliance, this damping ratio, torsional and
    *  rolling friction (m). Every other contact keeps the shared rules. */
-  turf?: { dampRatio: number; torsional: number; rolling: number };
+  turf?: { dampRatio: number; torsional: number; rolling: number; /** Damping ratio at or below `slow` m/s of landing speed, easing to dampRatio at `fast`. */ dampSlow?: number; slow?: number; fast?: number };
 }
 /** Solver approximations a low preset may opt into; absent = the exact defaults (elliptic friction cones and
  *  MuJoCo's own solver tolerance), which every scene from Low up keeps, so their results stay bit-identical. */

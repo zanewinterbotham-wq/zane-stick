@@ -1,5 +1,9 @@
 // Headless pass scenarios for the receiver brain: a QB standing with the ball (athlete 0, scripted), receivers on
 // route assignments (ReceiverBrain) and defenders given scripted brains, under the shared play rules (the catch rule).
+import { BALL_AERO } from '../../src/sim/anatomy/equipment';
+import { aimThroughAir } from '../../src/sim/physics/aero';
+import { qaxis } from '../../src/sim/math';
+import { THROW } from '../../src/sim/throw';
 import { ReceiverBrain } from '../../src/sim/brains/football/receiver';
 import type { Assignment, PlayCall, PlayFrame, RouteAssign } from '../../src/sim/brains/football/types';
 import { ScriptBrain } from '../../src/sim/brains/script';
@@ -42,9 +46,10 @@ export async function passPlay(specs: Spec[], seed = 1) {
 export function launch(play: Play, at: Vec3, T: number) {
   const w = play.world, q = w.scene.athletes[0].state.com, from: Vec3 = [q[0], 2, q[2] + 0.5];
   play.ballLoose(0, false);
-  const vel: Vec3 = [(at[0] - from[0]) / T, (at[1] - from[1] + 9.81 * T * T / 2) / T, (at[2] - from[2]) / T];
-  w.scene.placeProp(play.ball, from, [0, 0, 0, 1]);
-  w.scene.launchProp(play.ball, vel, [0, 0, 0]);
+  // a spiral, nose along its flight, aimed through the air to get there at T, as World's release throws it
+  const vel = aimThroughAir(from, [(at[0] - from[0]) / T, (at[1] - from[1] + 9.81 * T * T / 2) / T, (at[2] - from[2]) / T], T, BALL_AERO.cdNose);
+  w.scene.placeProp(play.ball, from, qaxis([-vel[1], vel[0], 0], Math.acos(vel[2] / Math.hypot(...vel))));
+  w.scene.launchProp(play.ball, vel, [0, 0, THROW.spin]);
   return { from, vel };
 }
 
