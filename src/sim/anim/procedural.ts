@@ -110,18 +110,21 @@ const JUMP_PUSH_LEG: LegQ = [-0.5, 0.05, 0.1, -0.6, 0.3, 0, 0], JUMP_LEAD_LEG: L
 const JUMP_TUCK: LegQ = [0.9, 0.08, 1.4, 0.1, 0, 0, 0], JUMP_HURDLE: LegQ = [1.5, 0.08, 2.35, 0.2, 0, 0, 0];
 /** A hurdle's lead leg in the air (owner request 2026-10-23): thigh up level, knee nearly straight, reaching on over him. */
 const HURDLE_LEAD: LegQ = [1.6, 0.05, 0.3, 0.15, 0, 0, 0];
-/** Feet-first slide (Commands.slide): the support lets go (as in a dive's flight) and the pose sits him down on the turf,
- *  the lead leg out ahead nearly straight, the other knee bent under it (a baseball slide's), the back upright and the chin
- *  tucked, the free arms up and out; fade-in time (s), and the longest it waits for the turf before running on (s).
- *  Assumption: angles chosen to look like a QB slide within the joints' ranges [S3]. */
-const SLIDE = { lead: [1.35, 0.1, 0.25, 0.1, 0, 0, 0] as LegQ, tuck: [1.1, 0.25, 1.9, -0.2, 0, 0, 0] as LegQ, lumbar: 0.35, neck: 0.5,
-  arm: [0.9, 0.5, 0, 0.7, 0] as ArmQ, blend: 0.12, max: 1.5 };
+/** Feet-first slide (Commands.slide): he sits down onto the turf as in a deep sink, the hips lowered toward `height` (m)
+ *  at `sink` (m/s) and the trunk leaning back to `pitch` (rad), the lead leg out ahead nearly straight, the other knee bent
+ *  under it (a baseball slide's), the chin tucked, the free arms up and out; fade-in time (s), and the longest it waits for
+ *  the turf before running on (s). Nothing pushes him along: he slides on what speed he has, and the turf's friction
+ *  stops him. (Letting the support go, the planted foot tripped a runner head first.) Assumption: angles chosen to look
+ *  like a QB slide within the joints' ranges [S3]. */
+const SLIDE = { lead: [1.35, 0.1, 0.25, 0.1, 0, 0, 0] as LegQ, tuck: [1.1, 0.25, 1.9, -0.2, 0, 0, 0] as LegQ, lumbar: 0.1, neck: 0.5,
+  arm: [0.9, 0.5, 0, 0.7, 0] as ArmQ, height: 0.25, sink: 2, pitch: -0.4, blend: 0.12, max: 1.5 };
 /** Hand plant (Commands.plant): a held arm reaches for the turf `out` m beyond the shoulder the way the trunk falls, elbow
  *  `elbow` rad, while he is knocked between knock[0] and knock[1] (1 − posture support) and his trunk tilts between
  *  tilt[0] and tilt[1] rad off upright. Past either upper end it lets go: a hand can slow a stumble, not hold up a tackle. */
 const PLANT = { out: 0.45, elbow: 0.35, knock: [0.05, 0.7], tilt: [0.15, 0.8] } as const;
-/** The free hand covering the ball (Commands.cover): across the chest onto the ball in the carrying hand. */
-const COVER: ArmQ = [0.7, -0.15, 1.25, 1.9, 0.2];
+/** The free hand covering the ball (Commands.cover): across the chest onto the ball in the carrying hand; running (the
+ *  carrying arm swings lower), the shoulder flexes only `runFlex` (rad). Tuned headless so the hand meets the ball. */
+const COVER: ArmQ = [0.9, 0.0, 1.0, 1.9, 0.2], COVER_RUN_FLEX = 0.6;
 type DiveStage = 'load' | 'launch' | 'flight';
 
 type Mode = 'loco' | 'dive' | 'jump' | 'down' | 'getup' | 'slide';
@@ -447,12 +450,11 @@ export class ProceduralAnimator implements Animator {
     this.first = false;
     out.root.heading = this.heading;
     out.root.vel[0] = this.vel[0]; out.root.vel[2] = this.vel[2];
-    // (a slide is ballistic as a dive's flight: the support lets go and he sits down onto the turf)
-    const dive = this.mode === 'dive' ? this.dv.stage : this.mode === 'slide' ? 'flight' : 'none';
+    const dive = this.mode === 'dive' ? this.dv.stage : 'none';
     // the root's vertical speed: a dive's take-off, else how fast the posture lowers or raises the hips (the support
     // damps the pelvis toward it, so a quick sink is not braked as if it were a fall)
     const jump = this.mode !== 'jump' || (this.jv.stage === 'load' && this.jv.running) ? 'none' : this.jv.stage;
-    out.root.vel[1] = dive === 'launch' ? this.dv.vy : jump === 'launch' ? this.jv.vy : this.mode === 'loco' ? -this.dropV : 0;
+    out.root.vel[1] = dive === 'launch' ? this.dv.vy : jump === 'launch' ? this.jv.vy : this.mode === 'loco' ? -this.dropV : this.mode === 'slide' && this.height > SLIDE.height ? -SLIDE.sink : 0;
     out.root.dive = dive; out.root.jump = jump; out.root.power = this.mode === 'jump' ? this.jv.power : 1;
     out.root.thrust = this.mode === 'loco' ? this.lv.thrust : 0;
     out.root.twist = this.mode === 'loco' ? -THRUST.turn * this.thrustSide * this.lv.thrust + this.pass.twist * this.pass.w + this.look.thorax : 0;
@@ -799,7 +801,7 @@ export class ProceduralAnimator implements Animator {
       const ck = arm.side > 0 ? 'coverL' : 'coverR';
       if (cmd.cover || lv[ck] > 0) {
         const cv = lv[ck] = follow(lv[ck], cmd.cover && cmd.carry === (arm.side > 0 ? 2 : 1) ? 1 : 0, dt, 0.08);
-        fl = lerp(fl, COVER[0], cv); ab = lerp(ab, COVER[1], cv); rt = lerp(rt, COVER[2], cv); el = lerp(el, COVER[3], cv); wr = lerp(wr, COVER[4], cv);
+        fl = lerp(fl, lerp(COVER[0], COVER_RUN_FLEX, run), cv); ab = lerp(ab, COVER[1], cv); rt = lerp(rt, COVER[2], cv); el = lerp(el, COVER[3], cv); wr = lerp(wr, COVER[4], cv);
       }
       fl = lerp(fl, 1.3, lv.wrap); ab = lerp(ab, 0.45, lv.wrap); rt = lerp(rt, 0.9, lv.wrap); el = lerp(el, 1.4, lv.wrap);
       // shoot and reach point the arms forward of the body whatever the trunk's lean (shoulder flexion is relative
@@ -923,8 +925,8 @@ export class ProceduralAnimator implements Animator {
     return 1;
   }
 
-  /** Slide: the support has let go (root dive 'flight'); the pose sits him down feet first until the turf takes him
-   *  (down), the root following the body. The carrying arm keeps the ball. */
+  /** Slide: the pose sits him down feet first, the hips lowered and the trunk leaning back, until the turf takes him
+   *  (down); the root goes at the body's own speed (no carry). The carrying arm keeps the ball. */
   private slide(v: BodyView, cmd: Commands, out: AnimFrame) {
     const s = v.state, lead = this.leadSide() > 0 ? 0 : 1;
     this.legs.forEach((L, k) => { this.writeLeg(L, k === lead ? SLIDE.lead : SLIDE.tuck); L.stance = false; });
@@ -934,9 +936,8 @@ export class ProceduralAnimator implements Animator {
     }
     this.add('lumbar.flex', SLIDE.lumbar); this.head(SLIDE.neck);
     for (const i of this.neckDofs) out.gain[i] = 0.8;
-    this.height = s.segPos[3 * this.pelvisSeg + 1];
-    const fw = this.segAxis(v, this.pelvisSeg, [0, 0, 1]);
-    this.pitch = Math.atan2(-fw[1], Math.hypot(fw[0], fw[2]));
+    this.height = Math.max(SLIDE.height, this.height - SLIDE.sink * v.dt);
+    this.pitch = follow(this.pitch, SLIDE.pitch, v.dt, 0.1); this.roll = follow(this.roll, 0, v.dt, 0.1);
     this.vel = [s.comVel[0], 0, s.comVel[2]];
     out.root.height = this.height; out.root.pitch = this.pitch; out.root.roll = this.roll;
     out.planted[0] = out.planted[1] = false;
