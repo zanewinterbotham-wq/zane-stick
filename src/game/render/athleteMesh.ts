@@ -6,7 +6,7 @@ import { buildBody, DEFAULT_ATHLETE, type BodyPlan, type GeomPlan, type SegmentP
 import { BROW_STYLES, Brows } from './brows';
 import { fitAnchor, Mouth, skinAnchor, sphereAnchor, STYLES, type Anchor } from './mouth';
 import { disposeTree } from './renderer';
-import type { SkinTemplate } from './skin';
+import type { Rig, SkinTemplate } from './skin';
 import { decalMesh, helmetMaterial, jerseyMaterial, skinSpots, STAIN_COLOR, STAIN_MAX, type Ident } from './uniform';
 
 /** Optional looks (render/uniform.ts): `ident` puts a number and name on the jersey and a mark on the helmet (Medium
@@ -71,6 +71,9 @@ export class AthleteMesh {
   private skinMats: THREE.Material[] = [];
   private stainable: Stainable[] = [];
   private stain = 0;
+  /** stature scale of the skin (models are built for the reference athlete) and a rigged skin's skeleton */
+  private k = 1;
+  private skeleton: THREE.Skeleton | null = null;
   /** Everything that wears a team colour (`base`: the classic shape's unshaded colour), and the decals that depend on it. */
   private paint: { key: keyof TeamColors; mat: THREE.MeshStandardMaterial; base: THREE.Color | null; st: Stainable | null }[] = [];
   private decals: { mesh: THREE.Mesh; kind: 'back' | 'front' | 'helmet' }[] = [];
@@ -114,7 +117,7 @@ export class AthleteMesh {
       if (s.name === 'head' && !skin) {
         // the helmet is a bare sphere: the mouth sits on its lower front, under the facemask bar
         const h = s.geoms.find((g) => g.role === 'helmet')!, c = h.pos!.map((v, k) => v - s.origin[k]);
-        this.mouth = new Mouth(STYLES.classic, sphereAnchor(c, h.size[0], -0.1), team.glow);
+        this.mouth = new Mouth(STYLES.classic, sphereAnchor(c, h.size[0], -0.1));
         grp.add(this.mouth.mesh);
         const b = BROW_STYLES.classic, c0 = c as [number, number, number];
         this.brows = new Brows(b, [-b.x, b.x].map((dx) => sphereAnchor(c0, h.size[0], b.y, dx)) as [Anchor, Anchor]);
@@ -161,6 +164,7 @@ export class AthleteMesh {
       if (p.key === 'glow') p.mat.emissive.setHex(hex);
     }
     this.applyStain();
+    this.brows?.setGlow(t.glow);
     const id = this.extra.ident && { ...this.extra.ident, mark };
     if (id) for (const d of this.decals) d.mesh.material = d.kind === 'helmet' ? helmetMaterial(id, t) : jerseyMaterial(id, t, d.kind);
   }
@@ -187,36 +191,41 @@ export class AthleteMesh {
     const mats = new Map<THREE.Material, THREE.Material>();
     const colours = team as unknown as Record<string, number | undefined>;
     // the models are built for the reference athlete; scale them to this one's stature
-    const k = plan.params.height / DEFAULT_ATHLETE.height;
+    const k = this.k = plan.params.height / DEFAULT_ATHLETE.height;
+    const own = (src: THREE.Material) => {
+      let mat = mats.get(src);
+      if (!mat) {
+        mat = src.clone();
+        this.skinMats.push(mat);
+        const hex = colours[mat.name];
+        if (hex !== undefined) {
+          const c = mat as THREE.MeshStandardMaterial;
+          c.color.setHex(hex);
+          if (mat.name === 'glow') c.emissive.setHex(hex);
+          const st = mat.name === 'jersey' || mat.name === 'pants' || mat.name === 'socks' ? { mat: c, base: c.color, orig: c.color.clone() } : null;
+          if (st) this.stainable.push(st);
+          this.paint.push({ key: mat.name as keyof TeamColors, mat: c, base: null, st });
+        }
+        mats.set(src, mat);
+      }
+      return mat;
+    };
+    const nodes = new Map<string, THREE.Group>();
     for (const [name, meshes] of skin.parts) {
       const seg = index.get(plan.detail === 'minimum' ? FUSED_INTO[name] ?? name : name)!;
       const o = rest.get(name)!, so = plan.segments[seg].origin;
       const node = new THREE.Group();
       node.scale.setScalar(k);
-      for (const m of meshes) {
-        let mat = mats.get(m.material as THREE.Material);
-        if (!mat) {
-          mat = (m.material as THREE.Material).clone();
-          this.skinMats.push(mat);
-          const hex = colours[mat.name];
-          if (hex !== undefined) {
-            const c = mat as THREE.MeshStandardMaterial;
-            c.color.setHex(hex);
-            if (mat.name === 'glow') c.emissive.setHex(hex);
-            const st = mat.name === 'jersey' || mat.name === 'pants' || mat.name === 'socks' ? { mat: c, base: c.color, orig: c.color.clone() } : null;
-            if (st) this.stainable.push(st);
-            this.paint.push({ key: mat.name as keyof TeamColors, mat: c, base: null, st });
-          }
-          mats.set(m.material as THREE.Material, mat);
-        }
-        const mesh = new THREE.Mesh(m.geometry, mat);
+      nodes.set(name, node);
+      if (!skin.rig) for (const m of meshes) { // a rigged skin's parts are only fitting surfaces
+        const mesh = new THREE.Mesh(m.geometry, own(m.material as THREE.Material));
         mesh.castShadow = true;
         mesh.receiveShadow = quality === 'high';
         node.add(mesh);
       }
       if (name === 'head' && skin.id && STYLES[skin.id]) {
         const style = STYLES[skin.id];
-        this.mouth = new Mouth(style, skinAnchor(skin, style), team.glow);
+        this.mouth = new Mouth(style, skinAnchor(skin, style));
         node.add(this.mouth.mesh);
         const b = BROW_STYLES[skin.id];
         this.brows = new Brows(b, [-b.x, b.x].map((x) => fitAnchor(skin, b.mat, x, b.y, b.hw)) as [Anchor, Anchor], team.glow);
@@ -232,6 +241,29 @@ export class AthleteMesh {
       }
       this.skin.add(node);
       this.parts.push({ node, seg, off: new THREE.Vector3(o[0] - so[0], o[1] - so[1], o[2] - so[2]) });
+    }
+    if (skin.rig) this.rig(skin.rig, nodes, quality, own);
+  }
+
+  /** A rigged skin: each segment's bone rides that segment's node at its fixed offset (world = S_now · O, the node's
+   *  stature scale included), other bones ride their parent bone; the scene graph keeps the bone matrices current. */
+  private rig(rig: Rig, nodes: Map<string, THREE.Group>, quality: 'low' | 'high', own: (m: THREE.Material) => THREE.Material) {
+    const bones = rig.bones.map((b) => {
+      const bone = new THREE.Bone();
+      bone.name = b.name;
+      bone.matrixAutoUpdate = false;
+      bone.matrix.copy(b.off);
+      return bone;
+    });
+    rig.bones.forEach((b, i) => (b.parent < 0 ? nodes.get(b.name)! : bones[b.parent]).add(bones[i]));
+    this.skeleton = new THREE.Skeleton(bones, rig.inverses);
+    for (const m of rig.meshes) {
+      const mesh = new THREE.SkinnedMesh(m.geometry, own(m.material as THREE.Material));
+      mesh.bind(this.skeleton, new THREE.Matrix4()); // bound at the origin; a given matrix also keeps the shared inverses untouched
+      mesh.frustumCulled = false; // its bounds are the bind pose's, not where the bones took it
+      mesh.castShadow = true;
+      mesh.receiveShadow = quality === 'high';
+      this.skin.add(mesh);
     }
   }
 
@@ -249,7 +281,7 @@ export class AthleteMesh {
   }
 
   /** The classic shapes are this athlete's own; the skin's geometry is the shared template's (only its face is his). */
-  dispose() { disposeTree(this.classic); for (const m of this.skinMats) m.dispose(); this.skinMats.length = 0; this.mouth?.dispose(); this.brows?.dispose(); }
+  dispose() { disposeTree(this.classic); for (const m of this.skinMats) m.dispose(); this.skinMats.length = 0; this.mouth?.dispose(); this.brows?.dispose(); this.skeleton?.dispose(); }
 
   /** Show or hide the head, neck, helmet and facemask (classic and skin): the helmet camera sits inside them. */
   setHeadVisible(on: boolean) {
@@ -257,7 +289,10 @@ export class AthleteMesh {
     this.headOn = on;
     const head = (i: number) => /^(head|neck)$/.test(this.plan.segments[i].name);
     this.segs.forEach((g, i) => { if (head(i)) g.visible = on; });
-    for (const p of this.parts) if (head(p.seg)) p.node.visible = on;
+    for (const p of this.parts) if (head(p.seg)) {
+      p.node.visible = on;
+      if (this.skeleton) p.node.scale.setScalar(on ? this.k : 1e-3); // a rigged head is in the one mesh: shrink its bones away
+    }
   }
 
   /** Effort shading: tint each segment toward hot orange as its muscles near their limit (0..1). */

@@ -78,6 +78,9 @@ export class Brows {
     if (key !== this.last) { this.last = key; this.build(e); }
   }
 
+  /** A team switch mid-rep: visor brows take the new team's light colour. */
+  setGlow(hex: number) { if (this.s.mat === 'visor') (this.mesh.material as THREE.MeshBasicMaterial).color.setHex(hex); }
+
   dispose() { this.mesh.geometry.dispose(); (this.mesh.material as THREE.Material).dispose(); }
 
   private build({ angry, sad }: Expression) {
