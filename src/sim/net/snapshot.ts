@@ -114,7 +114,7 @@ export function applyMeta(play: Play, s: Snapshot) {
   }
   const str = () => { const n = u8(), t = dec.decode(new Uint8Array(v.buffer, v.byteOffset + o, n)); o += n; return t; };
   const ended = str();
-  play.ended = (ended || null) as RepEnd; play.verdict = str(); play.note = str();
+  play.ended = (ended || null) as RepEnd; play.verdict = str(); play.note = str(); w.ballLive = !play.ended;
 }
 
 /** Guest rendering delay behind the snapshots (s): at least `min`, plus `jitter` × the arrival jitter, at most `max`;

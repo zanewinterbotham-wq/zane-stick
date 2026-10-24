@@ -41,7 +41,7 @@ export interface AthleteSetup {
   /** A player (human, local or remote) drives this athlete: the athlete level of detail never applies to him. */
   player?: boolean;
 }
-export interface FieldInfo { halfWidth: number; goalZ: number; dirZ: 1 | -1 }
+export type FieldInfo = Perception['field'];
 export interface WorldSetup { physics: PhysicsSettings; athletes: AthleteSetup[]; props?: PropDesc[]; seed: number; assist: number; field?: FieldInfo; traction?: number;
   /** Active-ragdoll support (design §6.5) for athletes whose controller has root(); absent = balance assist only. */
   support?: SupportSettings;
@@ -181,6 +181,8 @@ export class World {
   /** Every break and knockout this rep, in order (sound, effects, HUD). */
   readonly injuries: InjuryEvent[] = [];
   ballCarrier = -1;
+  /** The ball is live (Play clears it at the whistle); every brain perceives it. */
+  ballLive = true;
   /** Index of the ball among the props (a prop named 'ball'), or −1. */
   readonly ballIndex: number;
   /** Passing (docs/passing.md): the rules' say on a pass command from athlete i (Play sets it; absent: any holder may
@@ -255,7 +257,7 @@ export class World {
     });
     const bi = this.ballIndex;
     const ball = bi >= 0 ? { pos: this.scene.propPose(bi).pos, vel: this.scene.propVel(bi) } : undefined;
-    return { athletes, field: this.setup.field ?? { halfWidth: 24.38, goalZ: 50, dirZ: 1 }, ball };
+    return { athletes, field: this.setup.field ?? { halfWidth: 24.38, goalZ: 50, dirZ: 1 }, ball, ballLive: this.ballLive };
   }
 
   step() {

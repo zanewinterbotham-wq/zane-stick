@@ -27,6 +27,7 @@ import { catchPoint } from '../returner';
 import { Steer } from '../steer';
 import { TacklerBrain } from '../tackler';
 import type { AthleteView, Brain, Perception } from '../types';
+import { ballInPlay } from '../steer';
 import { ACC_DT, ballAt, ballSpot, carry, inFlight, passIsMine, REACH, rel, toWorld } from './sense';
 import type { ManAssign, PlayCall, PlayFrame, ZoneAssign, ZoneKind } from './types';
 
@@ -124,7 +125,8 @@ export class DefensiveBackBrain implements Brain {
     if (air) this.thrown = true;
     // a catch, a runner (past the line, or my man with the ball), a ball on the turf: football, tackle or recover it
     const runner = hi >= 0 && (this.thrown || rel(f, seen.athletes[hi].com).depth > 0.5 || (a?.kind === 'man' && a.target === hi));
-    if (runner || (hi < 0 && !air) || !a) { this.phase = 'tackle'; return this.tackler.think(p, dt); }
+    // (a pass sailing out of play is not played: the tackler leaves a dead or lost ball alone)
+    if (runner || (hi < 0 && (!air || !ballInPlay(seen))) || !a) { this.phase = 'tackle'; return this.tackler.think(p, dt); }
     if (p.time >= this.errUntil) { this.err = [this.rng.gauss() * this.diff.noise, this.rng.gauss() * this.diff.noise]; this.errUntil = p.time + 0.6; }
     const ball = air ? ballAt(b!, age) : null;
     // in zone the pass is played by the defender nearest where it comes down; the others stay in their zones

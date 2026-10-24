@@ -11,7 +11,8 @@ import type { Rng } from '../rng';
 import type { BotDifficulty } from './carrier';
 import { landing } from './football/sense';
 import { blockerInWay, shed, shedSide } from './shed';
-import { Steer } from './steer';
+import { BARRIER } from '../modes/rules';
+import { ballInPlay, Steer } from './steer';
 import { predict, TacklerBrain } from './tackler';
 import type { AthleteView, Brain, Perception } from './types';
 
@@ -50,8 +51,8 @@ export class CoverBrain implements Brain {
     // the ball: the returner, or where the kick comes down
     let at: Vec3;
     if (ci >= 0) at = predict(seen.athletes[ci], age).com;
-    else if (b) at = landing(b, CATCH_H);
-    else return c;
+    else if (b && ballInPlay(seen)) at = landing(b, CATCH_H);
+    else return c; // no ball, or one kicked into the stands (or dead out of bounds): nothing to cover
     const down = me.team === 0 ? 1 : -1, held = ci >= 0;
     const d = Math.hypot(at[0] - me.com[0], at[2] - me.com[2]), past = (at[2] - me.com[2]) * down < -1;
     const sq = clamp((FAR - d) / (FAR - NEAR), 0, 1), lx = this.lane.x + this.err, side = Math.sign(this.lane.x) || 1;
@@ -63,7 +64,7 @@ export class CoverBrain implements Brain {
       if (held && (d < CONTAIN_NEAR || past)) return this.release(p, dt);
       tx = side * Math.max(side * tx, side * at[0] + OUTSIDE);
     } else if (held && (d < NEAR || past)) return this.release(p, dt);
-    tx = clamp(tx, -p.field.halfWidth + 1, p.field.halfWidth - 1);
+    tx = clamp(tx, -p.field.halfWidth + 1, p.field.halfWidth - 1); tz = clamp(tz, -BARRIER.halfLength + 1, BARRIER.halfLength - 1);
     const gx = tx - me.com[0], gz = tz - me.com[2], g = Math.hypot(gx, gz) || 1e-6;
     // a blocker in my lane: get off him toward where I am going
     const spot: AthleteView = { ...me, com: [tx, me.com[1], tz], hasBall: false };

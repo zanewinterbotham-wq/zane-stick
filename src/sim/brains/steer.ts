@@ -1,9 +1,12 @@
 // The bot brains' steering: a wanted ground velocity (m/s, world) becomes Commands.move, the heading turning no faster
 // than footing allows and the magnitude filtered so the command does not chatter. Every bot brain holds one Steer and
 // passes its own turn rate; the float operations keep the order the brains' own copies had (state hashes, bench/perf).
+import { BALL, BALL_AERO } from '../anatomy/equipment';
 import { GAIT_SPEED } from '../control/hand';
+import { BALL_AREA } from '../physics/aero';
 import type { Commands } from '../control/types';
-import { clamp, wrapAngle } from '../math';
+import { clamp, G, wrapAngle } from '../math';
+import { BARRIER, outside } from '../modes/rules';
 import type { AthleteView, Perception } from './types';
 
 /** The move command's filter time (s); a full command is a sprint. */
@@ -16,6 +19,40 @@ export const turnRate = (speed: number) => Math.min(TURN_MAX, LAT_ACCEL / Math.m
 /** Plant and cut (as a carrier does) when the wanted direction is PLANT_ANGLE rad off a run faster than
  *  PLANT_RUN m/s; the command is held PLANT_HOLD s, and the next one waits PLANT_GAP s (the cut lasts 0.45 s). */
 const PLANT_ANGLE = 0.6, PLANT_RUN = 2.5, PLANT_HOLD = 0.1, PLANT_GAP = 0.6;
+
+/** A flight is followed down to this height (m: on the turf) in steps of FLY_DT s, at most FLY_T s; drag per speed²
+ *  (1/m) of a ball side-on to the flow, the most it can have: the shortest it can fly (aero.ts). */
+const TURF_H = 0.2, FLY_DT = 1 / 30, FLY_T = 6, DRAG = 0.5 * BALL_AERO.rho * BALL_AERO.cdSide * BALL_AREA / BALL.mass;
+/** A loose ball worth going for: the play is live, the ball is not beyond the lines where the mode's rules make that
+ *  dead (rules.ts outside), and it is not in the stands: beyond the barrier, or flying over it (its shortest flight still
+ *  clears the wall's top; one that hits the wall comes back into play). */
+export function ballInPlay(p: Perception, b = p.ball): boolean {
+  if (!b || p.ballLive === false) return false;
+  const r = p.field.rules, stands = (x: number, z: number) => Math.abs(x) >= BARRIER.halfWidth || Math.abs(z) >= BARRIER.halfLength;
+  if ((r?.outOfBounds && outside(r, b.pos[0], b.pos[2])) || stands(b.pos[0], b.pos[2])) return false;
+  let [x, y, z] = b.pos, [vx, vy, vz] = b.vel;
+  for (let t = 0; t < FLY_T && y > TURF_H; t += FLY_DT) {
+    const sp = Math.hypot(vx, vy, vz);
+    vx -= DRAG * sp * vx * FLY_DT; vy -= (G + DRAG * sp * vy) * FLY_DT; vz -= DRAG * sp * vz * FLY_DT;
+    x += vx * FLY_DT; y += vy * FLY_DT; z += vz * FLY_DT;
+    if (stands(x, z)) return y < BARRIER.height;
+  }
+  return true;
+}
+
+/** Wall keeping: a bot runs at the barrier no faster than lets him stop WALL.margin m short of it at WALL.brake m/s²,
+ *  whatever he is after (a ball against the wall is still reached, slowly). */
+const WALL = { margin: 0.6, brake: 4 };
+/** Caps the outward part of c.move along each axis (Commands only; a no-op away from the walls). */
+export function keepOffWall(me: AthleteView, c: Commands) {
+  const v = GAIT_SPEED[c.gait];
+  const cap = (pos: number, half: number, m: number) => {
+    const s = Math.sign(pos), lim = Math.sqrt(2 * WALL.brake * Math.max(0, half - Math.abs(pos) - WALL.margin)) / v;
+    return m * s > lim ? s * lim : m;
+  };
+  const x = cap(me.com[0], BARRIER.halfWidth, c.move.x), z = cap(me.com[2], BARRIER.halfLength, c.move.z);
+  if (x !== c.move.x || z !== c.move.z) c.move = { x, z };
+}
 
 export class Steer {
   heading = NaN; mag = 0;

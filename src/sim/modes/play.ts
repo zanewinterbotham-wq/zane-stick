@@ -18,8 +18,10 @@ import { catchTuning, type CatchTuning } from './catching';
 import { BALL, BALL_TURF } from '../anatomy/equipment';
 import { BlockerBrain } from '../brains/blocker';
 import { CarrierBrain } from '../brains/carrier';
+import { IdleBrain } from '../brains/idle';
+import { keepOffWall } from '../brains/steer';
 import { TacklerBrain } from '../brains/tackler';
-import type { Brain } from '../brains/types';
+import type { Brain, Perception } from '../brains/types';
 import { neutralCommands, type PassCmd } from '../control/types';
 import { makeController } from '../drills/controllers';
 import { clamp, qrot, type Quat, type Vec3 } from '../math';
@@ -138,14 +140,23 @@ export class Play {
     const botRngs = ps.players.map((_, i) => (i === 0 ? rng : new Rng(rng.next() * 1e9)));
     const me = seats.human ?? 0, fixed = ps.players.map((_, i) => (i === me ? humanBrain : seats.fixed?.[i] ?? null));
     const brains: Brain[] = fixed.map((b) => b ?? STILL);
-    // whoever holds the ball keeps it tucked in the right arm (a human's input has no carry button)
-    const possess = (i: number): Brain => ({ think: (p, dt) => { const c = brains[i].think(p, dt); if (p.athletes[i].hasBall) c.carry = 2; return c; } });
+    // whoever holds the ball keeps it tucked in the right arm (a human's input has no carry button). A bot knows the
+    // field: after the whistle he pulls up and, once slowed to a walk, waits there watching the ball (a dead ball is never
+    // chased), and he never runs into the barrier (keepOffWall), whatever his brain is after.
+    const whistle: (Brain | undefined)[] = [];
+    const after = (i: number, p: Perception) => whistle[i] ?? (Math.hypot(p.athletes[i].comVel[0], p.athletes[i].comVel[2]) < 1 ? (whistle[i] = new IdleBrain(botRngs[i])) : STILL);
+    const possess = (i: number): Brain => ({ think: (p, dt) => {
+      const bot = !fixed[i], c = (bot && p.ballLive === false ? after(i, p) : brains[i]).think(p, dt);
+      if (bot) keepOffWall(p.athletes[i], c);
+      if (p.athletes[i].hasBall) c.carry = 2;
+      return c;
+    } });
     const ctl: AthleteSetup['controller'] = (p, m) => makeController(p, m, 'tracking', cfg.gains);
     const team = 'holder' in b0 ? ps.players[holder].team : b0.impetus;
     const setup: WorldSetup = {
       physics: cfg.physics, seed: cfg.seed + rep, assist: cfg.assist, traction: cfg.traction, hitPower: cfg.hitPower,
       jump: cfg.jump, fumble: cfg.fumble, grab: cfg.grab, contact: cfg.contact, bones: cfg.bones, knockout: cfg.knockout,
-      field: { halfWidth: r.halfWidth, goalZ: r.goal[team], dirZ: attackDir(team) },
+      field: { halfWidth: r.halfWidth, goalZ: r.goal[team], dirZ: attackDir(team), rules: r },
       athletes: ps.players.map((s, i) => ({
         params: s.params ?? (fixed[i] ? cfg.human : cfg.bot), pos: [s.pos[0], 0, s.pos[1]], yaw: s.yaw ?? (s.team === 0 ? 0 : Math.PI), team: s.team,
         controller: ctl, brain: possess(i), hasBall: i === holder, ...(fixed[i] ? { player: true } : { toughness: cfg.toughness }), boneStrength: fixed[i] ? cfg.boneStrength : cfg.aiBoneStrength,
@@ -219,7 +230,7 @@ export class Play {
     w.scene.launchProp(this.ball, [s.segVel[3 * hi], s.segVel[3 * hi + 1], s.segVel[3 * hi + 2]], [0, 0, 0]);
     this.impetus = T;
     this.turfT = 0; this.offT = UP_TIME; this.touchedAt = -Infinity; this.slidAt = -Infinity;
-    w.setup.field = { halfWidth: this.rules.halfWidth, goalZ: this.rules.goal[T], dirZ: attackDir(T) };
+    w.setup.field = { halfWidth: this.rules.halfWidth, goalZ: this.rules.goal[T], dirZ: attackDir(T), rules: this.rules };
   }
 
   step() {
@@ -412,7 +423,7 @@ export class Play {
   /** End the play (the shared rules call it; a mode's step may too, e.g. a field goal). */
   end(reason: Exclude<RepEnd, null>, scorer: -1 | 0 | 1 = -1, points = 0) {
     if (this.ended) return;
-    this.ended = reason; this.endTime = this.world.time; this.scorer = scorer; this.points = points;
+    this.ended = reason; this.endTime = this.world.time; this.scorer = scorer; this.points = points; this.world.ballLive = false;
     this.mode.ended?.(this);
     if (!this.verdict && this.mode.verdict) this.verdict = this.verdictFor(this.human >= 0 ? this.team(this.human) : 0);
   }
