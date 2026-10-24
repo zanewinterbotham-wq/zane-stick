@@ -31,18 +31,27 @@ const FUSED_INTO: Record<string, string> = {
 /** One skin node: which physics segment carries it and its rest-frame offset from that segment's origin. */
 interface SkinPart { node: THREE.Group; seg: number; off: THREE.Vector3 }
 
-function colorFor(seg: SegmentPlan, g: GeomPlan, t: TeamColors): number {
-  if (g.role === 'helmet') return t.helmet;
-  if (g.role === 'facemask') return t.mask;
-  if (g.role === 'pad') return t.jersey;
-  if (g.role === 'foot') return t.cleats;
-  if (g.role === 'hand') return t.skin;
+/** Which team colour a classic shape wears. */
+function keyFor(seg: SegmentPlan, g: GeomPlan): keyof TeamColors {
+  if (g.role === 'helmet') return 'helmet';
+  if (g.role === 'facemask') return 'mask';
+  if (g.role === 'pad') return 'jersey';
+  if (g.role === 'foot') return 'cleats';
+  if (g.role === 'hand') return 'skin';
   const n = seg.name;
-  if (/thorax|lumbar|trunk|clavicle/.test(n)) return t.jersey;
-  if (/upperArm/.test(n)) return t.jersey;
-  if (/pelvis|thigh/.test(n)) return t.pants;
-  if (/shank/.test(n)) return t.socks;
-  return t.skin;
+  if (/thorax|lumbar|trunk|clavicle/.test(n)) return 'jersey';
+  if (/upperArm/.test(n)) return 'jersey';
+  if (/pelvis|thigh/.test(n)) return 'pants';
+  if (/shank/.test(n)) return 'socks';
+  return 'skin';
+}
+
+/** Record that athlete `i` now plays for `team` and say whether that differs from what is shown (a mode may change
+ *  teams mid-rep, e.g. Infection): the renderer recolours him only then. */
+export function teamChanged(shown: number[], i: number, team: number): boolean {
+  if (shown[i] === team) return false;
+  shown[i] = team;
+  return true;
 }
 
 export class AthleteMesh {
@@ -62,6 +71,9 @@ export class AthleteMesh {
   private skinMats: THREE.Material[] = [];
   private stainable: Stainable[] = [];
   private stain = 0;
+  /** Everything that wears a team colour (`base`: the classic shape's unshaded colour), and the decals that depend on it. */
+  private paint: { key: keyof TeamColors; mat: THREE.MeshStandardMaterial; base: THREE.Color | null; st: Stainable | null }[] = [];
+  private decals: { mesh: THREE.Mesh; kind: 'back' | 'front' | 'helmet' }[] = [];
 
   constructor(private plan: BodyPlan, team: TeamColors, quality: 'low' | 'high', skin: SkinTemplate | null = null, private extra: Extras = {}) {
     this.root.add(this.classic, this.skin);
@@ -72,7 +84,7 @@ export class AthleteMesh {
       const mats: THREE.MeshStandardMaterial[] = [];
       const bases: THREE.Color[] = [];
       for (const g of s.geoms) {
-        const color = colorFor(s, g, team);
+        const key = keyFor(s, g), color = team[key];
         const mat = new THREE.MeshStandardMaterial({ color, roughness: g.role === 'helmet' ? 0.35 : 0.75, metalness: g.role === 'facemask' ? 0.4 : 0 });
         let mesh: THREE.Mesh;
         if (g.type === 'capsule') {
@@ -94,9 +106,9 @@ export class AthleteMesh {
         grp.add(mesh);
         mats.push(mat);
         bases.push(new THREE.Color(color));
-        if (g.role !== 'helmet' && g.role !== 'facemask' && (color === team.jersey || color === team.pants || color === team.socks)) {
-          this.stainable.push({ mat, base: bases[bases.length - 1], orig: new THREE.Color(color) });
-        }
+        const st = key === 'jersey' || key === 'pants' || key === 'socks' ? { mat, base: bases[bases.length - 1], orig: new THREE.Color(color) } : null;
+        if (st) this.stainable.push(st);
+        this.paint.push({ key, mat, base: bases[bases.length - 1], st });
       }
       if (extra.ident) this.markClassic(grp, s, team);
       if (s.name === 'head' && !skin) {
@@ -123,21 +135,46 @@ export class AthleteMesh {
     const pad = s.geoms.find((g) => g.role === 'pad'), helmet = s.geoms.find((g) => g.role === 'helmet');
     if (pad) {
       const [x, y, z] = rel(pad.pos!), size = Math.min(0.38, 1.6 * pad.size[0]);
-      grp.add(decalMesh(jerseyMaterial(id, team, 'back'), [x, y, z - pad.size[2] - 0.004], Math.PI, size));
-      grp.add(decalMesh(jerseyMaterial(id, team, 'front'), [x, y, z + pad.size[2] + 0.004], 0, size * 0.6));
+      grp.add(this.decal('back', jerseyMaterial(id, team, 'back'), [x, y, z - pad.size[2] - 0.004], Math.PI, size));
+      grp.add(this.decal('front', jerseyMaterial(id, team, 'front'), [x, y, z + pad.size[2] + 0.004], 0, size * 0.6));
     }
     if (helmet) {
       const [x, y, z] = rel(helmet.pos!), r = helmet.size[0], mat = helmetMaterial(id, team);
-      grp.add(decalMesh(mat, [x + r + 0.006, y, z - 0.01], Math.PI / 2, 1.1 * r), decalMesh(mat, [x - r - 0.006, y, z - 0.01], -Math.PI / 2, 1.1 * r));
+      grp.add(this.decal('helmet', mat, [x + r + 0.006, y, z - 0.01], Math.PI / 2, 1.1 * r), this.decal('helmet', mat, [x - r - 0.006, y, z - 0.01], -Math.PI / 2, 1.1 * r));
     }
+  }
+
+  private decal(kind: 'back' | 'front' | 'helmet', mat: THREE.Material, pos: [number, number, number], yaw: number, size: number) {
+    const mesh = decalMesh(mat, pos, yaw, size);
+    this.decals.push({ mesh, kind });
+    return mesh;
+  }
+
+  /** Put the whole uniform in another team's colours (jersey, trim, pants, helmet, socks, cleats, number and helmet
+   *  mark), e.g. when a mode switches his side mid-rep. `mark`: that team's helmet letter. Keeps his name, number and stains. */
+  setTeam(t: TeamColors, mark: string) {
+    for (const p of this.paint) {
+      const hex = t[p.key];
+      p.mat.color.setHex(hex);
+      p.base?.setHex(hex);
+      if (p.st) p.st.orig.setHex(hex);
+      if (p.key === 'glow') p.mat.emissive.setHex(hex);
+    }
+    this.applyStain();
+    const id = this.extra.ident && { ...this.extra.ident, mark };
+    if (id) for (const d of this.decals) d.mesh.material = d.kind === 'helmet' ? helmetMaterial(id, t) : jerseyMaterial(id, t, d.kind);
   }
 
   /** Grass stains 0..1: jerseys, pants and socks fade toward green-brown (cheap enough to call every frame). */
   setStain(level: number) {
     if (Math.abs(level - this.stain) < 0.02 && !(level === 0 && this.stain !== 0)) return;
     this.stain = level;
+    this.applyStain();
+  }
+
+  private applyStain() {
     for (const s of this.stainable) {
-      s.base.copy(s.orig).lerp(STAIN_COLOR, level * STAIN_MAX);
+      s.base.copy(s.orig).lerp(STAIN_COLOR, this.stain * STAIN_MAX);
       if (!this.shaded) s.mat.color.copy(s.base);
     }
   }
@@ -166,7 +203,9 @@ export class AthleteMesh {
             const c = mat as THREE.MeshStandardMaterial;
             c.color.setHex(hex);
             if (mat.name === 'glow') c.emissive.setHex(hex);
-            if (mat.name === 'jersey' || mat.name === 'pants' || mat.name === 'socks') this.stainable.push({ mat: c, base: c.color, orig: c.color.clone() });
+            const st = mat.name === 'jersey' || mat.name === 'pants' || mat.name === 'socks' ? { mat: c, base: c.color, orig: c.color.clone() } : null;
+            if (st) this.stainable.push(st);
+            this.paint.push({ key: mat.name as keyof TeamColors, mat: c, base: null, st });
           }
           mats.set(m.material as THREE.Material, mat);
         }
@@ -186,10 +225,10 @@ export class AthleteMesh {
       if (this.extra.ident && (name === 'thorax' || name === 'head')) {
         // skins differ in shape: the decals go where rays at the skin's own meshes say its surface is
         const id = this.extra.ident, sp = skinSpots(name, meshes);
-        if (sp.back) node.add(decalMesh(jerseyMaterial(id, team, 'back'), sp.back.pos, Math.PI, sp.back.size));
-        if (sp.front) node.add(decalMesh(jerseyMaterial(id, team, 'front'), sp.front.pos, 0, sp.front.size));
-        if (sp.headL) node.add(decalMesh(helmetMaterial(id, team), sp.headL.pos, Math.PI / 2, sp.headL.size));
-        if (sp.headR) node.add(decalMesh(helmetMaterial(id, team), sp.headR.pos, -Math.PI / 2, sp.headR.size));
+        if (sp.back) node.add(this.decal('back', jerseyMaterial(id, team, 'back'), sp.back.pos, Math.PI, sp.back.size));
+        if (sp.front) node.add(this.decal('front', jerseyMaterial(id, team, 'front'), sp.front.pos, 0, sp.front.size));
+        if (sp.headL) node.add(this.decal('helmet', helmetMaterial(id, team), sp.headL.pos, Math.PI / 2, sp.headL.size));
+        if (sp.headR) node.add(this.decal('helmet', helmetMaterial(id, team), sp.headR.pos, -Math.PI / 2, sp.headR.size));
       }
       this.skin.add(node);
       this.parts.push({ node, seg, off: new THREE.Vector3(o[0] - so[0], o[1] - so[1], o[2] - so[2]) });
