@@ -133,8 +133,8 @@ export const STYLES: Record<string, Style> = {
   clay: { y: -0.011, hw: 0.052, t: 0.016, lipW: 0.36, mat: 'skin', segs: 18, dn: 0, snap: 0, lump: 0.2, lip: ROUND, open: 1, teeth: true, tongue: false, look: 'lit', roughness: 1, lipC: 0xb86a5a, cavC: 0x2a1410, teethC: 0xe8e0cc, tongueC: 0xc85a64 },
   // cut-out cards stacked a few millimetres apart
   paper: { y: -0.01, hw: 0.055, t: 0.004, lipW: 0.26, mat: 'skin', segs: 12, dn: 0, snap: 0, lump: 0, lip: [[0, 0.5], [0, 1], [1, 1], [1, 0.5]], open: 1, teeth: true, tongue: true, look: 'unlit', roughness: 1, lipC: 0xb23a3a, cavC: 0x2b1111, teethC: 0xfffdf4, tongueC: 0xe7788a },
-  // no face under the visor: a lit slot on the chin guard opens like an equaliser (cavC is replaced by the team glow)
-  future: { y: -0.01, hw: 0.05, t: 0.006, lipW: 0.16, mat: 'mask', segs: 16, dn: 3, snap: 0, lump: 0, lip: FLAT, open: 0.5, teeth: false, tongue: false, look: 'unlit', roughness: 1, lipC: 0x1b2330, cavC: 0x6bdaff, teethC: 0xffffff, tongueC: 0xffffff },
+  // the face under the visor, behind the facemask (Future Armor HD): a plain lit mouth
+  future: { ...CARTOON, y: 0.035, hw: 0.036, t: 0.008, lipW: 0.3, mat: 'skin', tongue: false, look: 'lit', roughness: 0.55, lipC: 0x5a2622, cavC: 0x1c0a0a, teethC: 0xf2f2f2, tongueC: 0xd2506a },
   classic: { y: 0, hw: 0.038, t: 0.008, lipW: 0.3, mat: 'helmet', segs: 14, dn: 0, snap: 0, lump: 0, lip: ROUND, open: 1, teeth: true, tongue: false, look: 'lit', roughness: 0.8, lipC: 0x4a1f1f, cavC: 0x140808, teethC: 0xf2f2f2, tongueC: 0xc85a64 },
 };
 
@@ -208,7 +208,7 @@ export class Mouth {
     const col = new Float32Array(3 * total), idx: number[] = [], c = new THREE.Color();
     const paint = (from: number, n: number, hex: number) => { c.setHex(hex); for (let i = from; i < from + n; i++) col.set([c.r, c.g, c.b], 3 * i); };
     const oRing = nCav, oUp = oRing + nRing, oLow = oUp + nTeeth, oTongue = oLow + nTeeth;
-    paint(0, nCav, s.look === 'unlit' && s.mat === 'mask' ? glow : s.cavC);
+    paint(0, nCav, s.cavC);
     paint(oRing, nRing, s.lipC); paint(oUp, nTeeth, s.teethC); paint(oLow, nTeeth, s.teethC); paint(oTongue, nTongue, s.tongueC);
     for (let i = 0; i < N; i++) idx.push(N, i, (i + 1) % N);
     for (let k = 0; k < P - 1; k++) for (let i = 0; i < N; i++) {

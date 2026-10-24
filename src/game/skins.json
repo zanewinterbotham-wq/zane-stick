@@ -55,8 +55,8 @@
   },
   {
     "id": "future",
-    "label": "Future Armor",
-    "pitch": "Sleek armored future football: visor helmet with fin, hard plates, light strips.",
+    "label": "Future Armor HD",
+    "pitch": "Rounded, rigged future football: visor helmet with a glowing ridge and a real facemask, layered pads, wrap guards with light strips, 1.4x head.",
     "file": "models/future.glb",
     "preview": "models/previews/future.jpg",
     "look": "standard",

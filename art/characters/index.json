@@ -7,14 +7,6 @@
   "headScale": 1.65,
   "file": "clay/clay.glb"
  },
- "future": {
-  "title": "Future Armor",
-  "pitch": "Sleek armored future football: visor helmet with fin, hard plates, light strips.",
-  "triangles": 4438,
-  "bytes": 104644,
-  "headScale": 1.5,
-  "file": "future/future.glb"
- },
  "lowpoly": {
   "title": "Low-Poly Facet",
   "pitch": "Faceted crystal-cut athlete: six-sided limbs, jittered flat facets, 1.55x head.",
