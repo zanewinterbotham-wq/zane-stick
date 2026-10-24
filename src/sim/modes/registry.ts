@@ -3,6 +3,8 @@ import { FIELD_GOAL_BLOCK } from './fieldGoalBlock';
 import { GAUNTLET } from './gauntlet';
 import { GOAL_LINE_STAND } from './goalline';
 import { HIT_STICK } from './hitstick';
+import { HOT_POTATO } from './hotPotato';
+import { INFECTION } from './infection';
 import { KEEP_AWAY } from './keepaway';
 import { KICKOFF } from './kickoff';
 import { KICKOFF_RETURN } from './kickoffReturn';
@@ -13,10 +15,11 @@ import { PUNT_BLOCK } from './puntBlock';
 import { PUNT_RETURN } from './puntReturn';
 import { SCRAMBLE } from './scramble';
 import { SUMO } from './sumo';
+import { SURVIVAL } from './survival';
 import { Rng } from '../rng';
 import type { ModeDef, ModeOptions, OptionDesc, OptionValue, PlayConfig } from './types';
 
-export const MODES: ModeDef[] = [OPEN_FIELD_TACKLE, OPEN_FIELD_CARRY, OKLAHOMA, KICKOFF_RETURN, KICKOFF, PUNT_RETURN, PUNT_BLOCK, FIELD_GOAL_BLOCK, GAUNTLET, SUMO, KEEP_AWAY, SCRAMBLE, GOAL_LINE_STAND, HIT_STICK, PASS_MODE];
+export const MODES: ModeDef[] = [OPEN_FIELD_TACKLE, OPEN_FIELD_CARRY, OKLAHOMA, KICKOFF_RETURN, KICKOFF, PUNT_RETURN, PUNT_BLOCK, FIELD_GOAL_BLOCK, GAUNTLET, SUMO, KEEP_AWAY, SCRAMBLE, GOAL_LINE_STAND, HIT_STICK, PASS_MODE, SURVIVAL, HOT_POTATO, INFECTION];
 
 /** Above this many athletes a mode may run slowly on a low-end device (docs/physics-benchmark.md). */
 export const SLOW_ATHLETES = 4;

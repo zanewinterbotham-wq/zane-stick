@@ -232,7 +232,7 @@ export class Play {
       // an unconscious carrier's hands let go: the ball is a fumble by the usual rules
       if (a.injury.ko) { const g = w.gripping(hi, this.ballRef); if (g >= 0) w.releaseGrip(hi, g as 0 | 1); }
       // checked before the grip: a ball that comes out on the step he lands was still held when he went down
-      if (!a.injury.ko && a.downBy && (w.time - this.touchedAt < CONTACT_MEM || this.turfT > GIVE_UP || a.injury.out)) return this.dead(T, bz, 'down');
+      if (!this.mode.tackleDrops && !a.injury.ko && a.downBy && (w.time - this.touchedAt < CONTACT_MEM || this.turfT > GIVE_UP || a.injury.out)) return this.dead(T, bz, 'down');
       if (w.gripping(hi, this.ballRef) < 0) this.fumble(hi);
       else if (scores(r, T, bz)) return this.end('touchdown', T, r.points.touchdown);
       else if (r.outOfBounds && this.runnerOut(hi)) return this.dead(T, bz, 'out');
