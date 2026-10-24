@@ -20,6 +20,9 @@ test('replay: scrubber click and drag, buttons, C and Exit leave, Escape does no
   await page.keyboard.press('KeyC');
   const box = page.locator('.viewer');
   await expect(box).toBeVisible();
+  // the Space button pauses (a playing replay would drift away from the scrubbed spot)
+  await page.getByRole('button', { name: /^Space:/ }).click();
+  expect((await play(page)).paused).toBe(true);
   // clicking anywhere on the bar jumps there; dragging follows
   const tr = (await page.locator('.viewer .track').boundingBox())!;
   expect(tr.height).toBeGreaterThanOrEqual(14);
@@ -32,8 +35,6 @@ test('replay: scrubber click and drag, buttons, C and Exit leave, Escape does no
   await page.mouse.up();
   expect(frac(await play(page))).toBeCloseTo(0.9, 1);
   // the hint buttons do what their keys do
-  await page.getByRole('button', { name: /^Space:/ }).click();
-  expect((await play(page)).paused).toBe(true);
   await page.getByRole('button', { name: /^1:/ }).click();
   expect((await play(page)).speed).toBe(0.25);
   const t0 = (await play(page)).t;
