@@ -103,6 +103,8 @@ export interface PlaySetup {
   props?: PropDesc[];
   /** The line of scrimmage (z, m): one forward pass is allowed from behind it (docs/passing.md); absent: no passing. */
   los?: number;
+  /** A carrier brought down does not end the play: the mode's step decides what a tackle does (Hot Potato strips the ball). */
+  tackleDrops?: boolean;
   /** A bot's brain whenever possession changes (and at the start); null = the default role: the ball holder runs
    *  (CarrierBrain), his teammates block (BlockerBrain), the other team tackles (TacklerBrain, which also chases a
    *  loose ball). */
