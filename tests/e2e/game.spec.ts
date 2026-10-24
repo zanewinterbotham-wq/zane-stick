@@ -331,7 +331,9 @@ test('controls screen lists the mouse controls and the game keys', async ({ page
   await page.goto('/');
   await settingsTab(page, 'Controls');
   for (const t of ['Left click', 'Right click', 'Scroll', 'Lower the pads', 'Space', 'Shift', 'Esc', 'Enter']) await expect(page.locator('.menu')).toContainText(t);
-  await expect(page.locator('.menu')).not.toContainText('Ctrl'); // no sink key any more
+  // the old Ctrl sink key is gone; Ctrl is now the owner's slide (2026-10-23)
+  await expect(page.locator('.menu tr[data-action="slide"] .keys-cell')).toHaveText('Ctrl');
+  await expect(page.locator('.menu')).not.toContainText('Sink');
   await expect(page.locator('.menu')).toContainText('Dive forward'); // owner asked for dive on E
   // the sprint hold/toggle switch lives here (hold by default); lowering the pads sinks the hips, no own switch
   await expect(page.getByRole('button', { name: 'Sprint: hold', exact: true })).toHaveAttribute('aria-pressed', 'true');
