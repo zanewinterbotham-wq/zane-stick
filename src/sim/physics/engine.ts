@@ -68,6 +68,10 @@ export interface PhysicsScene {
   setJointRange(athlete: number, dof: number, lo: number, hi: number): void;
   propPose(prop: number): { pos: Vec3; quat: Quat };
   propVel(prop: number): Vec3;
+  /** A dynamic prop's angular velocity (rad/s, world frame). */
+  propSpin(prop: number): Vec3;
+  /** External force and torque at a dynamic prop's COM for the next step (world frame): the ball's air loads. */
+  pushProp(prop: number, force: Vec3, torque: Vec3): void;
   /** Setup only (tests): give a whole athlete an initial linear velocity, e.g. to start a run test at speed. */
   setInitialVelocity(athlete: number, v: Vec3): void;
   /** Setup only: set an athlete's joint angles (plan dof order) at rest and refresh kinematics. */

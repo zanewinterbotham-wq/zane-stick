@@ -15,6 +15,13 @@ let mj: Any = null;
  *  earlier was unstable at 240 Hz, see git history. */
 const LIMIT_SOLIMP = '0.3 0.99 0.17';
 const LIMIT_TIMECONST = 0.03;
+/** Shoulder gimbal lock. The shoulder is three hinges in one body (flexion, abduction, internal rotation), so at 90°
+ *  abduction the flexion and rotation axes line up and the mass matrix is singular: any difference between the two
+ *  torques gives an unbounded acceleration and MuJoCo resets (a kickoff return diverged this way, 2026-10-21). Within
+ *  `window` (rad) of 90° the three hinges get an armature (kg·m², rotor inertia: no mass added) growing to `armature`
+ *  at 90°, which bounds it, as MuJoCo's own humanoid's armature does (0.02 on every joint there); 0.002 is under 1% of
+ *  the arm's inertia about the shoulder. Zero elsewhere, so every other pose steps exactly as before. */
+const GIMBAL = { window: 0.26, armature: 0.002 };
 /** Divergence recovery: an older good state every BACK s, restored after STUCK divergences in a row. */
 const BACK = 0.2, STUCK = 3;
 const FRICTION = { ground: 0.6, body: 0.6, hand: 1.0 }; // [S5]
@@ -81,6 +88,8 @@ class MujocoScene implements PhysicsScene {
   /** An older good state (taken every BACK s while nothing diverges), for a state that diverges every time it is stepped. */
   private back!: { qpos: Float64Array; qvel: Float64Array; set: boolean };
   private pyramidal = false;
+  /** Per shoulder: its abduction's qpos address and its three hinges' dof addresses (GIMBAL). */
+  private shoulders: { abd: number; dofs: number[] }[] = [];
   private heap: { f64: Float64Array; i32: Int32Array } | null = null;
 
   constructor(desc: SceneDesc) {
@@ -155,6 +164,10 @@ class MujocoScene implements PhysicsScene {
         dofAxis: new Float64Array(3 * nDof), dofAnchor: new Float64Array(3 * nDof), com: [0, 0, 0], comVel: [0, 0, 0],
       };
       this.athletes.push({ plan: P, nDof, state });
+      for (const sx of ['L', 'R']) {
+        const j = ['flex', 'abd', 'intRot'].map((n) => id('mjOBJ_JOINT', `a${ai}_shoulder${sx}_${n}`));
+        if (j.every((x) => x >= 0)) this.shoulders.push({ abd: m.jnt_qposadr[j[1]], dofs: j.map((x) => m.jnt_dofadr[x]) });
+      }
     });
     this.limits = this.athletes.map((a) => new Float64Array(a.nDof));
     this.propBody = desc.props.map((p, pi) => (p.mass > 0 ? id('mjOBJ_BODY', `prop${pi}`) : -1));
@@ -187,6 +200,10 @@ class MujocoScene implements PhysicsScene {
     this.good.qpos.set(qpos); this.good.qvel.set(qvel); this.good.eq.set(eq); this.good.time = d.time;
     const K = Math.max(1, Math.round(BACK / this.dt));
     if (this.steps % K === 0 && this.steps - this.lastBad > K) { const b = this.back; b.qpos.set(qpos); b.qvel.set(qvel); b.set = true; }
+    for (const sh of this.shoulders) {
+      const x = Math.abs(Math.abs(qpos[sh.abd]) - Math.PI / 2), arm = x < GIMBAL.window ? GIMBAL.armature * (1 - x / GIMBAL.window) : 0;
+      for (const k of sh.dofs) this.v.dof_armature[k] = arm;
+    }
     mj.mj_step(this.m, d);
     // a diverged solve makes MuJoCo reset everyone to the spawn pose (a mid-rep teleport, injuries kept): undo it,
     // back to the last good state with the motion damped out (halved; stopped if it diverges again at once). A reset
@@ -216,13 +233,13 @@ class MujocoScene implements PhysicsScene {
 
   /** Typed-array views into MuJoCo memory. Each property access allocates a new view, so they are cached
    *  and only re-fetched when WASM memory has grown (which detaches old views: byteLength 0). */
-  private v: Record<'qpos' | 'qvel' | 'xpos' | 'xquat' | 'xipos' | 'cvel' | 'subtree_com' | 'subtree_linvel' | 'xaxis' | 'xanchor' | 'dof_damping', Float64Array> = {} as never;
+  private v: Record<'qpos' | 'qvel' | 'xpos' | 'xquat' | 'xipos' | 'cvel' | 'subtree_com' | 'subtree_linvel' | 'xaxis' | 'xanchor' | 'dof_damping' | 'dof_armature', Float64Array> = {} as never;
   private views() {
     if (this.qfrc && this.qfrc.byteLength > 0 && this.qfrc.buffer === this.v.qpos?.buffer) return;
     const d = this.d;
     this.xfrc = d.xfrc_applied; this.qfrc = d.qfrc_applied;
     this.v = { qpos: d.qpos, qvel: d.qvel, xpos: d.xpos, xquat: d.xquat, xipos: d.xipos, cvel: d.cvel, subtree_com: d.subtree_com,
-      subtree_linvel: d.subtree_linvel, xaxis: d.xaxis, xanchor: d.xanchor, dof_damping: this.m.dof_damping };
+      subtree_linvel: d.subtree_linvel, xaxis: d.xaxis, xanchor: d.xanchor, dof_damping: this.m.dof_damping, dof_armature: this.m.dof_armature };
   }
 
   private read() {
@@ -412,6 +429,15 @@ class MujocoScene implements PhysicsScene {
     const b = this.propBody[pi], { cvel: cv, subtree_com: sc, xipos } = this.v;
     const px = xipos[3 * b] - sc[3 * b], py = xipos[3 * b + 1] - sc[3 * b + 1], pz = xipos[3 * b + 2] - sc[3 * b + 2];
     return [cv[6 * b + 3] + cv[6 * b + 1] * pz - cv[6 * b + 2] * py, cv[6 * b + 4] + cv[6 * b + 2] * px - cv[6 * b] * pz, cv[6 * b + 5] + cv[6 * b] * py - cv[6 * b + 1] * px];
+  }
+  propSpin(pi: number): Vec3 {
+    this.views();
+    const b = this.propBody[pi], cv = this.v.cvel; // cvel: angular (world) first, then linear
+    return [cv[6 * b], cv[6 * b + 1], cv[6 * b + 2]];
+  }
+  pushProp(pi: number, force: Vec3, torque: Vec3) {
+    const b = this.propBody[pi] * 6;
+    for (let k = 0; k < 3; k++) { this.xfrc[b + k] += force[k]; this.xfrc[b + 3 + k] += torque[k]; }
   }
   readQ(out: Float32Array | Float64Array) { this.views(); out.set(this.v.qpos); }
   writeQ(q: ArrayLike<number>, qd?: ArrayLike<number>) {

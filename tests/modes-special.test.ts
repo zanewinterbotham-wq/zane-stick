@@ -33,7 +33,7 @@ const script = (fn: (c: Commands) => void) => new ScriptBrain((_t, _p, c) => fn(
 /** Jogs off toward the sideline, out of the kick's way. */
 const aside = () => script((c) => { c.move = { x: 1, z: 0 }; c.gait = 'jog'; });
 
-async function run(def: ModeDef, opts: ModeOptions = {}, human?: Brain, rep = 0, maxInstab = 0) {
+async function run(def: ModeDef, opts: ModeOptions = {}, human?: Brain, rep = 0) {
   let play: Play | null = null;
   play = await Play.create(mujocoEngine, CFG, def, { ...resolveOptions(def), ...opts }, human ?? autoHuman(() => play), rep);
   const events: string[] = [];
@@ -43,7 +43,7 @@ async function run(def: ModeDef, opts: ModeOptions = {}, human?: Brain, rep = 0,
     if (play.world.ballCarrier !== bc) { bc = play.world.ballCarrier; events.push(`${play.repTime.toFixed(2)} s ${bc < 0 ? 'loose' : `held by ${bc}`} at ${yardLine(play.ballPos()[2])}`); }
   }
   console.log(`${def.id} ${JSON.stringify(opts)}: ${play.ended} at ${play.repTime.toFixed(2)} s, "${play.verdict}", ${play.points} points to ${play.scorer}, ball at ${yardLine(play.ballPos()[2])} | ${events.join(' | ')}`);
-  expect(play.world.scene.stats().instabilities, def.id).toBeLessThanOrEqual(maxInstab);
+  expect(play.world.scene.stats().instabilities, def.id).toBe(0);
   return play;
 }
 
@@ -87,9 +87,7 @@ describe('special teams (headless)', () => {
 
   it('a return the coverage cannot stop is a touchdown: six points to the returning team', async () => {
     // the kicker alone against four blockers (a long return is chaotic: two blockers break it only sometimes)
-    // shortcut: allows 3 recovered divergences (a tackler's thighs squeeze each other late in this play and MuJoCo
-    // diverges; mujoco.ts rolls it back). Back to 0 once the thigh self-collision is fixed (owner decision 2026-10-21).
-    const p = await run(modeById('kickoffReturn'), { block: 4, cover: 1 }, undefined, 0, 3);
+    const p = await run(modeById('kickoffReturn'), { block: 4, cover: 1 });
     expect(p.ended).toBe('touchdown');
     expect([p.scorer, p.points]).toEqual([0, 6]);
     expect(p.ballPos()[2]).toBeGreaterThan(GOAL_LINE);
