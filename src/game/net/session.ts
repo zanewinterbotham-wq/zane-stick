@@ -6,7 +6,9 @@
 import type { NetRoom } from '../../net/room';
 import { HumanBrain, type HumanInput } from '../../sim/brains/human';
 import type { Brain } from '../../sim/brains/types';
+import { GAIT_SPEED } from '../../sim/control/hand';
 import { neutralCommands } from '../../sim/control/types';
+import { clamp } from '../../sim/math';
 import { Play } from '../../sim/modes/play';
 import { modeById } from '../../sim/modes/registry';
 import type { ModeOptions, PlayConfig } from '../../sim/modes/types';
@@ -26,6 +28,64 @@ const PING_EVERY = 1000;
 /** A guest's stand-in for every player's brain: never run (the guest does not step), it only makes the slot a
  *  player's, so the body and toughness match the host's. */
 const PLAYER: Brain = { think: () => neutralCommands() };
+
+/** Prediction model: speeding up and braking (m/s², about the animator's sprint ACCEL and DECEL), the correction
+ *  blend (s), the error that snaps instead (m), and the longest lead it covers (s). */
+const PREDICT = { accel: 7, decel: 9, blend: 0.1, snap: 1, maxLead: 0.5 };
+
+/** The ground velocity a HumanInput asks for (m/s, world x z), as HumanBrain reads it (no steer assist). */
+function wish(i: HumanInput | null): [number, number] {
+  if (!i) return [0, 0];
+  const y = i.cameraYaw, mx = Math.sin(y) * i.move.y - Math.cos(y) * i.move.x, mz = Math.cos(y) * i.move.y + Math.sin(y) * i.move.x, m = Math.hypot(mx, mz);
+  if (m < 0.1) return [0, 0];
+  const s = i.sprint > 0.5 ? GAIT_SPEED.sprint * Math.min(1, m) : m > 0.6 ? GAIT_SPEED.jog * Math.min(1, m) : GAIT_SPEED.walk;
+  return [(mx / m) * s, (mz / m) * s];
+}
+
+/** A guest's prediction of his own athlete (client-side prediction, display only; the host stays authoritative).
+ *  His input drives a simple velocity model at once; the shown body is shifted by how much that model's velocity has
+ *  changed over the lead (the time an input takes to come back in a snapshot): ∫ (v(τ) − v(now − lead)) dτ over
+ *  [now − lead, now]. Running steadily that is zero, so he stays where the host has him and lines up with everyone
+ *  else; on a start, stop or cut it moves him the way he asked before the host's answer arrives, and drains away as
+ *  it does. A wrong model never drifts (the window is short; |shift| ≤ decel·lead²/2). The shift is scaled by
+ *  `weight` (0 in contact, near an opponent, knocked or down: physics there is the host's) and blended in over
+ *  ~100 ms; host contact or a big error snaps it. */
+export class Predictor {
+  /** The shift shown now (m, world x z). */
+  off: [number, number] = [0, 0];
+  private v: [number, number] = [0, 0];
+  /** The model's velocity from each frame's time on (zero-order hold). */
+  private hist: { t: number; vx: number; vz: number }[] = [];
+  private last = NaN;
+
+  update(now: number, input: HumanInput | null, lead: number, weight: number, snap: boolean): [number, number] {
+    const dt = Number.isNaN(this.last) ? 0 : clamp(now - this.last, 0, 0.1);
+    this.last = now;
+    lead = clamp(lead, 0, PREDICT.maxLead);
+    const v = this.v, [tx, tz] = wish(input), ex = tx - v[0], ez = tz - v[1], e = Math.hypot(ex, ez);
+    const a = (tx * v[0] + tz * v[1] >= v[0] * v[0] + v[1] * v[1] ? PREDICT.accel : PREDICT.decel) * dt;
+    const k = e > a ? a / e : 1;
+    v[0] += ex * k; v[1] += ez * k;
+    const h = this.hist;
+    if (!h.length) h.push({ t: now - PREDICT.maxLead, vx: 0, vz: 0 }); // standing before the first frame
+    h.push({ t: now, vx: v[0], vz: v[1] });
+    while (h.length > 2 && h[1].t <= now - PREDICT.maxLead) h.shift();
+    // the model's velocity at now − lead, then the integral of the change since
+    const from = now - lead;
+    let o = h.length - 1;
+    while (o > 0 && h[o].t > from) o--;
+    const v0 = h[o];
+    let sx = 0, sz = 0;
+    for (let j = o; j < h.length - 1; j++) {
+      const len = h[j + 1].t - Math.max(h[j].t, from);
+      if (len > 0) { sx += (h[j].vx - v0.vx) * len; sz += (h[j].vz - v0.vz) * len; }
+    }
+    sx *= weight; sz *= weight;
+    const f = this.off, err = Math.hypot(sx - f[0], sz - f[1]), b = snap || err > PREDICT.snap ? 1 : Math.min(1, dt / PREDICT.blend);
+    f[0] += (sx - f[0]) * b; f[1] += (sz - f[1]) * b;
+    return f;
+  }
+}
 
 export class Session {
   lobby: Lobby;
@@ -173,6 +233,7 @@ export class Session {
    *  every message bills the room server, at most SNAP_HZ a second, but a throw or a button change goes at once. */
   sendInput(i: HumanInput) {
     if (this.isHost) return;
+    this.input = i;
     const t = this.clock(), held = [...i.held].join();
     if (this.room.peers().find((p) => p.host)?.via !== 'rtc' && !i.pass && held === this.inputHeld && t - this.inputAt < 1 / SNAP_HZ) return;
     this.inputAt = t; this.inputHeld = held;
@@ -181,6 +242,25 @@ export class Session {
   private inputAt = -Infinity; private inputHeld = '';
   /** A guest's last throw, repeated in the next few inputs (a lost packet must not lose it). */
   private passHold: PassHold = { pass: null, until: -1 };
+  /** Guest: the input last given to sendInput (the prediction's), and this rep's prediction of his own athlete. */
+  private input: HumanInput | null = null;
+  predictor = new Predictor();
+
+  /** Guest: shift his own athlete (slot `me`) in the replica's pose `q` by the prediction, and the ball with him when
+   *  he carries it. */
+  private predict(q: Float64Array, me: number, now: number) {
+    const d = this.play, r = this.replica;
+    if (!d || !r) return;
+    const w = d.world, a = w.athletes[me], f = w.scene.freeQ, px = q[f[me]], pz = q[f[me] + 2];
+    let near = Infinity;
+    for (let i = 0; i < w.athletes.length; i++) if (i !== me) near = Math.min(near, Math.hypot(q[f[i]] - px, q[f[i] + 2] - pz));
+    // physics around other bodies, or a knocked or downed body, is the host's alone: no prediction there
+    const free = !a.playerContact && !a.grips.some((g) => g.active) && !a.support.down && !a.cmd.dive && a.knock < 0.1 && !a.injury.out && !d.ended;
+    const lead = (this.room.peers().find((p) => p.host)?.rtt || 0.1) + r.delay;
+    const [dx, dz] = this.predictor.update(now, this.input, lead, free ? clamp((near - 1.2) / 1, 0, 1) : 0, a.playerContact);
+    q[f[me]] += dx; q[f[me] + 2] += dz;
+    if (w.ballCarrier === me) { const b = f[w.athletes.length]; q[b] += dx; q[b + 2] += dz; } // the ball: prop 0, the first free joint after the athletes'
+  }
 
   /** Guest: show the play at the clock's now; false until a snapshot of this rep has arrived. */
   render(now = this.clock()) { return this.replica?.render(now) ?? false; }
@@ -235,6 +315,8 @@ export class Session {
     const play = await Play.create(this.engine, s.cfg, modeById(s.mode), s.options, me >= 0 ? PLAYER : null, s.rep, { human: me, fixed: s.assign.map((id) => (id ? PLAYER : null)) });
     if (req !== this.builds || this.closed) { play.destroy(); return; }
     this.replica = new Replica(play);
+    this.predictor = new Predictor();
+    if (me >= 0) this.replica.adjust = (q, now) => this.predict(q, me, now);
     this.swap(play, s);
   }
 
