@@ -49,6 +49,34 @@ test('the default skin (the owner pick, Rubber Hose) dresses both athletes; stan
   expect(errors).toEqual([]);
 });
 
+test('the rigged Future Armor skin in play: standing, sprinting, in a tackle, on the ground', async ({ page }) => {
+  const errors = watchErrors(page, /skin/);
+  await seed(page, { skin: 'future', preset: 'high', version: 9 }); // version: an older save drops its skin
+  await page.goto('/');
+  await expect(page.locator('.menu h1')).toHaveText('ZANE STICK', { timeout: 60_000 });
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.status')).toContainText('OPEN FIELD', { timeout: 60_000 });
+  await expect.poll(() => skinState(page), { timeout: 30_000 }).toEqual({ id: 'future', parts: [21, 21] });
+  // one skeleton per athlete, its bones driven from the physics segments
+  expect(await page.evaluate(() => (window as unknown as { __app: { renderer: { athletes: { skeleton: { bones: unknown[] } | null }[] } } }).__app.renderer.athletes.map((a) => a.skeleton?.bones.length))).toEqual([21, 21]);
+  await carrierComesToYou(page);
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: 'test-results/skin-future-rig-stand.png' });
+  await page.keyboard.down('ShiftLeft'); await page.keyboard.down('KeyW');
+  await page.evaluate(() => { (window as unknown as { __app: { cam: { mode: string } } }).__app.cam.mode = 'side'; });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: 'test-results/skin-future-rig-sprint.png' });
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __app: { drill: { world: { impact: { firstContactTime: number } } } } }).__app.drill.world.impact.firstContactTime), { timeout: 20_000 }).toBeGreaterThan(0);
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: 'test-results/skin-future-rig-tackle.png' });
+  // a slide takes him to the ground by his own physics
+  await page.keyboard.down('ControlLeft');
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: 'test-results/skin-future-rig-ground.png' });
+  await page.keyboard.up('ControlLeft'); await page.keyboard.up('KeyW'); await page.keyboard.up('ShiftLeft');
+  expect(errors).toEqual([]);
+});
+
 type Zs = {
   advance: (s: number) => number;
   world: { scene: { athletes: { state: { com: number[] } }[] } };

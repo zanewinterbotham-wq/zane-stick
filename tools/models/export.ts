@@ -1,4 +1,5 @@
-// npm run models:export — copies the character models (art/characters/<style>/<style>.glb) and the stadiums
+// npm run models:export — copies the character models (art/characters/<style>/<style>.glb, or a rigged model in
+// art/models/<dir>/<dir>.glb, see MODELS) and the stadiums
 // (art/stadiums/<id>/<id>.glb) into public/models/, with a small preview image of each for the inventory, and writes
 // src/game/skins.json and src/game/stadiums.json, the lists the game loads. The owner's picks (art/picks.json) come first.
 import { spawnSync } from 'node:child_process';
@@ -11,6 +12,8 @@ const STYLES = ['vinyl', 'lowpoly', 'toon', 'voxel', 'clay', 'future', 'paper', 
 const STADIUMS = ['college', 'highschool', 'dolphinhills', 'pro', 'night', 'backyard', 'crater'];
 // how the game shades each style; everything else keeps the file's PBR materials
 const LOOK: Record<string, string> = { toon: 'toon', rubberhose: 'toon', clay: 'clay', paper: 'paper' };
+// skins shipped from a rigged model (art/models/<dir>/: <dir>.glb, info.json, preview.png) instead of a procedural style
+const MODELS: Record<string, string> = { future: 'futurearmor' };
 
 const picks = JSON.parse(readFileSync(join(root, 'art', 'picks.json'), 'utf8')) as { character: string; stadium?: string | null };
 const out = join(root, 'public', 'models');
@@ -43,11 +46,11 @@ const order = <T extends string>(all: T[], pick: string | null | undefined) => (
 
 const skinOrder = order(STYLES, picks.character);
 const skins = skinOrder.map((id) => {
-  const src = join(root, 'art', 'characters', id, id + '.glb');
+  const m = MODELS[id], dir = m ? join(root, 'art', 'models', m) : join(root, 'art', 'characters', id), src = join(dir, (m ?? id) + '.glb');
   if (!existsSync(src)) throw new Error(`missing ${src}`);
   copyFileSync(src, join(out, id + '.glb'));
-  const info = JSON.parse(readFileSync(join(root, 'art', 'characters', id, 'info.json'), 'utf8'));
-  const pic = preview(join(root, 'art', 'concepts', 'renders', id, 'harbor-gulls-three-quarter.png'), `previews/${id}`, 260);
+  const info = JSON.parse(readFileSync(join(dir, 'info.json'), 'utf8'));
+  const pic = preview(m ? join(dir, 'preview.png') : join(root, 'art', 'concepts', 'renders', id, 'harbor-gulls-three-quarter.png'), `previews/${id}`, 260);
   // every skin is unlocked for now; the flag is where a future unlock system plugs in
   return { id, label: info.label, pitch: info.pitch, file: `models/${id}.glb`, preview: pic, look: LOOK[id] ?? 'standard', unlocked: true };
 });

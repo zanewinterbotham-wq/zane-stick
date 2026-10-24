@@ -1,5 +1,5 @@
 // Checks every skinned model in art/models/<id>/<id>.glb: one joint per physics segment (named after it), joint
-// hierarchy = physics parents, joints within 2 cm of the physics joint positions (A-pose arms: joint-to-joint lengths),
+// hierarchy = physics parents, joints within 2 cm of the physics joint positions in the A-pose they are bound in,
 // all vertices weighted, 15k-30k triangles, file under 3 MB. Run: npx tsx art/tools/check-skinned.ts
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -25,7 +25,18 @@ const dist = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], 
 const COMP: Record<number, number> = { 5121: 1, 5123: 2, 5125: 4, 5126: 4 };
 const SIZE: Record<string, number> = { SCALAR: 1, VEC4: 4 };
 
-let bad = 0, models = 0;
+// common.A_POSE in physics axes (Blender Y = physics -Z): degrees about +z, as src/game/render/skin.ts binds them
+const A_POSE: Record<string, number> = { upperArmL: 38, upperArmR: -38, forearmL: 6, forearmR: -6 };
+const turn = (name: string): number => (name ? (A_POSE[name] ?? 0) + turn(seg.get(name)!.parent ?? '') : 0);
+/** A joint's position in the A-pose the models are bound in: the rest pose with the arm chain turned out about z. */
+const aPosed = (name: string): number[] => {
+  const s = seg.get(name)!;
+  if (!s.parent) return s.origin;
+  const a = (turn(s.parent) * Math.PI) / 180, p = seg.get(s.parent)!.origin, d = s.origin.map((v, k) => v - p[k]), q = aPosed(s.parent);
+  return [q[0] + Math.cos(a) * d[0] - Math.sin(a) * d[1], q[1] + Math.sin(a) * d[0] + Math.cos(a) * d[1], q[2] + d[2]];
+};
+
+let bad = 0, models = 0, worst = 0;
 const fail = (msg: string) => { bad++; console.log('  FAIL ' + msg); };
 for (const id of readdirSync(dir).filter((d) => statSync(join(dir, d)).isDirectory())) {
   const file = join(dir, id, id + '.glb');
@@ -35,6 +46,7 @@ for (const id of readdirSync(dir).filter((d) => statSync(join(dir, d)).isDirecto
   const json = JSON.parse(buf.toString('utf8', 20, 20 + jlen));
   if (!json.skins?.length) continue; // props (e.g. the football) are not skinned
   models++;
+  worst = 0;
   const bin = buf.subarray(20 + jlen + 8);
   const nodes: Node[] = json.nodes;
   const joints: number[] = json.skins[0].joints;
@@ -71,12 +83,11 @@ for (const id of readdirSync(dir).filter((d) => statSync(join(dir, d)).isDirecto
     const pi = parentOf.get(i);
     const pname = pi === undefined || !joints.includes(pi) ? null : nodes[pi].name;
     if (pname !== s.parent) fail(`${id}: ${name} parent ${pname} != ${s.parent}`);
-    const p = W(i).p;
-    if (/^(forearm|hand)/.test(name)) { // below the A-posed shoulder: only joint-to-joint lengths are fixed
-      const e = Math.abs(dist(p, W(pi!).p) - dist(s.origin, seg.get(s.parent!)!.origin));
-      if (e > TOL) fail(`${id}: ${name} bone length off by ${e.toFixed(4)} m`);
-    } else if (dist(p, s.origin) > TOL) fail(`${id}: ${name} at ${p.map((v) => v.toFixed(3))} != ${s.origin}`);
+    const p = W(i).p, want = aPosed(name), e = dist(p, want);
+    worst = Math.max(worst, e);
+    if (e > TOL) fail(`${id}: ${name} at ${p.map((v) => v.toFixed(3))}, ${(100 * e).toFixed(1)} cm from the A-posed joint ${want.map((v) => v.toFixed(3))}`);
   }
+  console.log(`  joints within ${(100 * worst).toFixed(2)} cm of the A-posed physics joints`);
 }
 console.log(bad ? `${bad} failures` : `all ${models} skinned models OK`);
 process.exit(bad || !models ? 1 : 0);
