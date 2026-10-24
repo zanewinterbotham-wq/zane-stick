@@ -1,4 +1,6 @@
 // Every game mode, in menu order. To add one, write a ModeDef (types.ts) in its own file here and list it below.
+import { DRIVE } from './drive';
+import { ELEVEN } from './eleven';
 import { FIELD_GOAL_BLOCK } from './fieldGoalBlock';
 import { GAUNTLET } from './gauntlet';
 import { GOAL_LINE_STAND } from './goalline';
@@ -9,6 +11,7 @@ import { KICKOFF_RETURN } from './kickoffReturn';
 import { OKLAHOMA } from './oklahoma';
 import { OPEN_FIELD_CARRY, OPEN_FIELD_TACKLE } from './openField';
 import { PASS_MODE } from './pass';
+import { PASS_RUSH } from './passRush';
 import { PUNT_BLOCK } from './puntBlock';
 import { PUNT_RETURN } from './puntReturn';
 import { SCRAMBLE } from './scramble';
@@ -16,7 +19,7 @@ import { SUMO } from './sumo';
 import { Rng } from '../rng';
 import type { ModeDef, ModeOptions, OptionDesc, OptionValue, PlayConfig } from './types';
 
-export const MODES: ModeDef[] = [OPEN_FIELD_TACKLE, OPEN_FIELD_CARRY, OKLAHOMA, KICKOFF_RETURN, KICKOFF, PUNT_RETURN, PUNT_BLOCK, FIELD_GOAL_BLOCK, GAUNTLET, SUMO, KEEP_AWAY, SCRAMBLE, GOAL_LINE_STAND, HIT_STICK, PASS_MODE];
+export const MODES: ModeDef[] = [OPEN_FIELD_TACKLE, OPEN_FIELD_CARRY, OKLAHOMA, KICKOFF_RETURN, KICKOFF, PUNT_RETURN, PUNT_BLOCK, FIELD_GOAL_BLOCK, GAUNTLET, SUMO, KEEP_AWAY, SCRAMBLE, GOAL_LINE_STAND, HIT_STICK, PASS_MODE, PASS_RUSH, DRIVE, ELEVEN];
 
 /** Above this many athletes a mode may run slowly on a low-end device (docs/physics-benchmark.md). */
 export const SLOW_ATHLETES = 4;
