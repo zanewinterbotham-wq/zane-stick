@@ -49,6 +49,18 @@ describe('replay buffer', () => {
   });
 });
 
+describe('scrubber', () => {
+  it('seek maps a click fraction to a time across the recording, clamped', () => {
+    const b = new ReplayBuffer(15, 60);
+    for (let i = 0; i <= 600; i++) push(b, i / 60);
+    const p = new Playback(b);
+    p.seek(0.5); expect(p.t).toBeCloseTo(5);
+    expect(b.locate(p.t).i).toBe(300);
+    p.seek(-3); expect(p.t).toBe(b.start);
+    p.seek(7); expect(p.t).toBe(b.end);
+  });
+});
+
 describe('free camera', () => {
   it('starts looking where the camera looks and flies along the view', () => {
     const cam = new THREE.PerspectiveCamera();

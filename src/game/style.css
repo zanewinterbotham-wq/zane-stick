@@ -262,3 +262,14 @@ html, body { overscroll-behavior: none; }
 .tbar button { min-height: 40px; padding: 0 14px; border-radius: 20px; border: 2px solid #ffd23f; background: rgba(10, 20, 14, 0.8); color: #fff; font: 600 14px system-ui, sans-serif; }
 .title-logo { display: block; width: min(180px, 40vw); height: auto; margin: 0 auto 4px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* instant replay / photo mode viewer (src/game/replay.ts) */
+.viewer { position: fixed; bottom: 16px; z-index: 5; text-align: center; max-width: calc(100vw - 32px); }
+.viewer.replay { left: 16px; right: 16px; }
+.viewer.photo { left: 50%; transform: translateX(-50%); }
+.viewer .track { position: relative; height: 14px; margin: 12px 8px; border-radius: 7px; background: rgba(127,127,127,.35); cursor: pointer; touch-action: none; }
+.viewer .fill { display: block; height: 100%; width: 0; border-radius: 7px; background: var(--accent); pointer-events: none; }
+.viewer .handle { position: absolute; top: 50%; left: 0; width: 12px; height: 28px; border-radius: 6px; background: var(--ink); border: 2px solid var(--accent); transform: translate(-50%, -50%); pointer-events: none; }
+.viewer .hints { opacity: .75; font-size: .85em; margin-bottom: 6px; }
+.viewer .ctl { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.viewer .ctl .item { justify-content: center; padding: 6px 12px; font-size: 14px; }

@@ -77,12 +77,16 @@ export class Playback {
     if (this.paused && this.t >= this.buf.end) this.t = this.from;
     this.paused = !this.paused;
   }
+  /** Jump to a fraction (0..1) of the recording: a click or drag on the scrubber. */
+  seek(frac: number) { this.t = this.buf.start + Math.max(0, Math.min(1, frac)) * (this.buf.end - this.buf.start); }
   scrub(ds: number) { this.t = Math.max(this.buf.start, Math.min(this.buf.end, this.t + ds)); }
 }
 
 type Pose = { segPos: Float64Array; segQuat: Float64Array };
 type Kind = 'replay' | 'photo';
 /** Keys of the viewer's own controls (not rebindable; the move keys follow the player's bindings). */
+/** The fly-camera hint (not buttons: held keys and the mouse). */
+const LOOK = 'Hold a mouse button + move: look  ·  WASD: fly  ·  E / Q: up / down  ·  Shift: fast  ·  Scroll: fly speed';
 const UP = ['KeyE', 'PageUp'], DOWN = ['KeyQ', 'PageDown'], FAST = ['ShiftLeft', 'ShiftRight'];
 
 /** The replay / photo viewer the App drives: records every live frame, then while open draws the frame itself. */
@@ -95,24 +99,63 @@ export class Viewer {
   private props = new Float64Array(0);
   private out: Pose[] = [];
   private drag = false;
+  private scrubbing = false;
   private saveNext = false;
   private onExit = () => {};
-  private box = el('div', { class: 'panel mono', role: 'dialog', 'aria-label': 'Replay', style: 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);max-width:calc(100vw - 32px);display:none;z-index:5;text-align:center' });
+  private exitKey = '';
+  private box = el('div', { class: 'panel mono viewer', role: 'dialog', 'aria-label': 'Replay', style: 'display:none' });
   private line = el('div');
-  private bar = el('i', { style: 'display:block;height:100%;background:currentColor;width:0' });
-  private track = el('div', { style: 'height:4px;margin:6px 0;background:rgba(127,127,127,.35)' }, this.bar);
-  private hints = el('div', { style: 'opacity:.75;font-size:.85em' });
-  private save = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm' }, 'Save picture');
+  private fill = el('i', { class: 'fill' });
+  private handle = el('i', { class: 'handle' });
+  private track = el('div', { class: 'track', role: 'slider', 'aria-label': 'Replay position' }, this.fill, this.handle);
+  private hints = el('div', { class: 'hints' });
+  private row = el('div', { class: 'ctl' });
+  private ctls: { b: HTMLButtonElement; kind: Kind; label: () => string }[] = [];
 
   constructor(private canvas: HTMLCanvasElement, private hud: HTMLElement) {
-    this.box.append(this.line, this.track, this.hints, this.save);
+    // Every key hint is also a button doing the same thing (the keys call the same actions).
+    const p = () => this.play;
+    this.ctl('replay', () => `Space: ${p()?.paused ? 'play' : 'pause'}`, () => p()?.toggle());
+    this.ctl('replay', () => '←: back', () => p()?.scrub(-0.25));
+    this.ctl('replay', () => '→: forward', () => p()?.scrub(0.25));
+    SPEEDS.forEach((v, i) => this.ctl('replay', () => `${i + 1}: ${['¼', '½', '1'][i]}×`, () => { if (p()) p()!.speed = v; }));
+    this.ctl('photo', () => 'Save picture (Enter)', () => { this.saveNext = true; });
+    this.ctl('replay', () => `Exit (${this.exitKey})`, () => this.onExit());
+    this.ctl('photo', () => `Exit (${this.exitKey})`, () => this.onExit());
+    this.box.append(this.line, this.track, this.hints, this.row);
     document.body.append(this.box);
-    this.save.addEventListener('click', () => { this.saveNext = true; this.save.blur(); });
-    // drag on the view to look around (the cursor stays free for the Save button)
-    canvas.addEventListener('mousedown', () => { if (this.kind) this.drag = true; });
-    window.addEventListener('mouseup', () => { this.drag = false; });
-    window.addEventListener('mousemove', (e) => { if (this.kind && this.drag) this.cam.look(e.movementX * 0.0025, e.movementY * 0.0025); });
+    // The scrubber: press anywhere on the track and drag. Pointer capture keeps the drag while the cursor leaves it.
+    const seek = (e: PointerEvent) => { const r = this.track.getBoundingClientRect(); this.play?.seek((e.clientX - r.left) / (r.width || 1)); };
+    this.track.addEventListener('pointerdown', (e) => { this.scrubbing = true; this.track.setPointerCapture?.(e.pointerId); seek(e); e.preventDefault(); });
+    this.track.addEventListener('pointermove', (e) => { if (this.scrubbing) seek(e); });
+    for (const t of ['pointerup', 'pointercancel'] as const) this.track.addEventListener(t, () => { this.scrubbing = false; });
+    // Look: hold a mouse button on the view. The pointer locks while held (unbounded turning, cursor hidden) and frees
+    // on release so the buttons and scrubber stay usable; if the browser refuses the lock, the drag still looks.
+    canvas.addEventListener('mousedown', () => {
+      if (!this.kind) return;
+      this.drag = true; canvas.style.cursor = 'none';
+      try { void (canvas.requestPointerLock() as unknown as Promise<void> | undefined)?.catch?.(() => {}); } catch { /* refused: drag-look */ }
+    });
+    window.addEventListener('mouseup', () => this.endLook());
+    window.addEventListener('mousemove', (e) => {
+      if (!this.kind || !this.drag || Math.abs(e.movementX) > 400 || Math.abs(e.movementY) > 400) return; // Chrome's jump on lock
+      this.cam.look(e.movementX * 0.0025, e.movementY * 0.0025);
+    });
+    // Releasing the right button must not open the browser's menu (Save as / Inspect) over the viewer.
+    window.addEventListener('contextmenu', (e) => { if (this.kind) e.preventDefault(); }, true);
     window.addEventListener('wheel', (e) => { if (this.kind) this.cam.wheel(e.deltaY * (e.deltaMode === 1 ? 40 : 1)); }, { passive: true });
+  }
+
+  private ctl(kind: Kind, label: () => string, fn: () => void) {
+    const b = el('button', { class: 'item', type: 'button', 'data-sfx': 'ui_confirm', tabindex: '-1' });
+    b.addEventListener('click', () => { fn(); b.blur(); }); // blurred: Space / Enter must not press it again
+    this.row.append(b);
+    this.ctls.push({ b, kind, label });
+  }
+
+  private endLook() {
+    this.drag = false; this.canvas.style.cursor = '';
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock?.();
   }
 
   get open() { return this.kind !== null; }
@@ -128,13 +171,14 @@ export class Viewer {
   }
 
   /** Open from the view `cam` shows now; false when there is nothing to replay yet. */
-  start(kind: Kind, cam: THREE.Camera, onExit: () => void): boolean {
+  start(kind: Kind, cam: THREE.Camera, onExit: () => void, exitKey = ''): boolean {
     if (kind === 'replay' && this.buf.length < 2) return false;
-    this.kind = kind; this.onExit = onExit;
+    this.kind = kind; this.onExit = onExit; this.exitKey = exitKey;
     this.play = kind === 'replay' ? new Playback(this.buf) : null;
     this.cam.from(cam);
     this.hud.style.display = 'none';
-    this.save.style.display = kind === 'photo' ? '' : 'none';
+    for (const c of this.ctls) c.b.style.display = c.kind === kind ? '' : 'none';
+    this.box.className = `panel mono viewer ${kind}`;
     this.track.style.display = kind === 'replay' ? '' : 'none';
     this.box.setAttribute('aria-label', kind === 'replay' ? 'Instant replay' : 'Photo mode');
     this.box.style.display = '';
@@ -142,7 +186,7 @@ export class Viewer {
   }
 
   close() {
-    this.kind = null; this.play = null; this.drag = false;
+    this.kind = null; this.play = null; this.scrubbing = false; this.endLook();
     this.box.style.display = 'none';
     this.hud.style.display = '';
   }
@@ -154,7 +198,8 @@ export class Viewer {
     if (p && c === 'ArrowLeft') p.scrub(-0.25);
     else if (p && c === 'ArrowRight') p.scrub(0.25);
     if (e.repeat) return;
-    if (c === 'Escape' || open.includes(c)) this.onExit();
+    // Escape does nothing here: it leaves browser fullscreen, so it is never the way out (the opening key exits).
+    if (open.includes(c)) this.onExit();
     else if (p && c === 'Space') p.toggle();
     else if (p && /^Digit[123]$/.test(c)) p.speed = SPEEDS[+c[5] - 1];
     else if (this.kind === 'photo' && c === 'Enter') this.saveNext = true;
@@ -168,7 +213,7 @@ export class Viewer {
     r.hideHeadOf = -1;
     const p = this.play;
     if (p && w === this.recWorld) {
-      p.step(dt);
+      if (!this.scrubbing) p.step(dt);
       const { i, alpha } = this.buf.locate(p.t), a = this.buf.at(i), b = this.buf.at(Math.min(i + 1, this.buf.length - 1));
       let po = 0, qo = 0;
       w.scene.athletes.forEach((at, j) => {
@@ -186,12 +231,13 @@ export class Viewer {
       sc.propPose = (n: number) => ({ pos: [pp[7 * n], pp[7 * n + 1], pp[7 * n + 2]], quat: [pp[7 * n + 3], pp[7 * n + 4], pp[7 * n + 5], pp[7 * n + 6]] });
       try { r.render(w, focus); } finally { sc.propPose = real; }
       const len = this.buf.end - this.buf.start || 1;
-      this.bar.style.width = `${(100 * (p.t - this.buf.start) / len).toFixed(1)}%`;
+      const pc = `${(100 * (p.t - this.buf.start) / len).toFixed(1)}%`;
+      this.fill.style.width = pc; this.handle.style.left = pc;
       this.text(`REPLAY  ·  ${(p.t - this.buf.end).toFixed(1)} s  ·  ${p.speed}×${p.paused ? '  ·  PAUSED' : ''}`,
-        'Drag: look  ·  WASD: fly  ·  E / Q: up / down  ·  Shift: fast  ·  Scroll: fly speed  ·  Space: pause  ·  ← / →: scrub  ·  1 / 2 / 3: ¼ ½ 1× speed  ·  C / Esc: back');
+        LOOK);
     } else {
       r.render(w, focus);
-      this.text('PHOTO MODE', 'Drag: look  ·  WASD: fly  ·  E / Q: up / down  ·  Shift: fast  ·  Scroll: fly speed  ·  Enter: save picture  ·  P / Esc: back');
+      this.text('PHOTO MODE', LOOK);
     }
     if (this.saveNext) { // right after the draw: a WebGL canvas is only readable in the task that drew it
       this.saveNext = false;
@@ -202,6 +248,7 @@ export class Viewer {
   }
 
   private text(line: string, hints: string) {
+    for (const c of this.ctls) if (c.kind === this.kind) { const t = c.label(); if (c.b.textContent !== t) c.b.textContent = t; }
     if (this.line.textContent !== line) this.line.textContent = line;
     if (this.hints.textContent !== hints) this.hints.textContent = hints;
   }

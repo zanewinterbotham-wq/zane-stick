@@ -519,7 +519,7 @@ export class App {
       ['Left arm, grab', t('armL')], ['Right arm, grab', t('armR')],
       ['Pads down / up: torso and hips (scroll up = down)', `Scroll, ${t('torsoDown')} / ${t('torsoUp')}`],
       ['Side shuffle (toggle)', t('shiftLock')],
-      ...(this.net ? [] : [['Instant replay', t('replay')], ['Photo mode', t('photo')]] as [string, string][]),
+      ...(this.net ? [] : [['Instant replay (again to exit)', t('replay')], ['Photo mode (again to exit)', t('photo')]] as [string, string][]),
       ...(this.settings.autoCamera ? [] : [['Look', 'Mouse'] as [string, string]]),
       ...(this.throwing ? [ // only while he holds the ball: the QB throw controls
         ['Throw (hold for more loft)', t('throw')]] as [string, string][] : []),
@@ -575,6 +575,8 @@ export class App {
   // ---------------------------------------------------------------- input
   onKey(e: KeyboardEvent) {
     this.audio.unlock();
+    // Keybinding rule: Escape leaves browser fullscreen, so it is never the only way out of a mode. The replay / photo
+    // viewer ignores it (its own key toggles, plus an Exit button); during a normal rep it stays the pause menu.
     if (this.view.open) { this.view.key(e, this.input.bindings.keyboard[this.view.kind!] ?? []); return; }
     if (this.layer.open) {
       if ((document.activeElement as HTMLElement | null)?.tagName === 'SELECT') return; // its own arrow keys
@@ -601,7 +603,7 @@ export class App {
   openView(kind: 'replay' | 'photo') {
     const name = kind === 'replay' ? 'Instant replay' : 'Photo mode';
     if (this.net) { this.hud.flash(`${name} is off in multiplayer`); return; }
-    if (!this.renderer || !this.view.start(kind, this.renderer.camera, () => this.closeView())) { this.hud.flash('Nothing to replay yet'); return; }
+    if (!this.renderer || !this.view.start(kind, this.renderer.camera, () => this.closeView(), keyName(this.input.bindings.keyboard[kind]?.[0] ?? ''))) { this.hud.flash('Nothing to replay yet'); return; }
     this.paused = true;
     this.input.capture = false;
     document.exitPointerLock?.();
