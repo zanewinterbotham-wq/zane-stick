@@ -132,7 +132,8 @@ export class TrackingController implements MotorController {
     const h = this.handOut, t = this.trackOut, loose = 1 - STUN_LOOSE * clamp(this.stun, 0, 1);
     // An arm the player reaches with keeps the animation's aim and pull pose in contact too: balance does not
     // need it, and the hand controller knows no aim. A wrap is the hand controller's squeeze (a hug keeps the animation's).
-    const armB = [cmd.armL, cmd.armR].map((x) => b * (cmd.wrap && !cmd.hug ? 1 : 1 - clamp(x, 0, 1)));
+    // (so does the carrier's free hand covering the ball)
+    const armB = [cmd.armL, cmd.armR].map((x, k) => b * (cmd.wrap && !cmd.hug ? 1 : 1 - clamp(cmd.cover && cmd.carry === 2 - k ? 1 : x, 0, 1)));
     for (let i = 0; i < n; i++) {
       const bi = this.armOf[i] >= 0 ? armB[this.armOf[i]] : b;
       // blend torques, not set points: kp·q and kd·qd are mixed so the spring and damper terms add up exactly

@@ -609,7 +609,8 @@ export class World {
     const h = (this.ballCarrier === ai ? this.gripping(ai, { athlete: -1, seg: this.ballIndex }) : -1) as -1 | 0 | 1;
     if (h !== -1 && a.injury.arm[h] && !a.injury.arm[1 - h]) {
       this.releaseGrip(ai, h);
-      this.tuckBall(ai, h === 1 ? 0 : 1);
+      // (a covering free hand may already hold it)
+      if (this.gripping(ai, { athlete: -1, seg: this.ballIndex }) < 0) this.tuckBall(ai, h === 1 ? 0 : 1);
     }
     a.cmd = this.hurtCommands(a, a.cmd);
   }
@@ -707,7 +708,10 @@ export class World {
   private updateGrips(a: Athlete, dt: number) {
     // a hug's hands close once my trunk meets him, and hold while it is held
     const hug = a.cmd.hug && (a.trunkTouch || a.grips[0].active || a.grips[1].active);
-    const want = [a.cmd.gripL || (a.cmd.wrap && !a.cmd.hug) || hug || a.cmd.carry === 1, a.cmd.gripR || (a.cmd.wrap && !a.cmd.hug) || hug || a.cmd.carry === 2].map((x, h) => x && !a.injury.arm[h]);
+    const base = [a.cmd.gripL || (a.cmd.wrap && !a.cmd.hug) || hug || a.cmd.carry === 1, a.cmd.gripR || (a.cmd.wrap && !a.cmd.hug) || hug || a.cmd.carry === 2];
+    // the carrier's free hand covering the ball (Commands.cover) closes on the ball only, never during a throw
+    const cover = base.map((x, h) => !x && a.cmd.cover && a.cmd.carry === 2 - h && this.ballCarrier === a.index && !a.throwing);
+    const want = base.map((x, h) => (x || cover[h]) && !a.injury.arm[h]);
     for (const h of [0, 1] as const) {
       const g = a.grips[h];
       g.cooldown = Math.max(0, g.cooldown - dt);
@@ -724,7 +728,7 @@ export class World {
         // a raised hand closes on a fistful of jersey (or a limb) within GrabTuning.reach of it, not only on contact
         const near = !a.handTouch[h] && this.raised(a, h) ? this.nearestBody(a, this.handPoint(a, h), this.grab.reach + a.handGeoms[h].half) : null;
         const t = a.handTouch[h] ?? (near && { athlete: near.athlete, seg: near.seg, pos: this.handPoint(a, h) });
-        if (!t) continue;
+        if (!t || (cover[h] && !this.isBall(t))) continue;
         const tgtAth = t.athlete >= 0 ? this.athletes[t.athlete] : null;
         const segName = tgtAth ? tgtAth.plan.segments[t.seg].name : '';
         g.jersey = /thorax|lumbar|trunk|pelvis/.test(segName);
