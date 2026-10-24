@@ -1,5 +1,5 @@
 {
-  "_note": "Default bindings; the player can rebind keyboard and mouse actions on the Controls screen (saved in settings). Keyboard values are KeyboardEvent.code; Mouse0 / Mouse1 / Mouse2 are the left / middle / right mouse buttons and the wheel also sets the torso angle (scroll up = torso down). The J / L and I / K keys are always bound alongside the mouse so a Chromebook touchpad works too. Gamepad uses the W3C standard mapping (buttons b0..b16, axes a0..a3). Throw is the QB throw control (the placement reticle, docs/passing.md): it acts only while you hold the ball.",
+  "_note": "Default bindings; the player can rebind keyboard and mouse actions on the Controls screen (saved in settings). Keyboard values are KeyboardEvent.code; Mouse0 / Mouse1 / Mouse2 are the left / middle / right mouse buttons and the wheel also sets the torso angle (scroll up = torso down). The J / L and I / K keys are always bound alongside the mouse so a Chromebook touchpad works too. Gamepad uses the W3C standard mapping (buttons b0..b16, axes a0..a3). Throw is the QB throw control (the placement reticle, docs/passing.md): it acts only while you hold the ball. Slide (Ctrl) is a feet-first slide for anyone; Ctrl+W still closes a browser tab outside fullscreen, so the game asks first while a rep runs.",
   "keyboard": {
     "moveUp": ["KeyW"], "moveDown": ["KeyS"], "moveLeft": ["KeyA"], "moveRight": ["KeyD"],
     "sprint": ["ShiftLeft", "ShiftRight"],
@@ -10,7 +10,8 @@
     "torsoUp": ["KeyI"], "torsoDown": ["KeyK"],
     "shiftLock": ["Mouse1", "Semicolon"],
     "reset": ["Enter"], "pause": ["Escape"], "overlay": ["Backquote"], "tuning": ["KeyT"],
-    "throw": ["KeyF"]
+    "throw": ["KeyF"],
+    "slide": ["ControlLeft", "ControlRight"]
   },
   "gamepad": {
     "moveX": ["a0"], "moveY": ["a1"],
@@ -20,7 +21,8 @@
     "torsoUp": ["b12"], "torsoDown": ["b13", "b6"],
     "shiftLock": ["b10"],
     "reset": ["b9"],
-    "throw": ["b3"]
+    "throw": ["b3"],
+    "slide": ["b11"]
   },
   "options": { "deadzone": 0.15, "mouseSensitivity": 0.0025, "padLookRate": 3, "wheelPerFullTorso": 1000, "torsoRatePerSecond": 1.5 }
 }
