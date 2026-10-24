@@ -50,7 +50,8 @@ const skins = skinOrder.map((id) => {
   if (!existsSync(src)) throw new Error(`missing ${src}`);
   copyFileSync(src, join(out, id + '.glb'));
   const info = JSON.parse(readFileSync(join(dir, 'info.json'), 'utf8'));
-  const pic = preview(m ? join(dir, 'preview.png') : join(root, 'art', 'concepts', 'renders', id, 'harbor-gulls-three-quarter.png'), `previews/${id}`, 260);
+  // a rigged model's single-athlete render (like the procedural skins' cards), else its preview.png
+  const pic = preview(m ? [join(dir, 'renders', 'preview_harbor-gulls.png'), join(dir, 'preview.png')].find(existsSync)! : join(root, 'art', 'concepts', 'renders', id, 'harbor-gulls-three-quarter.png'), `previews/${id}`, 260);
   // every skin is unlocked for now; the flag is where a future unlock system plugs in
   return { id, label: info.label, pitch: info.pitch, file: `models/${id}.glb`, preview: pic, look: LOOK[id] ?? 'standard', unlocked: true };
 });
