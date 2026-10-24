@@ -7,6 +7,13 @@ import { BROW_STYLES, Brows } from './brows';
 import { fitAnchor, Mouth, skinAnchor, sphereAnchor, STYLES, type Anchor } from './mouth';
 import { disposeTree } from './renderer';
 import type { SkinTemplate } from './skin';
+import { decalMesh, helmetMaterial, jerseyMaterial, skinSpots, STAIN_COLOR, STAIN_MAX, type Ident } from './uniform';
+
+/** Optional looks (render/uniform.ts): `ident` puts a number and name on the jersey and a mark on the helmet (Medium
+ *  and up), `stain` is the starting grass-stain level 0..1. */
+export interface Extras { ident?: Ident; stain?: number }
+/** A colour that grass stains pull toward green: the live material colour (`base`: what shade() resets it to) and the clean one. */
+interface Stainable { mat: { color: THREE.Color }; base: THREE.Color; orig: THREE.Color }
 
 export interface TeamColors { jersey: number; trim: number; pants: number; helmet: number; mask: number; skin: number; socks: number; cleats: number; glow: number }
 export const TEAMS: TeamColors[] = [
@@ -51,8 +58,10 @@ export class AthleteMesh {
   /** The face's eyebrows, which carry the mood (render/brows.ts). */
   brows: Brows | null = null;
   private headOn = true; private shaded = false;
+  private stainable: Stainable[] = [];
+  private stain = 0;
 
-  constructor(private plan: BodyPlan, team: TeamColors, quality: 'low' | 'high', skin: SkinTemplate | null = null) {
+  constructor(private plan: BodyPlan, team: TeamColors, quality: 'low' | 'high', skin: SkinTemplate | null = null, private extra: Extras = {}) {
     this.root.add(this.classic, this.skin);
     if (skin) this.wear(plan, team, quality, skin);
     const caps = quality === 'high' ? [10, 6] : [7, 3];
@@ -83,7 +92,11 @@ export class AthleteMesh {
         grp.add(mesh);
         mats.push(mat);
         bases.push(new THREE.Color(color));
+        if (g.role !== 'helmet' && g.role !== 'facemask' && (color === team.jersey || color === team.pants || color === team.socks)) {
+          this.stainable.push({ mat, base: bases[bases.length - 1], orig: new THREE.Color(color) });
+        }
       }
+      if (extra.ident) this.markClassic(grp, s, team);
       if (s.name === 'head' && !skin) {
         // the helmet is a bare sphere: the mouth sits on its lower front, under the facemask bar
         const h = s.geoms.find((g) => g.role === 'helmet')!, c = h.pos!.map((v, k) => v - s.origin[k]);
@@ -99,6 +112,32 @@ export class AthleteMesh {
       this.base.push(bases);
     }
     this.setXray(false);
+    this.setStain(extra.stain ?? 0);
+  }
+
+  /** Number and name on the back and number on the chest of the classic torso's pads, a mark on both sides of the helmet. */
+  private markClassic(grp: THREE.Group, s: SegmentPlan, team: TeamColors) {
+    const id = this.extra.ident!, rel = (p: number[]) => p.map((v, k) => v - s.origin[k]) as [number, number, number];
+    const pad = s.geoms.find((g) => g.role === 'pad'), helmet = s.geoms.find((g) => g.role === 'helmet');
+    if (pad) {
+      const [x, y, z] = rel(pad.pos!), size = Math.min(0.38, 1.6 * pad.size[0]);
+      grp.add(decalMesh(jerseyMaterial(id, team, 'back'), [x, y, z - pad.size[2] - 0.004], Math.PI, size));
+      grp.add(decalMesh(jerseyMaterial(id, team, 'front'), [x, y, z + pad.size[2] + 0.004], 0, size * 0.6));
+    }
+    if (helmet) {
+      const [x, y, z] = rel(helmet.pos!), r = helmet.size[0], mat = helmetMaterial(id, team);
+      grp.add(decalMesh(mat, [x + r + 0.006, y, z - 0.01], Math.PI / 2, 1.1 * r), decalMesh(mat, [x - r - 0.006, y, z - 0.01], -Math.PI / 2, 1.1 * r));
+    }
+  }
+
+  /** Grass stains 0..1: jerseys, pants and socks fade toward green-brown (cheap enough to call every frame). */
+  setStain(level: number) {
+    if (Math.abs(level - this.stain) < 0.02 && !(level === 0 && this.stain !== 0)) return;
+    this.stain = level;
+    for (const s of this.stainable) {
+      s.base.copy(s.orig).lerp(STAIN_COLOR, level * STAIN_MAX);
+      if (!this.shaded) s.mat.color.copy(s.base);
+    }
   }
 
   /** Skin nodes go on the physics segments with the file's A-pose rotations dropped: the mesh data is in the rest
@@ -124,6 +163,7 @@ export class AthleteMesh {
             const c = mat as THREE.MeshStandardMaterial;
             c.color.setHex(hex);
             if (mat.name === 'glow') c.emissive.setHex(hex);
+            if (mat.name === 'jersey' || mat.name === 'pants' || mat.name === 'socks') this.stainable.push({ mat: c, base: c.color, orig: c.color.clone() });
           }
           mats.set(m.material as THREE.Material, mat);
         }
@@ -139,6 +179,14 @@ export class AthleteMesh {
         const b = BROW_STYLES[skin.id];
         this.brows = new Brows(b, [-b.x, b.x].map((x) => fitAnchor(skin, b.mat, x, b.y, b.hw)) as [Anchor, Anchor], team.glow);
         node.add(this.brows.mesh);
+      }
+      if (this.extra.ident && (name === 'thorax' || name === 'head')) {
+        // skins differ in shape: the decals go where rays at the skin's own meshes say its surface is
+        const id = this.extra.ident, sp = skinSpots(name, meshes);
+        if (sp.back) node.add(decalMesh(jerseyMaterial(id, team, 'back'), sp.back.pos, Math.PI, sp.back.size));
+        if (sp.front) node.add(decalMesh(jerseyMaterial(id, team, 'front'), sp.front.pos, 0, sp.front.size));
+        if (sp.headL) node.add(decalMesh(helmetMaterial(id, team), sp.headL.pos, Math.PI / 2, sp.headL.size));
+        if (sp.headR) node.add(decalMesh(helmetMaterial(id, team), sp.headR.pos, -Math.PI / 2, sp.headR.size));
       }
       this.skin.add(node);
       this.parts.push({ node, seg, off: new THREE.Vector3(o[0] - so[0], o[1] - so[1], o[2] - so[2]) });

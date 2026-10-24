@@ -4,6 +4,7 @@
 // chosen stadium is fetched, once; Open Field is the plain training look with a procedural wall.
 import * as THREE from 'three';
 import list from '../stadiums.json';
+import { patchCrowd } from './crowd';
 
 export interface StadiumScene { sky: string; fog: [string, number, number]; hemi: [string, string, number]; sun: [string, number] }
 export interface Stadium { id: string; label: string; pitch: string; file: string | null; preview: string | null; scene: StadiumScene | null; unlocked: boolean }
@@ -45,6 +46,7 @@ function prepare(root: THREE.Group): THREE.Group {
       if (mat.name.endsWith('nofog')) mat.fog = false;
       const decal = /_decal(\d)$/.exec(mat.name); // paint on the field (end zones, logos): layer N wins over the turf and layer N-1
       if (decal) { mat.polygonOffset = true; mat.polygonOffsetFactor = -Number(decal[1]); mat.polygonOffsetUnits = -4 * Number(decal[1]); }
+      if (mat.name.endsWith('_crowd')) patchCrowd(mat); // the fans sway, hop and do the wave (render/crowd.ts)
       if (mat.map) { // the crowd sprites: sharp up close, mipmapped far away so the rows do not shimmer
         mat.map.minFilter = THREE.LinearMipmapLinearFilter;
         mat.map.anisotropy = 4;

@@ -41,10 +41,21 @@ function fieldTexture(px: number): THREE.CanvasTexture {
   const sx = c.width / W, sy = c.height / L;
   const X = (m: number) => (m + W / 2) * sx, Y = (m: number) => (L / 2 - m) * sy;
   ctx.fillStyle = '#2f6b33'; ctx.fillRect(0, 0, c.width, c.height);
-  // mowing stripes every 5 yd
+  // mowing stripes every 5 yd: the mower lays the grass toward or away from the eye, so alternate bands read light and
+  // dark; each band is a little lighter at one edge, like a rolled lawn
   for (let yd = -60; yd < 60; yd += 5) {
-    ctx.fillStyle = (yd / 5) % 2 === 0 ? '#357439' : '#2f6b33';
-    ctx.fillRect(X(-FIELD.width / 2), Y((yd + 5) * YD), FIELD.width * sx, 5 * YD * sy);
+    const y0 = Y((yd + 5) * YD), h = 5 * YD * sy, light = (yd / 5) % 2 === 0;
+    const g = ctx.createLinearGradient(0, y0, 0, y0 + h);
+    g.addColorStop(0, light ? '#3d853f' : '#2b6230'); g.addColorStop(1, light ? '#367a3a' : '#2f6b33');
+    ctx.fillStyle = g;
+    ctx.fillRect(X(-FIELD.width / 2), y0, FIELD.width * sx, h);
+  }
+  // grass grain: fine light and dark flecks (seeded, so the turf is the same every time)
+  let seed = 12345;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let n = 0; n < (c.width * c.height) / 250; n++) {
+    ctx.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.045)' : 'rgba(0,20,0,0.06)';
+    ctx.fillRect(rnd() * c.width, rnd() * c.height, 1 + rnd() * 2, 2 + rnd() * 4);
   }
   // end zones
   ctx.fillStyle = '#1f3a68'; ctx.fillRect(X(-FIELD.width / 2), Y(60 * YD), FIELD.width * sx, 10 * YD * sy);
