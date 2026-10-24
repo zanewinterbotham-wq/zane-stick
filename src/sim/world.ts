@@ -136,7 +136,8 @@ export class Athlete {
   hitForce: Vec3 = [0, 0, 0];
   /** The part of hitForce from opponents: only a hit is boosted by hit power, not a bump into a team mate. */
   hitOpp: Vec3 = [0, 0, 0];
-  hitWindow: Vec3[] = []; hitImpulse: Vec3 = [0, 0, 0];
+  /** Ring buffer of the window's impulses (3 numbers per step; hitHead = oldest, hitCount filled), and their sum. */
+  hitWindow = new Float64Array(0); hitHead = 0; hitCount = 0; hitImpulse: Vec3 = [0, 0, 0];
   /** Carry force applied this step (N, world): tests check it is zero during player contact. */
   carryForce: Vec3 = [0, 0, 0];
   /** Broken joints and knockout (design §6.6); set by World.create. */
@@ -170,7 +171,9 @@ export class World {
   time = 0; steps = 0;
   assist: number;           // 0..1 world setting
   impact: ImpactStats = { closingSpeed: 0, peakForce: 0, peakHeadG: [], firstContactTime: -1 };
-  private forceWindow: number[] = [];
+  private forceWindow = new Float64Array(0); private forceHead = 0; private forceCount = 0;
+  /** Reused each step; its key is numeric, so no string per contact. */
+  private readonly pairBuf = new Map<number, HitEvent & { n: Vec3 }>();
   /** Total inter-athlete contact normal force last step (N) — drives camera shake, rumble, sound. */
   lastHitForce = 0;
   /** Athlete-on-athlete contacts this step, one per segment pair (sound, feel, replays). */
@@ -420,9 +423,11 @@ export class World {
     const S = this.setup.support!, s = this.scene.athletes[a.index].state, m = a.mass, r = a.controller.root!();
     // impulse received from other athletes over the window
     const n = Math.max(1, Math.round(this.sup.window / dt)), J = a.hitImpulse, f = a.hitForce;
-    const jn: Vec3 = [f[0] * dt, f[1] * dt, f[2] * dt];
-    a.hitWindow.push(jn); J[0] += jn[0]; J[1] += jn[1]; J[2] += jn[2];
-    if (a.hitWindow.length > n) { const o = a.hitWindow.shift()!; J[0] -= o[0]; J[1] -= o[1]; J[2] -= o[2]; }
+    if (a.hitWindow.length !== 3 * n) { a.hitWindow = new Float64Array(3 * n); a.hitHead = 0; a.hitCount = 0; J[0] = J[1] = J[2] = 0; }
+    const W = a.hitWindow, h = 3 * a.hitHead, j0 = f[0] * dt, j1 = f[1] * dt, j2 = f[2] * dt;
+    J[0] += j0; J[1] += j1; J[2] += j2; // add the new, then take the oldest off: the same sums in the same order as before
+    if (a.hitCount === n) { J[0] -= W[h]; J[1] -= W[h + 1]; J[2] -= W[h + 2]; a.hitHead = (a.hitHead + 1) % n; } else a.hitCount++;
+    const t = 3 * ((a.hitHead + a.hitCount - 1) % n); W[t] = j0; W[t + 1] = j1; W[t + 2] = j2;
     // Only the part of the impulse the athlete's own momentum did not absorb counts: the momentum it left him
     // moving with along the hit. A hitter who drives through keeps moving into it; the one driven back does not.
     const Jh = Math.hypot(J[0], J[2]), vAlong = Jh > 1e-9 ? (s.comVel[0] * J[0] + s.comVel[2] * J[2]) / Jh : 0;
@@ -547,7 +552,7 @@ export class World {
       a.hitForce = [0, 0, 0]; a.hitOpp = [0, 0, 0];
     }
     let hit = 0;
-    const pairs = new Map<string, HitEvent & { n: Vec3 }>();
+    const pairs = this.pairBuf; pairs.clear();
     for (const c of this.scene.contacts()) {
       for (const [p, o] of [[c.a, c.b], [c.b, c.a]] as const) {
         if (p.athlete < 0) continue;
@@ -575,7 +580,7 @@ export class World {
         for (let j = 0; j < 3; j++) { fa[j] -= c.normal[j] * c.force; fb[j] += c.normal[j] * c.force; }
         const A = this.athletes[c.a.athlete], B = this.athletes[c.b.athlete];
         if (A.setup.team !== B.setup.team) for (let j = 0; j < 3; j++) { A.hitOpp[j] -= c.normal[j] * c.force; B.hitOpp[j] += c.normal[j] * c.force; }
-        const key = `${c.a.athlete}:${c.a.seg}:${c.b.athlete}:${c.b.seg}`;
+        const key = ((c.a.athlete * 1024 + c.a.seg) * 1024 + c.b.athlete) * 1024 + c.b.seg;
         let e = pairs.get(key);
         if (!e) {
           e = { a: c.a.athlete, segA: this.athletes[c.a.athlete].plan.segments[c.a.seg].name, b: c.b.athlete, segB: this.athletes[c.b.athlete].plan.segments[c.b.seg].name, force: 0, pos: [0, 0, 0], speed: 0, n: c.normal };
@@ -847,9 +852,12 @@ export class World {
 
   private updateImpact(hit: number) {
     const n = Math.max(1, Math.round(0.01 / this.dt)); // 10 ms moving average
-    this.forceWindow.push(hit);
-    if (this.forceWindow.length > n) this.forceWindow.shift();
-    const avg = this.forceWindow.reduce((x, y) => x + y, 0) / this.forceWindow.length;
+    if (this.forceWindow.length !== n) { this.forceWindow = new Float64Array(n); this.forceHead = 0; this.forceCount = 0; }
+    const F = this.forceWindow;
+    if (this.forceCount === n) { F[this.forceHead] = hit; this.forceHead = (this.forceHead + 1) % n; } else F[(this.forceHead + this.forceCount++) % n] = hit;
+    let sum = 0; // oldest to newest, the order reduce summed in
+    for (let i = 0; i < this.forceCount; i++) sum += F[(this.forceHead + i) % n];
+    const avg = sum / this.forceCount;
     this.impact.peakForce = Math.max(this.impact.peakForce, avg);
     if (hit > 0 && this.impact.firstContactTime < 0 && this.athletes.length >= 2) {
       this.impact.firstContactTime = this.time;
