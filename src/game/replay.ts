@@ -136,7 +136,8 @@ export class Viewer {
       this.drag = true; canvas.style.cursor = 'none';
       try { void (canvas.requestPointerLock() as unknown as Promise<void> | undefined)?.catch?.(() => {}); } catch { /* refused: drag-look */ }
     });
-    window.addEventListener('mouseup', () => this.endLook());
+    // only the viewer's own look: in play the game's pointer lock must survive a released click (losing it pauses)
+    window.addEventListener('mouseup', () => { if (this.drag) this.endLook(); });
     window.addEventListener('mousemove', (e) => {
       if (!this.kind || !this.drag || Math.abs(e.movementX) > 400 || Math.abs(e.movementY) > 400) return; // Chrome's jump on lock
       this.cam.look(e.movementX * 0.0025, e.movementY * 0.0025);
