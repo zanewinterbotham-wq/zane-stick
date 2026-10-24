@@ -12,7 +12,7 @@ import type { Rng } from '../rng';
 import type { BotDifficulty } from './carrier';
 import { catchPoint, incoming } from './returner';
 import { blockerInWay, shed, shedSide } from './shed';
-import { LAT_ACCEL, Steer } from './steer';
+import { ballInPlay, LAT_ACCEL, Steer } from './steer';
 import { leadShoulder, type AthleteView, type Brain, type Perception } from './types';
 
 /** Speed the intercept is planned at (m/s) and its longest lead (s); aim this far to the carrier's goal side
@@ -96,7 +96,8 @@ export class TacklerBrain implements Brain {
         this.steer.run(me, vx, vz, dt, c);
       } else if (t.down) this.touch(me, t, dt, c); else this.tackle(p, me, t, dt, c);
     }
-    else if (seen.ball) this.recover(me, seen.ball, p.time - seen.time, dt, c);
+    // a ball in the stands, or one the rules make dead, is left alone
+    else if (seen.ball && ballInPlay(seen)) this.recover(me, seen.ball, p.time - seen.time, dt, c);
     return c;
   }
 

@@ -13,7 +13,7 @@ import type { Rng } from '../rng';
 import type { BotDifficulty } from './carrier';
 import { landing } from './football/sense';
 import { fallTime } from './returner';
-import { Steer } from './steer';
+import { ballInPlay, Steer } from './steer';
 import { predict } from './tackler';
 import type { AthleteView, Brain, Perception } from './types';
 
@@ -58,7 +58,8 @@ export class BlockerBrain implements Brain {
     const ci = seen.athletes.findIndex((a) => a.hasBall && a.team === me.team);
     const carrier = ci >= 0 ? predict(seen.athletes[ci], age) : null;
     const b = seen.ball, fall = !carrier && b ? fallTime(b.pos, b.vel, CATCH_H) : -1;
-    const prot: Vec3 | null = carrier ? carrier.com : fall >= 0 ? landing(b!, CATCH_H) : b ? b.pos : null;
+    // a loose ball in the stands (or dead out of bounds) is nothing to protect
+    const prot: Vec3 | null = carrier ? carrier.com : !ballInPlay(seen) ? null : fall >= 0 ? landing(b!, CATCH_H) : b!.pos;
     if (!prot) return c;
     // the carrier's run (unit, ground); none before anyone has the ball
     const cv = carrier ? Math.hypot(carrier.comVel[0], carrier.comVel[2]) : 0;

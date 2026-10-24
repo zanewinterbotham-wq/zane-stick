@@ -19,6 +19,7 @@ import { CarrierBrain, type BotDifficulty } from '../carrier';
 import { Steer } from '../steer';
 import { predict, TacklerBrain } from '../tackler';
 import { leadShoulder, type AthleteView, type Brain, type Perception } from '../types';
+import { ballInPlay } from '../steer';
 import { ballAt, BREAK_V, handsPoint, inFlight, JUKE_REACH, LAT, meetPoint, opponents, passIsMine, PLANT_ANGLE, rel } from './sense';
 import { optionPath, routePath, type RoutePath } from './routes';
 import type { PlayCall, RouteAssign } from './types';
@@ -113,7 +114,8 @@ export class ReceiverBrain implements Brain {
     // is not a pass in the air is anyone's: go get it
     if (!this.route || (holder >= 0 && (this.thrown || rel(f, seen.athletes[holder].com).depth > 0.5))) { this.phase = 'block'; return this.blocker.think(p, dt); }
     if (this.thrown && holder < 0) {
-      if (!inFlight(seen)) { this.phase = 'tackle'; return this.tackler.think(p, dt); }
+      // (a pass sailing out of play is not chased: the tackler leaves a dead or lost ball alone)
+      if (!inFlight(seen) || !ballInPlay(seen)) { this.phase = 'tackle'; return this.tackler.think(p, dt); }
       const b = { pos: ballAt(seen.ball!, age).pos, vel: ballAt(seen.ball!, age).vel };
       if (!this.isMine(seen, b, me)) { this.phase = 'block'; return this.blocker.think(p, dt); }
       return this.playBall(p, me, b, dt);

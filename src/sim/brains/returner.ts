@@ -8,7 +8,7 @@ import { neutralCommands, type Commands } from '../control/types';
 import { clamp, type Vec3 } from '../math';
 import type { Rng } from '../rng';
 import type { BotDifficulty } from './carrier';
-import { Steer } from './steer';
+import { ballInPlay, Steer } from './steer';
 import { TacklerBrain } from './tackler';
 import type { Brain, Perception } from './types';
 
@@ -72,7 +72,8 @@ export class ReturnerBrain implements Brain {
   think(p: Perception, dt = 1 / 240): Commands {
     const me = p.athletes[p.self], b = p.ball;
     const t = b && !p.athletes.some((a) => a.hasBall) ? fallTime(b.pos, b.vel, CATCH_H) : -1;
-    if (!b || me.down || t < 0) return this.chase.think(p, dt);
+    // a kick into the stands (or out, where that kills it) is let go: the tackler leaves it alone too
+    if (!b || me.down || t < 0 || !ballInPlay(p)) return this.chase.think(p, dt);
     const c = neutralCommands();
     const k = Math.min(1, t); // the misjudgement shrinks as the ball comes down
     // where it reaches chest height; he stands CHEST behind that along its flight, so it comes down onto his chest
