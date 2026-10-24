@@ -5,7 +5,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Brain } from '../src/sim/brains/types';
 import { neutralCommands } from '../src/sim/control/types';
-import { currentDrive, decodeDrive, downText, DRIVE, encodeDrive, freshDrive, nextDown, resetDrive } from '../src/sim/modes/drive';
+import { currentDrive, decodeDrive, downText, DRIVE, driveLines, encodeDrive, freshDrive, nextDown, resetDrive } from '../src/sim/modes/drive';
 import { ELEVEN } from '../src/sim/modes/eleven';
 import { ownYard } from '../src/sim/modes/kicks';
 import { PASS_RUSH } from '../src/sim/modes/passRush';
@@ -136,5 +136,18 @@ describe('headless plays', () => {
     console.log(`11 on 11: ${((Date.now() - t) / p.world.steps).toFixed(2)} ms per step (build included)`);
     expect(p.world.athletes.length).toBe(22);
     p.destroy();
+  });
+});
+
+describe('TV field lines', () => {
+  it('Drive: a 4-yard gain moves the blue line 4 yd, the yellow first-down line stays; goal to go has none', () => {
+    const d = freshDrive(25), after = nextDown(d, { spot: 29 });
+    expect(driveLines(d)).toEqual({ scrimmage: ownYard(0, 25), firstDown: ownYard(0, 35) });
+    const l = driveLines(after);
+    expect(l.scrimmage! - ownYard(0, 25)).toBeCloseTo(4 * 0.9144, 9);
+    expect(l.firstDown).toBe(ownYard(0, 35));
+    expect(driveLines(freshDrive(94))).toEqual({ scrimmage: ownYard(0, 94) });
+    resetDrive();
+    expect(DRIVE.setup(resolveOptions(DRIVE), new Rng(1), CFG).lines?.(null as never)).toEqual(driveLines(freshDrive(25)));
   });
 });

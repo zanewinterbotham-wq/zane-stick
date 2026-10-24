@@ -93,6 +93,7 @@ export interface PlayerSpec {
   params?: AthleteParams;
 }
 
+export interface FieldLines { scrimmage?: number; firstDown?: number }
 export type BallStart = { holder: number } | { at: Vec3; impetus: 0 | 1 };
 
 export interface PlaySetup {
@@ -103,6 +104,9 @@ export interface PlaySetup {
   props?: PropDesc[];
   /** The line of scrimmage (z, m): one forward pass is allowed from behind it (docs/passing.md); absent: no passing. */
   los?: number;
+  /** TV field lines: the z (m) of the blue line of scrimmage and the yellow first-down line; absent = no line. A mode without
+   *  this shows its `los` as the scrimmage line. Read from replicated state (a guest runs the same setup), once per rep. */
+  lines?(play: Play): FieldLines;
   /** A carrier brought down does not end the play: the mode's step decides what a tackle does (Hot Potato strips the ball). */
   tackleDrops?: boolean;
   /** A bot's brain whenever possession changes (and at the start); null = the default role: the ball holder runs

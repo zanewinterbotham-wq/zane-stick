@@ -49,6 +49,7 @@ export const OKLAHOMA: ModeDef = {
           : play.ended === 'touchdown' ? 'Defense wins: scoop and score'
           : play.recoveredBy >= 0 && play.team(play.recoveredBy) === D ? 'Defense wins: fumble recovered' : 'Defense wins: carrier stopped';
       },
+      lines: () => ({ scrimmage: 0 }),
       // the local player's own position (multiplayer: any slot; single player: the chosen role, slot 0)
       status: (play) => `${play.human >= 0 ? `You are the ${play.mode.players[play.human].label.toLowerCase()}  ·  ` : ''}lane ${+o.width} yd`,
     };

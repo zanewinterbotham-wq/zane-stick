@@ -38,6 +38,7 @@ export const GOAL_LINE_STAND: ModeDef = {
           : play.ended === 'out' ? 'Forced out' : 'Stopped short';
         return T === 0 ? `Goal-line stand! ${how}` : `They held: ${how.toLowerCase()}`;
       },
+      lines: () => ({ scrimmage: ls }),
       status: () => `Defend your goal line  ·  they start ${+o.togo} yd out`,
     };
   },

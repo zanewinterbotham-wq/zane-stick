@@ -6,6 +6,7 @@ import { AthleteMesh, TEAMS } from './athleteMesh';
 import { AnatomyOverlay } from './anatomy';
 import { GORE_LEVELS, InjuryEffects } from './effects';
 import { buildBarrier, buildField } from './field';
+import { FieldLinesView } from './fieldLines';
 import { LandingMarker } from './landing';
 import { PassAim } from './passAim';
 import { NameTags } from './nametags';
@@ -59,6 +60,8 @@ export class GameRenderer {
   /** Kicked-up turf and scuff marks (render/turf.ts), the stadium crowd's mood (render/crowd.ts), and (High/Ultra) contact shadows. */
   readonly turf = new TurfMarks();
   readonly crowd = new CrowdFx();
+  /** The blue line of scrimmage and the yellow first-down line (main.ts sets them each rep). */
+  readonly fieldLines = new FieldLinesView();
   private contact: ContactShadows | null = null;
   private floodlights: THREE.Group | null = null;
   /** Each athlete's stain slot (team:rank), for the grass stains that last the session. */
@@ -100,7 +103,7 @@ export class GameRenderer {
     const sc = this.sun.shadow.camera as THREE.OrthographicCamera;
     sc.left = -12; sc.right = 12; sc.top = 12; sc.bottom = -12; sc.near = 1; sc.far = 100;
     this.scene.add(this.sun, this.sun.target);
-    this.scene.add(buildField(quality.detail), this.effects.root, this.turf.root, this.landing.root, this.landing.path, this.passAim.root, this.tags.root);
+    this.scene.add(buildField(quality.detail), this.fieldLines.root, this.effects.root, this.turf.root, this.landing.root, this.landing.path, this.passAim.root, this.tags.root);
     if (quality.ao) { this.contact = new ContactShadows(); this.scene.add(this.contact.root); }
     this.barrier = buildBarrier();
     this.scene.add(this.barrier);

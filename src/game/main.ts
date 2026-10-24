@@ -443,6 +443,7 @@ export class App {
     await this.renderer.setStadium(params.get('stadium') ?? s.stadium);
     if (play !== this.drill) return; // a newer rep arrived while this one loaded
     this.renderer.setWorld(play.world);
+    this.renderer.fieldLines.set(play.fieldLines(), play.rules.halfWidth);
     this.renderer.setXray(this.renderer.xray);
     this.renderer.effortShading = s.effortShading;
     this.renderer.goreLevel = s.goreLevel;

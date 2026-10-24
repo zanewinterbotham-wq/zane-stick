@@ -6,7 +6,7 @@ import type { Play } from './play';
 import { ownYard, yardLine } from './kicks';
 import { GOAL_LINE, YD } from './rules';
 import { gained, playWords, scrimmage } from './scrimmage';
-import type { ModeDef, ModeOptions } from './types';
+import type { FieldLines, ModeDef, ModeOptions } from './types';
 
 /** A drive between plays: the down (1–4), the ball's spot and the line to gain (own yard lines, 100 = the goal line),
  *  and why it is over ('' while it goes on). */
@@ -45,6 +45,9 @@ function remember(play: Play, o: ModeOptions) {
   if (d) drive = { key: keyOf(o), d };
 }
 
+/** The blue and yellow lines for a drive; goal to go (the line to gain at the goal line) has no first-down line. */
+export const driveLines = (d: DriveState): FieldLines => ({ scrimmage: ownYard(0, d.spot), ...(d.line < 100 ? { firstDown: ownYard(0, d.line) } : {}) });
+
 const ORD = ['', '1st', '2nd', '3rd', '4th'];
 /** "3rd & 4 at their 37", "1st & goal at their 6". */
 export const downText = (d: DriveState) => `${ORD[d.down]} & ${d.line >= 100 ? 'goal' : d.line - d.spot} at ${yardLine(ownYard(0, d.spot))}`;
@@ -69,7 +72,7 @@ export const DRIVE: ModeDef = {
     const qb = ps.order.indexOf('qb');
     const routes = ps.jobs.flatMap((a, i) => (a.kind === 'route' && i !== 0 ? [`${ps.players[i].label} ${a.route}`] : [])).join(', ');
     return {
-      ...ps, rules: { ...ps.rules, timeLimit: +o.timeLimit },
+      ...ps, rules: { ...ps.rules, timeLimit: +o.timeLimit }, lines: () => driveLines(d),
       // the drive after this play, into play.note for every screen
       ended(play) {
         const bc = play.world.ballCarrier, has = bc >= 0 ? play.team(bc) : play.impetus;

@@ -28,7 +28,7 @@ import { Rng } from '../rng';
 import type { PassRecord } from '../throw';
 import { World, type AthleteSetup, type WorldSetup } from '../world';
 import { attackDir, barrierProps, deadBall, inOwnEndZone, outside, scores } from './rules';
-import type { ModeDef, ModeOptions, PlayConfig, PlaySetup, Rules } from './types';
+import type { FieldLines, ModeDef, ModeOptions, PlayConfig, PlaySetup, Rules } from './types';
 
 /** Who plays which athlete (multiplayer, docs/multiplayer.md): `human` is the local player's athlete (−1: none, a
  *  spectating host), driven by Play.create's `humanBrain`; `fixed[i]` gives athlete i another fixed brain (a remote
@@ -416,6 +416,9 @@ export class Play {
     this.mode.ended?.(this);
     if (!this.verdict && this.mode.verdict) this.verdict = this.verdictFor(this.human >= 0 ? this.team(this.human) : 0);
   }
+
+  /** The TV lines to draw (the mode's own, else its line of scrimmage). */
+  fieldLines(): FieldLines { return this.mode.lines?.(this) ?? (this.mode.los === undefined ? {} : { scrimmage: this.mode.los }); }
 
   /** The result in words from a team's side: the mode's own words for it, else the shared verdict. */
   verdictFor(team: 0 | 1) { return this.mode.verdict?.(this, team) || this.verdict; }
