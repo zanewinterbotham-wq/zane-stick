@@ -14,11 +14,17 @@ import { ExpressionTracker } from '../expressions';
 import type { Expression } from './brows';
 import type { Voice } from './mouth';
 import { CLASSIC, loadSkin, skinById, type Skin, type SkinTemplate } from './skin';
+import { CrowdFx, pushUniforms } from './crowd';
+import { buildFloodlights, disposeFloodlights } from './lights';
+import { ContactShadows, TurfMarks } from './turf';
+import { addStain, identFor, stainKey, stainOf } from './uniform';
 
 /** Graphics knobs of a quality level (presets.ts). `scale`: resolution × the device pixel ratio, which is first capped
  *  at `pixelCap`; `shadowMap`: shadow map size (px); `effects`: share of the injury particles drawn; `faces`: farthest
- *  athlete from the camera (m) whose mouth and brows animate; `maxFps`: frame cap (0 = the display's rate). */
-export interface RenderQuality { scale: number; shadows: boolean; detail: 'low' | 'high'; antialias: boolean; shadowMap: number; pixelCap: number; effects: number; faces: number; maxFps: number }
+ *  athlete from the camera (m) whose mouth and brows animate; `maxFps`: frame cap (0 = the display's rate); `decals`: jersey
+ *  numbers, helmet marks and the night stadium's floodlights (Medium and up); `ao`: softer sun shadows and contact shadows
+ *  under feet and bodies (High and Ultra). Absent = off. */
+export interface RenderQuality { scale: number; shadows: boolean; detail: 'low' | 'high'; antialias: boolean; shadowMap: number; pixelCap: number; effects: number; faces: number; maxFps: number; decals?: boolean; ao?: boolean }
 
 /** The Open Field's sky and light (what the renderer starts with). */
 const OPEN_SCENE: StadiumScene = { sky: '#9cc3e4', fog: ['#9cc3e4', 80, 220], hemi: ['#dfeeff', '#3c5a2c', 1.1], sun: ['#ffffff', 2.2] };
@@ -50,6 +56,14 @@ export class GameRenderer {
   hideHeadOf = -1;
   /** Injury effects (blood, bones, stars); the Gore setting picks their style (render/effects.ts GORE_LEVELS). */
   readonly effects = new InjuryEffects();
+  /** Kicked-up turf and scuff marks (render/turf.ts), the stadium crowd's mood (render/crowd.ts), and (High/Ultra) contact shadows. */
+  readonly turf = new TurfMarks();
+  readonly crowd = new CrowdFx();
+  private contact: ContactShadows | null = null;
+  private floodlights: THREE.Group | null = null;
+  /** Each athlete's stain slot (team:rank), for the grass stains that last the session. */
+  private slots: string[] = [];
+  private stainT = 0;
   set goreLevel(level: number) {
     const id = GORE_LEVELS[clamp(Math.round(level), 0, GORE_LEVELS.length - 1)].style;
     if (this.effects.style.id !== id) this.effects.setStyle(id);
@@ -70,7 +84,7 @@ export class GameRenderer {
     if (!gl) gls.set(canvas, gl = new THREE.WebGLRenderer({ canvas, antialias: quality.antialias, powerPreference: 'high-performance' }));
     this.renderer = gl;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.pixelCap) * quality.scale);
-    this.effects.density = quality.effects;
+    this.effects.density = this.turf.density = quality.effects;
     this.renderer.shadowMap.enabled = quality.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.scene.background = new THREE.Color(0x9cc3e4);
@@ -82,10 +96,12 @@ export class GameRenderer {
     this.sun.castShadow = quality.shadows;
     this.sun.shadow.mapSize.set(quality.shadowMap, quality.shadowMap);
     this.sun.shadow.normalBias = 0.02; // no self-shadow acne on the skins' faceted and cel-shaded surfaces
+    if (quality.ao) this.sun.shadow.radius = 3; // softer shadow edges (blur radius, in shadow-map texels)
     const sc = this.sun.shadow.camera as THREE.OrthographicCamera;
     sc.left = -12; sc.right = 12; sc.top = 12; sc.bottom = -12; sc.near = 1; sc.far = 100;
     this.scene.add(this.sun, this.sun.target);
-    this.scene.add(buildField(quality.detail), this.effects.root, this.landing.root, this.landing.path, this.passAim.root, this.tags.root);
+    this.scene.add(buildField(quality.detail), this.effects.root, this.turf.root, this.landing.root, this.landing.path, this.passAim.root, this.tags.root);
+    if (quality.ao) { this.contact = new ContactShadows(); this.scene.add(this.contact.root); }
     this.barrier = buildBarrier();
     this.scene.add(this.barrier);
     this.resize();
@@ -104,6 +120,8 @@ export class GameRenderer {
     this.stadiumRoot = root;
     if (root) this.scene.add(root);
     this.barrier.visible = !root;
+    if (this.floodlights) { this.scene.remove(this.floodlights); disposeFloodlights(this.floodlights); this.floodlights = null; }
+    if (root && this.quality.decals) { this.floodlights = buildFloodlights(this.stadium.id); if (this.floodlights) this.scene.add(this.floodlights); }
     const sc = this.stadium.scene ?? OPEN_SCENE;
     (this.scene.background as THREE.Color).set(sc.sky);
     this.scene.fog = new THREE.Fog(sc.fog[0], sc.fog[1], sc.fog[2]);
@@ -125,7 +143,12 @@ export class GameRenderer {
 
   private dress(w: World) {
     for (const a of this.athletes) { this.scene.remove(a.root); a.dispose(); }
-    this.athletes = w.athletes.map((a) => new AthleteMesh(a.plan, TEAMS[a.setup.team], this.quality.detail, this.template));
+    const rank = [0, 0]; // an athlete's place on his team gives his number, name and stain slot
+    this.slots = w.athletes.map((a) => stainKey(a.setup.team, rank[a.setup.team]++));
+    this.athletes = w.athletes.map((a, i) => {
+      const r = +this.slots[i].split(':')[1];
+      return new AthleteMesh(a.plan, TEAMS[a.setup.team], this.quality.detail, this.template, { ident: this.quality.decals ? identFor(a.setup.team, r) : undefined, stain: stainOf(this.slots[i]) });
+    });
     for (const a of this.athletes) { a.setXray(this.xray); this.scene.add(a.root); }
   }
 
@@ -144,6 +167,8 @@ export class GameRenderer {
   setWorld(w: World) {
     this.world = w;
     this.faces = new ExpressionTracker();
+    this.turf.clear();
+    this.stainT = w.time;
     for (const p of this.props) { this.scene.remove(p); disposeTree(p); }
     if (this.overlay) { this.scene.remove(this.overlay.root); disposeTree(this.overlay.root); }
     this.dress(w);
@@ -244,6 +269,16 @@ export class GameRenderer {
     });
     if (this.overlay?.root.visible) this.overlay.update(w);
     this.effects.follow(w);
+    this.turf.follow(w, this.poses, dt);
+    this.contact?.update(w, this.poses);
+    this.crowd.step(dt); pushUniforms(this.crowd);
+    const sd = w.time - this.stainT; // simulated time since the last frame (none while paused)
+    this.stainT = w.time;
+    if (sd > 0 && sd < 0.5) w.athletes.forEach((a, i) => { // down on the turf, an athlete picks up grass stains (more when he slides)
+      if (a.downBy === null) return;
+      const v = w.scene.athletes[i].state.comVel;
+      this.athletes[i].setStain(addStain(this.slots[i], sd, Math.min(Math.hypot(v[0], v[2]), 8) * sd));
+    });
     this.landing.update(w);
     this.tags.update(w.athletes.map((a, i) => { const k = 3 * (a.segIndex.get('head') ?? 0), p = this.poses[i].segPos; return [p[k], p[k + 1], p[k + 2]]; }));
     // keep the shadow camera on the action
@@ -261,8 +296,8 @@ export function disposeTree(o: THREE.Object3D) {
   o.traverse((x) => {
     const m = x as THREE.Mesh;
     if (!m.geometry) return;
-    m.geometry.dispose();
-    for (const mat of Array.isArray(m.material) ? m.material : [m.material]) mat?.dispose();
+    if (!m.geometry.userData.shared) m.geometry.dispose(); // the shared decal planes and their materials (uniform.ts) live on
+    for (const mat of Array.isArray(m.material) ? m.material : [m.material]) if (!mat?.userData.shared) mat?.dispose();
   });
 }
 

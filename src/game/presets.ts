@@ -15,7 +15,8 @@ export interface Preset { name: PresetName; label: string; desc: string; physics
 export const PRESET_ORDER: PresetName[] = ['potato', 'minimum', 'medium', 'high', 'ultra'];
 
 const LOW_GFX: RenderQuality = { scale: 0.6, shadows: false, detail: 'low', antialias: false, shadowMap: 1024, pixelCap: 2, effects: 1, faces: Infinity, maxFps: 0 };
-const HIGH_GFX: RenderQuality = { scale: 1, shadows: true, detail: 'high', antialias: true, shadowMap: 2048, pixelCap: 2, effects: 1, faces: Infinity, maxFps: 0 };
+// decals (jersey numbers, helmet marks, floodlights) from Medium up; ao (soft shadows, contact shadows) on High and Ultra only
+const HIGH_GFX: RenderQuality = { scale: 1, shadows: true, detail: 'high', antialias: true, shadowMap: 2048, pixelCap: 2, effects: 1, faces: Infinity, maxFps: 0, decals: true, ao: true };
 
 export const PRESETS: Record<PresetName, Preset> = {
   potato: {
@@ -36,7 +37,7 @@ export const PRESETS: Record<PresetName, Preset> = {
     name: 'medium', label: 'Medium',
     desc: 'The full body at 240 Hz (the realism tests\' standard) on its own core, soft shadows, 60 fps.',
     physics: { hz: 240, iterations: 30, detail: 'standard' },
-    render: { ...HIGH_GFX, scale: 0.85, antialias: false, shadowMap: 1024, pixelCap: 1.5 },
+    render: { ...HIGH_GFX, scale: 0.85, antialias: false, shadowMap: 1024, pixelCap: 1.5, ao: false },
     targetFps: 60, activeBots: true, worker: true,
   },
   high: {

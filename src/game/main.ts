@@ -14,6 +14,7 @@ import { autoChoose, chooseBest, reportText, runBenchmark } from './benchmark';
 import { ChaseCamera } from './camera';
 import { SoundCues } from './cues';
 import { HitMeter, hitFeel, MPH, type BigHit, type HitSound } from './feel';
+import { impulseKN, RepStats } from './repStats';
 import { touchControls } from './input/touch';
 import { InputManager, keyName, keysText, type InputFrame } from './input/input';
 import { effectivePreset, PRESETS, type PresetName } from './presets';
@@ -104,6 +105,7 @@ export class App {
   freezeUntil = 0;   // hit-stop: wall-clock ms until which no sim steps run
   nextStop = 0;      // one hit-stop per hit, not one per contact step
   meter = new HitMeter();
+  stats = new RepStats();
   meterWorld: World | null = null;
   cues = new SoundCues(0);
   speed = 0;         // smoothed human ground speed for the speedometer and FOV kick, m/s
@@ -678,6 +680,7 @@ export class App {
       const fov = 55 + 12 * Math.min(1, Math.max(0, (this.speed - 3) / 7));
       if (Math.abs(r.camera.fov - fov) > 0.05) { r.camera.fov = fov; r.camera.updateProjectionMatrix(); }
       r.passAim.set(this.throwing && this.aim ? this.aim.aid : null, this.aim?.from ?? [0, 0, 0]);
+      if (!d.ended) this.stats.step(w, d.human >= 0 ? d.human : this.cam.target);
       r.render(w, this.cam.target);
       this.updateHud();
     }
@@ -813,6 +816,7 @@ export class App {
     const n = [0, 1, 2].map((k) => b.com[k] - a.com[k]), along = (v: number[]) => v[0] * n[0] + v[1] * n[1] + v[2] * n[2];
     this.audio.play('hit_big_layer', 0.5 + 0.5 * fx.k, [0, 1, 2].map((k) => (a.com[k] + b.com[k]) / 2));
     this.audio.play('crowd_ooh', 0.6 + 0.4 * fx.k);
+    this.renderer?.crowd.react(0.5 + 0.5 * fx.k);
     // the grunt comes from the athlete who was hit: the one closing less along the line between them
     const hit = along(a.comVel) >= -along(b.comVel) ? big.b : big.a, hs = w.scene.athletes[hit].state, hi = w.athletes[hit].segIndex.get('head')!;
     this.audio.play('voice_grunt', 1, [hs.segPos[3 * hi], hs.segPos[3 * hi + 1], hs.segPos[3 * hi + 2]], hit);
@@ -837,7 +841,7 @@ export class App {
     const contact = guest ? mine >= 0 && w.athletes[mine].cmd.contactMode : this.human.contact; // a guest's brain runs on the host
     const mode = contact ? 'CONTACT (auto)' : 'MOVEMENT', bc = w.ballCarrier;
     const line = net && T !== 0 ? undefined : d.mode.status?.(d); // modes word their line for team 0
-    if (d.ended && !this.scored) { this.scored = true; if (!net && d.scorer >= 0) this.score[d.scorer as 0 | 1] += d.points; } // multiplayer: the host keeps the score
+    if (d.ended && !this.scored) { this.scored = true; if (!net && d.scorer >= 0) this.score[d.scorer as 0 | 1] += d.points; if (d.points > 0 && d.scorer >= 0) this.renderer?.crowd.celebrate(); } // multiplayer: the host keeps the score; the crowd goes up on any score
     const score = net ? `${TEAM_NAMES[0]} ${net.lobby.score[0]} – ${net.lobby.score[1]} ${TEAM_NAMES[1]}` : `Score: you ${this.score[0]}, bots ${this.score[1]}`;
     this.hud.setStatus([
       `${this.mode.title.toUpperCase()}  ·  Rep ${d.rep + 1}  ·  ${Math.min(d.repTime, d.rules.timeLimit).toFixed(1)} s  ·  ${score}`,
@@ -876,17 +880,20 @@ export class App {
       // a guest's big hits are the host's (replica contact forces are an estimate)
       const remote = guest || d === this.sim?.play; // big hits measured elsewhere: the host's, or the physics Worker's
       const big = remote ? this.netBig : this.meter.big, best = remote ? this.netBest ?? this.meter.best : this.meter.best;
+      const top: [string, string] = ['Top speed', ms(this.stats.topSpeed) + (mine >= 0 || !net ? '' : ' (watched)')];
       const points: [string, string] = net ? ['Points', `${d.points} to the ${TEAM_NAMES[d.scorer as 0 | 1]}  ·  ${score}`] : ['Points', `${d.points} to ${d.scorer === 0 ? 'you' : 'the bots'}  ·  score: you ${this.score[0]}, bots ${this.score[1]}`];
+      const hit: [string, string][] = imp.firstContactTime >= 0 ? [
+        ['Closing speed', ms(imp.closingSpeed)],
+        ['Hardest hit', best ? `${impulseKN(best.impulse).toFixed(1)} kN  ·  ${best.impulse.toFixed(0)} N·s in 30 ms` : '—'],
+        ['Yards after contact', `${this.stats.yardsAfterContact.toFixed(1)} yd`],
+        [mine >= 0 || !net ? 'Peak head accel (you)' : 'Peak head accel (watched)', `${imp.peakHeadG[this.cam.target].toFixed(0)} g`],
+        ['Peak head accel (athlete 2)', `${imp.peakHeadG[1].toFixed(0)} g`],
+        ...(d.points ? [points] : []),
+      ] : [['Contact', 'none']];
       this.hud.showResult({
         title,
         banner: big ? `BIG HIT  ·  ${ms(big.closing)}  ·  ${J(big)}` : undefined,
-        rows: imp.firstContactTime >= 0 ? [
-          ['Closing speed', ms(imp.closingSpeed)],
-          ['Hardest hit', best ? J(best) : '—'],
-          [mine >= 0 || !net ? 'Peak head accel (you)' : 'Peak head accel (watched)', `${imp.peakHeadG[this.cam.target].toFixed(0)} g`],
-          ['Peak head accel (athlete 2)', `${imp.peakHeadG[1].toFixed(0)} g`],
-          ...(d.points ? [points] : []),
-        ] : [['Contact', 'none']],
+        rows: [top, ...hit],
         foot: !net ? 'Enter / Start: next rep   ·   head acceleration is a 60 Hz-filtered estimate'
           : `Enter / Start: vote for the next rep (${net.tally.have}/${net.tally.need}: it starts when every player has)`,
       });

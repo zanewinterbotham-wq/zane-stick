@@ -19,7 +19,12 @@ chosen again by the benchmark). The Graphics tab shows the ladder with a line pe
 overrides single knobs over the chosen level (`Settings.perf`, validated against the knob lists on load): physics rate,
 solver iterations, body detail, solver tolerance, friction model, far bots, physics thread; resolution, pixel density
 cap, shadows, shadow quality, antialiasing, injury effects, face animation range, frame cap. Physics knobs, like the
-levels, apply from the next rep. The overlay (backquote) shows the level (marked custom when overridden), the step
+levels, apply from the next rep. Two render-only extras follow the level (`RenderQuality.decals` / `.ao`, no Advanced
+row): from Medium up, jersey numbers and names, helmet marks and the Night stadium's four floodlights (4 spot lights plus
+glow sprites); on High and Ultra only, softer sun-shadow edges and soft contact shadows under feet and bodies (one
+instanced draw). Always on and cheap: kicked-up turf and scuff marks (two instanced draws, scaled by the injury-effects
+share), grass stains (a colour tint that builds over the session) and the crowd's sway, hops and wave (vertex shader
+uniforms on the stadium's crowd material). The overlay (backquote) shows the level (marked custom when overridden), the step
 rate and thread, and the physics time per frame with its share of a core.
 
 The first-launch benchmark (src/game/benchmark.ts) measures physics from the top of the ladder down until a level's
