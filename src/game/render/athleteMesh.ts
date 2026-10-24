@@ -51,6 +51,8 @@ export class AthleteMesh {
   /** The face's eyebrows, which carry the mood (render/brows.ts). */
   brows: Brows | null = null;
   private headOn = true; private shaded = false;
+  /** This athlete's own clones of the skin's materials (never the shared template's): freed with him. */
+  private skinMats: THREE.Material[] = [];
 
   constructor(private plan: BodyPlan, team: TeamColors, quality: 'low' | 'high', skin: SkinTemplate | null = null) {
     this.root.add(this.classic, this.skin);
@@ -119,6 +121,7 @@ export class AthleteMesh {
         let mat = mats.get(m.material as THREE.Material);
         if (!mat) {
           mat = (m.material as THREE.Material).clone();
+          this.skinMats.push(mat);
           const hex = colours[mat.name];
           if (hex !== undefined) {
             const c = mat as THREE.MeshStandardMaterial;
@@ -159,7 +162,7 @@ export class AthleteMesh {
   }
 
   /** The classic shapes are this athlete's own; the skin's geometry is the shared template's (only its face is his). */
-  dispose() { disposeTree(this.classic); this.mouth?.dispose(); this.brows?.dispose(); }
+  dispose() { disposeTree(this.classic); for (const m of this.skinMats) m.dispose(); this.skinMats.length = 0; this.mouth?.dispose(); this.brows?.dispose(); }
 
   /** Show or hide the head, neck, helmet and facemask (classic and skin): the helmet camera sits inside them. */
   setHeadVisible(on: boolean) {

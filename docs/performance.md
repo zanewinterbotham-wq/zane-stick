@@ -122,7 +122,14 @@ Kept, exact (bit-identical results at every level; bench/perf/sim.ts prints the 
 - **Render:** interpolation between the last two fixed steps (smooth motion at any frame rate against the physics rate,
   the camera follows the drawn pose; render only), no per-frame tint or head-visibility work when nothing changed, far
   faces keep their expression, a frame cap per level, the pixel density cap, shadow map size and particle share per
-  level. Three.js frustum culling stays on everywhere it was.
+  level. Three.js frustum culling stays on everywhere it was. The shadow camera (24 m box) follows the focused athlete and
+  shadows are off on Potato and Low; scenery casts none; each stadium is one mesh with one draw call per material, the
+  crowd one of them, so there is nothing left to batch.
+- **Allocation-free hit bookkeeping.** The per-step hit-pair `Map` is reused and keyed by a number (not a string built per
+  contact); each athlete's impulse window and the impact-force window are ring buffers that add and subtract in the
+  same order as the old push/shift arrays (tests/ring-windows.test.ts compares them bit for bit).
+- **Skin materials:** each athlete's clones of the skin's materials are disposed with him (they leaked GPU memory every
+  rep); the shared template's are never touched.
 
 Kept, approximate, Potato only (or an Advanced knob): 180 Hz; solver tolerance 1e-5 (MuJoCo's default is 1e-8); the
 pyramid friction cone (−11 % on the tackle, −17 % on the kickoff return); athlete level of detail: a bot farther than 12 m from the ball and every opponent,
@@ -145,12 +152,15 @@ Measured and not kept:
 
 Not done, and why:
 
-- **WebAssembly threads.** The `@mujoco/mujoco` package ships a multi-threaded build (`@mujoco/mujoco/mt`, with a
-  thread pool MuJoCo can spread a step's work over). It needs SharedArrayBuffer, so the page must be cross-origin isolated
-  (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`). Cloudflare Pages can send
-  them from a `_headers` file; GitHub Pages cannot, and isolation also blocks the cross-origin room server and any
-  third-party resource without CORP headers. The Worker already takes the physics off the page's thread; threading
-  MuJoCo itself would mainly help scenes with many separate islands. Left for the owner to decide.
+- **WebAssembly threads** (measured 2026-10, tried and dropped). `@mujoco/mujoco/mt` loads and runs here (same state
+  hashes), but turning its pool on (`mju_threadpool(data, 4)`, then with islands enabled, which are default-on anyway) made
+  `mj_step` roughly 7-15x slower in wall time on the 2-athlete tackle and the 17-athlete kickoff return (`mj_step` went from
+  about half of the step to 91-97 % of a far longer one, the controller's own cost unchanged). A step is a few hundred
+  microseconds of work over mostly separate athletes; the pool's synchronization costs more than it saves. So no
+  `public/_headers` is shipped: cross-origin isolation (`Cross-Origin-Opener-Policy: same-origin`,
+  `Cross-Origin-Embedder-Policy: require-corp`) would buy nothing today and cannot be tried without a real Cloudflare deploy.
+  The page's own assets, fonts and room API are all same-origin, so if threads ever pay off the two headers are all that
+  is needed (GitHub Pages ignores them). The Worker already takes the physics off the page's thread.
 - **Instancing the athletes.** Each athlete is a few dozen meshes with per-team materials; instancing them across
   athletes needs a skinned or per-segment instanced pipeline (a renderer rewrite). The crowd is already one textured
   mesh per stadium, and the injury particles are instanced.
